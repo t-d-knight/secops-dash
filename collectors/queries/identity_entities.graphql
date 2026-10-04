@@ -1,0 +1,37 @@
+# Falcon Identity Protection entities query, used by collectors/falcon_identity.py.
+# Kept as a file (not inline Python) so it can be tweaked -- e.g. add fields
+# from your tenant's GraphQL explorer (Falcon console > Identity Protection >
+# GraphQL API explorer) -- without touching code. $after is the page cursor;
+# __TYPES__ and __PAGE__ are substituted by the collector.
+query ($after: Cursor) {
+  entities(types: [__TYPES__], archived: false, first: __PAGE__, after: $after) {
+    nodes {
+      entityId
+      primaryDisplayName
+      secondaryDisplayName
+      type
+      riskScore
+      riskScoreSeverity
+      riskFactors {
+        type
+        severity
+      }
+      accounts {
+        ... on ActiveDirectoryAccountDescriptor {
+          domain
+          samAccountName
+          ou
+          enabled
+          creationTime
+          passwordAttributes {
+            lastChange
+          }
+        }
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}

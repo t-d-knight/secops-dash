@@ -1,0 +1,1427 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_POSTGRESQL",
+      "label": "PostgreSQL",
+      "description": "Postgres datasource pointing at the secops_dashboard database",
+      "type": "datasource",
+      "pluginId": "postgres",
+      "pluginName": "PostgreSQL"
+    }
+  ],
+  "__requires": [
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "10.0.0"
+    },
+    {
+      "type": "datasource",
+      "id": "postgres",
+      "name": "PostgreSQL",
+      "version": "1.0.0"
+    }
+  ],
+  "id": null,
+  "uid": "secops-overview",
+  "title": "SecOps Overview",
+  "description": "Cross-feed security posture per site: vulns, detections, identity, email, DMARC, coverage.",
+  "tags": [
+    "secops"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "1h",
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "type": "dashboards",
+      "tags": [
+        "secops"
+      ],
+      "asDropdown": false,
+      "title": "SecOps",
+      "includeVars": true,
+      "keepTime": true
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "site",
+        "type": "query",
+        "label": "Site",
+        "datasource": {
+          "type": "postgres",
+          "uid": "${DS_POSTGRESQL}"
+        },
+        "query": "SELECT site_label FROM dim_site ORDER BY site_label = 'Ungrouped', site_label",
+        "definition": "SELECT site_label FROM dim_site",
+        "refresh": 1,
+        "sort": 0,
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 2,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 4
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "### SecOps Overview\nOne row per site across every feed. **Vulns** = Falcon Exposure Management (endpoints) + Hadrian (external), open and seen in the last 30 days. **Alerts** = Falcon detections not yet closed. **Identity** = Falcon Identity Protection high-risk accounts + Entra ID users at risk. **Email** = Check Point HEC threats in the selected range. **DMARC** = share of mail claiming the site's domains that passed DMARC. Drill into the linked dashboards (top right) for detail. If a number looks too good, check **Data freshness** at the bottom first."
+      }
+    },
+    {
+      "id": 3,
+      "type": "row",
+      "title": "Posture at a glance",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Open Crit + High vulns",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 500
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM fact_vuln_findings_current WHERE site_label IN ($site) AND severity IN ('critical','high') AND last_found >= now() - interval '30 days'"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Open KEV findings",
+      "gridPos": {
+        "x": 4,
+        "y": 5,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM fact_vuln_findings_current WHERE site_label IN ($site) AND has_kev AND last_found >= now() - interval '30 days'"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Open Crit/High alerts",
+      "gridPos": {
+        "x": 8,
+        "y": 5,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM security_alerts WHERE site_label IN ($site) AND status <> 'closed' AND severity IN ('critical','high')"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "High-risk identities",
+      "gridPos": {
+        "x": 12,
+        "y": 5,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT (SELECT count(*) FROM identity_entities WHERE site_label IN ($site) AND NOT retired AND risk_severity = 'high') + (SELECT count(*) FROM entra_risky_users WHERE site_label IN ($site) AND risk_level = 'high')"
+        }
+      ],
+      "description": "Falcon Identity Protection HIGH-risk accounts + Entra ID users at HIGH risk."
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Email threats (range)",
+      "gridPos": {
+        "x": 16,
+        "y": 5,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM email_events WHERE site_label IN ($site) AND created_at >= '${__from:date}'::date AND created_at < '${__to:date}'::date + 1 AND event_type IN ('phishing','malware','suspicious_phishing','suspicious_malware')"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "DMARC pass (range)",
+      "gridPos": {
+        "x": 20,
+        "y": 5,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "green",
+                "value": 95
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT round(100.0 * sum(dmarc_pass) / NULLIF(sum(messages),0), 1) FROM dmarc_daily WHERE site_label IN ($site) AND report_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Site scorecard",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "Site scorecard",
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "KEV"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    },
+                    {
+                      "color": "red",
+                      "value": 10
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Open C+H alerts"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    },
+                    {
+                      "color": "red",
+                      "value": 10
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "High-risk IDs"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    },
+                    {
+                      "color": "red",
+                      "value": 10
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Entra risky users"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    },
+                    {
+                      "color": "red",
+                      "value": 10
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "MFA registered %"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 80
+                    },
+                    {
+                      "color": "green",
+                      "value": 95
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "DMARC pass %"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 80
+                    },
+                    {
+                      "color": "green",
+                      "value": 95
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Stale sensors"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    },
+                    {
+                      "color": "red",
+                      "value": 10
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Endpoint C+H"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "External C+H"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "SLA breaches"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "WITH v AS ( SELECT site_label, count(*) FILTER (WHERE severity IN ('critical','high') AND source <> 'hadrian') AS ep_ch, count(*) FILTER (WHERE severity IN ('critical','high') AND source = 'hadrian') AS ext_ch, count(*) FILTER (WHERE has_kev) AS kev, count(*) FILTER (WHERE sla_breach) AS sla FROM fact_vuln_findings_current WHERE last_found >= now() - interval '30 days' GROUP BY 1), a AS (SELECT site_label, count(*) FILTER (WHERE status <> 'closed' AND severity IN ('critical','high')) AS al FROM security_alerts GROUP BY 1), i AS (SELECT site_label, count(*) FILTER (WHERE risk_severity = 'high') AS hi FROM identity_entities WHERE NOT retired GROUP BY 1), r AS (SELECT site_label, count(*) AS ru FROM entra_risky_users GROUP BY 1), m AS (SELECT site_label, round(100.0 * count(*) FILTER (WHERE is_mfa_registered) / NULLIF(count(*),0), 1) AS mfa FROM entra_mfa_registration GROUP BY 1), e AS (SELECT site_label, count(*) AS em FROM email_events WHERE created_at >= '${__from:date}'::date AND created_at < '${__to:date}'::date + 1 AND event_type IN ('phishing','malware','suspicious_phishing','suspicious_malware') GROUP BY 1), d AS (SELECT site_label, round(100.0 * sum(dmarc_pass) / NULLIF(sum(messages),0), 1) AS dm FROM dmarc_daily WHERE report_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1), h AS (SELECT site_label, count(*) FILTER (WHERE source = 'falcon' AND last_seen < now() - interval '7 days') AS stale, count(*) FILTER (WHERE source = 'falcon_unmanaged') AS unm FROM assets WHERE NOT retired GROUP BY 1) SELECT s.site_label AS \"Site\", COALESCE(v.ep_ch,0) AS \"Endpoint C+H\", COALESCE(v.ext_ch,0) AS \"External C+H\", COALESCE(v.kev,0) AS \"KEV\", COALESCE(v.sla,0) AS \"SLA breaches\", COALESCE(a.al,0) AS \"Open C+H alerts\", COALESCE(i.hi,0) AS \"High-risk IDs\", COALESCE(r.ru,0) AS \"Entra risky users\", m.mfa AS \"MFA registered %\", COALESCE(e.em,0) AS \"Email threats\", d.dm AS \"DMARC pass %\", COALESCE(h.stale,0) AS \"Stale sensors\", COALESCE(h.unm,0) AS \"Unmanaged\" FROM sites s LEFT JOIN v ON v.site_label = s.site_label LEFT JOIN a ON a.site_label = s.site_label LEFT JOIN i ON i.site_label = s.site_label LEFT JOIN r ON r.site_label = s.site_label LEFT JOIN m ON m.site_label = s.site_label LEFT JOIN e ON e.site_label = s.site_label LEFT JOIN d ON d.site_label = s.site_label LEFT JOIN h ON h.site_label = s.site_label WHERE s.site_label IN ($site) ORDER BY s.site_label = 'Ungrouped', COALESCE(v.kev,0) DESC, COALESCE(v.ep_ch,0) DESC"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "row",
+      "title": "Trends",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Open vulns by source",
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 15
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "KEV"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT snapshot_date::timestamp AS time, sum(total) FILTER (WHERE source = 'falcon_spotlight') AS \"Endpoint (Falcon)\", sum(total) FILTER (WHERE source = 'hadrian') AS \"External (Hadrian)\", sum(kev) AS \"KEV\" FROM daily_source_metrics WHERE site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1 ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "New alerts per day by severity",
+      "gridPos": {
+        "x": 12,
+        "y": 21,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 80,
+            "stacking": {
+              "mode": "normal"
+            },
+            "drawStyle": "bars"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Critical"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "High"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Medium"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "dark-yellow"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Low"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "yellow"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "critical"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "high"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "medium"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "dark-yellow"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "low"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "yellow"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "info"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT snapshot_date::timestamp AS time, sum(new_critical) AS \"Critical\", sum(new_high) AS \"High\", sum(new_medium) AS \"Medium\", sum(new_low) AS \"Low\" FROM daily_alert_metrics WHERE site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1 ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Identity risk",
+      "gridPos": {
+        "x": 0,
+        "y": 29,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 15
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Falcon high-risk"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Falcon medium-risk"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "dark-yellow"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT snapshot_date::timestamp AS time, sum(value) FILTER (WHERE metric = 'risk:high') AS \"Falcon high-risk\", sum(value) FILTER (WHERE metric = 'risk:medium') AS \"Falcon medium-risk\", sum(value) FILTER (WHERE metric LIKE 'entra_risky:%') AS \"Entra risky users\" FROM daily_identity_metrics WHERE site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1 ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Email threats per day",
+      "gridPos": {
+        "x": 12,
+        "y": 29,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 80,
+            "stacking": {
+              "mode": "normal"
+            },
+            "drawStyle": "bars"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT snapshot_date::timestamp AS time, sum(events) FILTER (WHERE event_type LIKE '%phishing%') AS \"Phishing\", sum(events) FILTER (WHERE event_type LIKE '%malware%') AS \"Malware\", sum(events) FILTER (WHERE event_type NOT LIKE '%phishing%' AND event_type NOT LIKE '%malware%') AS \"Other\" FROM daily_email_metrics WHERE site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1 ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "row",
+      "title": "Data freshness & site mapping",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 37,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 18,
+      "type": "table",
+      "title": "Data freshness (latest run per feed)",
+      "gridPos": {
+        "x": 0,
+        "y": 38,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Hours since last success"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 26
+                    },
+                    {
+                      "color": "red",
+                      "value": 50
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Last run status"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "ok": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "partial": {
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "error": {
+                        "color": "red",
+                        "index": 2
+                      },
+                      "running": {
+                        "color": "blue",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT collector AS \"Feed\", status AS \"Last run status\", round(EXTRACT(EPOCH FROM now() - last_success) / 3600.0, 1) AS \"Hours since last success\", last_run AS \"Last run\", left(error, 200) AS \"Error\" FROM collector_freshness ORDER BY collector"
+        }
+      ],
+      "description": "A feed that hasn't succeeded in 26h+ is stale -- its numbers on every dashboard are old."
+    },
+    {
+      "id": 19,
+      "type": "table",
+      "title": "Site mapping gaps (what landed in Ungrouped)",
+      "gridPos": {
+        "x": 12,
+        "y": 38,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "% of total"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT * FROM ( SELECT 'Managed hosts' AS \"Data\", count(*) AS \"Ungrouped\", round(100.0 * count(*) / NULLIF((SELECT count(*) FROM assets WHERE source='falcon' AND NOT retired),0),1) AS \"% of total\" FROM assets WHERE source = 'falcon' AND NOT retired AND site_matched_by = 'none' UNION ALL SELECT 'Unmanaged assets', count(*), round(100.0 * count(*) / NULLIF((SELECT count(*) FROM assets WHERE source='falcon_unmanaged' AND NOT retired),0),1) FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND site_matched_by = 'none' UNION ALL SELECT 'Identities', count(*), round(100.0 * count(*) / NULLIF((SELECT count(*) FROM identity_entities WHERE NOT retired),0),1) FROM identity_entities WHERE NOT retired AND site_matched_by = 'none' UNION ALL SELECT 'External assets', count(*), round(100.0 * count(*) / NULLIF((SELECT count(*) FROM external_assets WHERE NOT retired),0),1) FROM external_assets WHERE NOT retired AND site_matched_by = 'none' UNION ALL SELECT 'Email events (30d)', count(*), round(100.0 * count(*) / NULLIF((SELECT count(*) FROM email_events WHERE created_at > now() - interval '30 days'),0),1) FROM email_events WHERE created_at > now() - interval '30 days' AND site_matched_by = 'none' UNION ALL SELECT 'DMARC domains', count(DISTINCT header_from), round(100.0 * count(DISTINCT header_from) / NULLIF((SELECT count(DISTINCT header_from) FROM dmarc_daily),0),1) FROM dmarc_daily WHERE site_matched_by = 'none' ) x ORDER BY \"Ungrouped\" DESC"
+        }
+      ],
+      "description": "Rows here need a matcher in config.yaml sites:. The next table shows examples to map."
+    },
+    {
+      "id": 20,
+      "type": "table",
+      "title": "Unmapped examples (add these to config.yaml)",
+      "gridPos": {
+        "x": 0,
+        "y": 47,
+        "w": 24,
+        "h": 9
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT * FROM ( (SELECT 'host' AS \"Kind\", hostname AS \"Name\", concat_ws(' | ', 'domain=' || domain, 'ad_site=' || ad_site, 'groups=' || array_to_string(groups, ','), 'tags=' || array_to_string(tags, ',')) AS \"Signals available\" FROM assets WHERE source = 'falcon' AND NOT retired AND site_matched_by = 'none' LIMIT 25) UNION ALL (SELECT 'identity', coalesce(upn, sam_account_name, display_name), concat_ws(' | ', 'domain=' || domain, 'ou=' || ou) FROM identity_entities WHERE NOT retired AND site_matched_by = 'none' LIMIT 25) UNION ALL (SELECT 'dmarc domain', header_from, 'email_domains' FROM dmarc_daily WHERE site_matched_by = 'none' GROUP BY header_from LIMIT 25) UNION ALL (SELECT 'external asset', name, 'ips=' || array_to_string(ips, ',') FROM external_assets WHERE NOT retired AND site_matched_by = 'none' LIMIT 25) ) x"
+        }
+      ]
+    }
+  ]
+}

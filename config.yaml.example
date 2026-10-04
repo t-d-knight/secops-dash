@@ -1,0 +1,210 @@
+# config.yaml.example
+# Copy to config.yaml (gitignored -- it holds real site/domain names) and
+# fill in. Credentials go in secrets.yaml (see secrets.yaml.example); any
+# section there is deep-merged over the same section here.
+
+crowdstrike:
+  base_url: "https://api.us-2.crowdstrike.com"   # US-2 tenant
+  # client_id / client_secret -> secrets.yaml
+
+reporting:
+  days_last_seen: 30
+  # true  = only flag remote/no-auth vulns that also have a known exploit (lower noise, recommended)
+  # false = flag every network-reachable, no-auth vuln
+  require_exploit_for_remote_no_auth: true
+  retention_days: 540            # daily_* snapshot tables
+  findings_retention_days: 180   # FIXED/EXPIRED rows in vuln_findings
+  events_retention_days: 365     # security_alerts, email_events, entra_risk_detections, dmarc_daily
+  stale_sensor_days: 7           # a managed host not seen for this long counts as a stale sensor
+  sla_days:
+    critical: 2
+    high: 14
+    medium: 30
+    low: 60
+
+# ---------------------------------------------------------------------------
+# Sites. Every collector resolves what it finds to one of these. Signals
+# are tried in site_resolution.order; the first signal type that matches
+# any site wins. Fill in whichever matchers are reliable for each site --
+# not every site needs every matcher. Anything unmatched lands in
+# ungrouped_label, and the "Site mapping gaps" dashboard panel shows what
+# fell through and why, so tune this from real data.
+# ---------------------------------------------------------------------------
+site_resolution:
+  order: [falcon_tags, falcon_groups, ou_contains, ad_sites, ad_domains, hostname_regex, cidrs, email_domains]
+
+sites:
+  - key: "SITE-A"
+    label: "Site A"
+    contacts: ["it-lead@site-a.example.org.au"]   # for the later per-site access phase
+    match:
+      falcon_tags: ["SensorGroupingTags/SiteA"]     # exact; the part after the last / also matches
+      falcon_groups: ["Site A - Workstations", "Site A - Servers"]
+      ou_contains: ["OU=Site A"]
+      ad_sites: ["SiteA-Main"]
+      ad_domains: ["sitea.local"]
+      hostname_regex: ["^SA[-_]"]
+      cidrs: ["10.10.0.0/16", "203.0.113.0/28"]      # include public ranges for Hadrian assets
+      email_domains: ["site-a.example.org.au"]      # also matches subdomains; used by DMARC, HEC, Entra, Hadrian web assets
+  - key: "SITE-B"
+    label: "Site B"
+    match:
+      falcon_groups: ["Site B"]
+      ad_domains: ["siteb.local"]
+      email_domains: ["site-b.example.org.au"]
+
+ungrouped_label: "Ungrouped"
+
+# ---------------------------------------------------------------------------
+# Collectors. Each is independent: enable what you have, and a failure in
+# one never stops the others (see collector_runs / the freshness panel).
+# ---------------------------------------------------------------------------
+collectors:
+
+  # Falcon host inventory + Exposure Management unmanaged assets.
+  # Runs first; the other Falcon collectors reuse its site answer per host.
+  falcon_hosts:
+    enabled: true
+    # filter: "last_seen:>='now-90d'"       # optional FQL
+    include_unmanaged: true                 # needs the Assets (Discover) read scope
+    # unmanaged_filter: "entity_type:'unmanaged'"
+
+  # Falcon Exposure Management / Spotlight vulnerabilities -> vuln_findings
+  falcon_spotlight:
+    enabled: true
+    page_size: 1000
+    closed_lookback_days: 30               # first run / --full window for closed vulns
+    # filter: "host_info.platform_name:'Windows'"   # optional FQL ANDed onto every pull
+
+  # Falcon alerts (endpoint + identity detections + anything else Falcon raises)
+  falcon_alerts:
+    enabled: true
+    lookback_days: 30
+    # filter: "product:['epp','idp']"
+
+  # Falcon Identity Protection risk (stale, weak/compromised passwords, ...)
+  falcon_identity:
+    enabled: true
+    entity_types: ["USER"]
+    page_size: 1000
+    # query_file: "collectors/queries/identity_entities.graphql"
+
+  # Hadrian Atlas. The API reference is behind the Hadrian login, so the
+  # paths and field names below are PLACEHOLDERS -- confirm against the API
+  # docs in the console before enabling, or use mode: csv with exports.
+  hadrian:
+    enabled: false
+    mode: api                     # api | csv
+    base_url: "https://api.hadrian.io"
+    auth_header: "Authorization"  # or e.g. "X-API-Key"
+    auth_scheme: "Bearer"         # "" to send the bare key
+    # api_key -> secrets.yaml
+    assets:
+      path: "/v1/assets"
+      items_key: "data"
+      pagination: {type: page, param: page, size_param: page_size, size: 500}
+      fields: {id: id, name: name, type: type, ip: ip_addresses, ports: ports,
+               technologies: technologies, first_seen: first_seen, last_seen: last_seen}
+    risks:
+      path: "/v1/risks"
+      items_key: "data"
+      pagination: {type: page, param: page, size_param: page_size, size: 500}
+      full_pull: true             # every run returns all open risks -> unseen ones are expired
+      fields: {id: id, asset_id: asset.id, asset_name: asset.name, ip: asset.ip,
+               title: title, severity: severity, status: status, category: category,
+               cves: cves, cvss: cvss_score, cvss_vector: cvss_vector,
+               exploit_available: exploit_available, description: description,
+               remediation: remediation, first_seen: first_seen, last_seen: last_seen,
+               resolved_at: resolved_at}
+      # open_statuses / fixed_statuses / suppressed_statuses override the defaults
+    csv:
+      assets_path: "data/hadrian/assets.csv"   # column names = the field map values above
+      risks_path: "data/hadrian/risks.csv"
+
+  # Check Point Harmony Email & Collaboration
+  checkpoint_hec:
+    enabled: true
+    # The Authentication URL shown when you create the Infinity Portal API key.
+    gateway: "https://cloudinfra-gw.portal.checkpoint.com"
+    lookback_days: 14
+    # event_types: ["phishing", "suspicious_phishing", "malware", "suspicious_malware", "dlp", "anomaly"]
+    # client_id / access_key -> secrets.yaml
+
+  # Entra ID via Microsoft Graph. One app registration per tenant.
+  entra:
+    enabled: true
+    feeds: [risky_users, risk_detections, mfa_registration]
+    lookback_days: 30
+    members_only: true
+    tenants:
+      - name: "main"
+        tenant_id: "00000000-0000-0000-0000-000000000000"
+        # client_id / client_secret -> secrets.yaml under collectors.entra.tenants, matched by name
+
+  # Azure Log Analytics / Sentinel workspace rollups (KQL aggregated server-side).
+  # Each query must return columns: day, key, dimension, value.
+  azure_log_analytics:
+    enabled: false
+    lookback_days: 7
+    # tenants: reuses collectors.entra.tenants unless set here
+    workspaces:
+      - name: "sentinel"
+        tenant: "main"
+        workspace_id: "00000000-0000-0000-0000-000000000000"
+    queries:
+      - name: signins
+        key_type: upn
+        kql: |
+          SigninLogs
+          | where TimeGenerated > ago({lookback_days}d)
+          | summarize value = count() by day = startofday(TimeGenerated), key = UserPrincipalName,
+              dimension = iff(ResultType == "0", "success", "failure")
+      - name: legacy_auth
+        key_type: upn
+        kql: |
+          SigninLogs
+          | where TimeGenerated > ago({lookback_days}d)
+          | where ClientAppUsed in ("Exchange ActiveSync", "IMAP4", "POP3", "Authenticated SMTP", "Other clients", "Exchange Web Services", "MAPI Over HTTP", "Offline Address Book", "Outlook Anywhere (RPC over HTTP)")
+          | summarize value = count() by day = startofday(TimeGenerated), key = UserPrincipalName, dimension = ClientAppUsed
+      - name: mfa_failures
+        key_type: upn
+        kql: |
+          SigninLogs
+          | where TimeGenerated > ago({lookback_days}d)
+          | where ResultType == "500121"
+          | summarize value = count() by day = startofday(TimeGenerated), key = UserPrincipalName, dimension = "mfa_denied"
+      - name: risky_signins
+        key_type: upn
+        kql: |
+          SigninLogs
+          | where TimeGenerated > ago({lookback_days}d)
+          | where RiskLevelDuringSignIn in ("medium", "high")
+          | summarize value = count() by day = startofday(TimeGenerated), key = UserPrincipalName, dimension = RiskLevelDuringSignIn
+      - name: ca_failures
+        key_type: upn
+        kql: |
+          SigninLogs
+          | where TimeGenerated > ago({lookback_days}d)
+          | where ConditionalAccessStatus == "failure"
+          | summarize value = count() by day = startofday(TimeGenerated), key = UserPrincipalName, dimension = "blocked"
+
+  # DMARC aggregate data from parsedmarc's OpenSearch (cyber-dmarc)
+  dmarc:
+    enabled: true
+    opensearch_url: "https://cyber-dmarc:9200"
+    index: "dmarc_aggregate*"
+    lookback_days: 10
+    # ca_file: "/etc/pki/tls/certs/opensearch-ca.pem"    # or verify_tls: false for a self-signed lab box
+    # username / password -> secrets.yaml
+
+database:
+  engine: "postgres"
+  host: "127.0.0.1"
+  port: 5432
+  name: "secops_dashboard"
+  # user / password -> secrets.yaml
+
+grafana:
+  url: "http://127.0.0.1:3000"
+
+secrets_file: "secrets.yaml"

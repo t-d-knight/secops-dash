@@ -1,0 +1,573 @@
+# ORDER MATTERS — first matching rule wins
+
+rules:
+
+  ########################################################
+  # BROWSERS
+  ########################################################
+  - name: "Mozilla Firefox"
+    match: "contains"
+    pattern: "firefox"
+
+  - name: "Google Chrome / Chromium"
+    match: "contains_any"
+    patterns: ["chrome", "chromium"]
+
+  - name: "Microsoft Edge"
+    match: "contains"
+    pattern: "edge"
+
+  ########################################################
+  # ADOBE (ACROBAT, CC, LEGACY RUNTIMES)
+  ########################################################
+  - name: "Adobe Acrobat / Reader"
+    match: "startswith_any"
+    patterns:
+      - "adobe:acrobat"
+      - "adobe:acrobat_reader"
+
+  - name: "Adobe Creative Cloud Apps"
+    match: "startswith_any"
+    patterns:
+      - "adobe:photoshop"
+      - "adobe:illustrator"
+      - "adobe:indesign"
+      - "adobe:media_encoder"
+      - "adobe:premiere_pro"
+      - "adobe:premiere_pro_cc"
+      - "adobe:digital_editions"
+      - "adobe:lightroom"
+      - "adobe:creative_cloud"
+
+  - name: "Adobe Legacy Runtimes"
+    match: "startswith_any"
+    patterns:
+      - "adobe:air"
+      - "adobe:flash_player"
+      - "adobe:shockwave_player"
+      - "adobe:svg_viewer"
+
+  ########################################################
+  # JAVA / RUNTIMES
+  ########################################################
+  - name: "Java Runtime (JRE/JDK)"
+    match: "contains_any"
+    patterns:
+      - "oracle:jre"
+      - "oracle:jdk"
+      - "jdk "
+      - "jre "
+      - "java runtime"
+      - "corretto"
+
+  ########################################################
+  # WEB SERVERS & CONFIG
+  ########################################################
+  - name: "Web Server Configuration Weakness"
+    match: "startswith_any"
+    patterns:
+      - "Web Servers -"
+      - "Web Server -"
+      - "Web Servers :"
+      - "CGI abuses"
+
+  - name: "Apache HTTP Server"
+    match: "startswith"
+    pattern: "apache:http_server"
+
+  - name: "Apache Tomcat"
+    match: "contains"
+    pattern: "apache:tomcat"
+
+  ########################################################
+  # MICROSOFT O/S (CLIENT + SERVER)
+  ########################################################
+  - name: "Microsoft Windows OS - Client"
+    match: "contains_any"
+    patterns:
+      - "microsoft:windows_10"
+      - "microsoft:windows_11"
+      - "microsoft:windows_7"
+      - "microsoft:windows_8"
+      - "microsoft:windows_subsystem_for_linux"
+      - "windows:terminal"
+      - "microsoft:3d_builder"
+      - "microsoft:3d_viewer"
+      - "microsoft:snip_and_sketch"
+
+  - name: "Microsoft Windows OS - Server"
+    match: "startswith_any"
+    patterns:
+      - "microsoft:windows_server_"
+      - "microsoft:azure_stack_hci"
+
+  - name: "Microsoft Windows OS (Generic)"
+    match: "startswith"
+    pattern: "microsoft:windows"
+
+  ########################################################
+  # MICROSOFT OFFICE / COLLAB / DEV / DATA
+  ########################################################
+  - name: "Microsoft Office Desktop Apps"
+    match: "startswith_any"
+    patterns:
+      - "microsoft:access"
+      - "microsoft:onenote"
+      - "microsoft:project_server"
+      - "microsoft:powerpoint"
+      - "microsoft:publisher"
+      - "microsoft:visio"
+      - "microsoft:visio_viewer"
+      - "microsoft:infopath"
+
+  - name: "Microsoft Collaboration Apps"
+    match: "startswith_any"
+    patterns:
+      - "microsoft:teams"
+      - "microsoft:skype_for_business"
+      - "microsoft:lync_basic"
+      - "microsoft:live_meeting"
+
+  - name: "Microsoft SQL & Data Platform"
+    match: "startswith_any"
+    patterns:
+      - "microsoft:sql_server"
+      - "microsoft:sql_server_management_studio"
+      - "microsoft:sql_server_reporting_services"
+      - "microsoft:azure_devops_server"
+      - "microsoft:endpoint_configuration_manager"
+
+  - name: "Microsoft Codec / Video Extensions"
+    match: "startswith_any"
+    patterns:
+      - "microsoft:hevc_video_extensions"
+      - "microsoft:high_efficiency_video_coding"
+      - "microsoft:vp9_extensions"
+      - "microsoft:vp9_video_extensions"
+      - "microsoft:web_media_extensions"
+      - "microsoft:webp_image_extension"
+      - "microsoft:mpeg-2_video_extension"
+
+  - name: "Microsoft Developer Tools"
+    match: "startswith_any"
+    patterns:
+      - "microsoft:visual_studio"
+      - "microsoft:visual_studio_code"
+      - "microsoft:visual_basic"
+      - "microsoft:visual_studio_tools_for_applications"
+
+  - name: "Microsoft Security Components"
+    match: "startswith_any"
+    patterns:
+      - "microsoft:malware_protection_engine"
+      - "microsoft:system_center_endpoint_protection"
+      - "microsoft:windows_defender"
+      - "microsoft:remote_desktop"
+      - "microsoft:remote_desktop_protocol"
+      - "microsoft:message_queuing"
+
+  ########################################################
+  # DELL PLATFORM
+  ########################################################
+  - name: "Dell BIOS / Firmware"
+    match: "startswith_any"
+    patterns:
+      - "dell:bios"
+      - "dell:emc_idrac8"
+      - "dell:emc_idrac9"
+      - "dell:idrac9"
+      - "dell:remote_access_card"
+
+  - name: "Dell Utilities / Client Platform Tools"
+    match: "startswith_any"
+    patterns:
+      - "dell:display_manager"
+      - "dell:peripheral_manager"
+      - "dell:trusted_device_agent"
+      - "dell:dbutil"
+
+  ########################################################
+  # CITRIX / VDI
+  ########################################################
+  - name: "Citrix Workspace / VDI"
+    match: "startswith_any"
+    patterns:
+      - "citrix:workspace"
+      - "citrix:virtual_apps_and_desktops"
+
+  ########################################################
+  # CISCO / FORTINET / NETWORK OS
+  ########################################################
+  - name: "Cisco Network OS / Appliances"
+    match: "contains_any"
+    patterns:
+      - "cisco:ios"
+      - "cisco:ios_xe"
+      - "cisco:access_points"
+      - "cisco:wireless_lan_controller_software"
+      - "cisco - unsupported cisco operating system"
+
+  - name: "Cisco Webex / Jabber"
+    match: "contains_any"
+    patterns:
+      - "cisco:jabber"
+      - "cisco:webex"
+
+  - name: "Cisco TelePresence"
+    match: "contains_any"
+    patterns:
+      - "cisco:telepresence"
+
+  - name: "Fortinet FortiClient"
+    match: "startswith"
+    pattern: "fortinet:forticlient"
+
+  ########################################################
+  # REMOTE ACCESS / SSH / FILE TRANSFER
+  ########################################################
+  - name: "Dameware Mini"
+    match: "contains_any"
+    patterns:
+      - "dameware"
+
+  - name: "Remote Support / Remote Admin"
+    match: "contains_any"
+    patterns:
+      - "teamviewer"
+      - "ultravnc"
+      - "devolutions remote desktop"
+      - "vnc server unauthenticated access"
+
+  - name: "SSH / Terminal Clients"
+    match: "contains_any"
+    patterns:
+      - "putty"
+      - "securecrt"
+      - "openssh"
+      - "dropbear_ssh"
+
+  - name: "SFTP / File Transfer Tools"
+    match: "contains_any"
+    patterns:
+      - "winscp"
+      - "filezilla"
+      - "winrar"
+
+  - name: "FortiClient VPN"
+    match: "contains_any"
+    patterns:
+      - "forticlient"
+
+  - name: "VPN Clients"
+    match: "contains_any"
+    patterns:
+      - "openvpn"
+      - "globalprotect"
+
+  ########################################################
+  # DATABASES
+  ########################################################
+  - name: "Oracle Database"
+    match: "startswith"
+    pattern: "oracle:database_server"
+
+  - name: "MySQL / MariaDB"
+    match: "contains_any"
+    patterns:
+      - "oracle:mysql"
+      - "mysql:mysql_workbench"
+
+  - name: "PostgreSQL"
+    match: "startswith"
+    pattern: "postgresql:postgresql"
+
+  ########################################################
+  # SSL / TLS / CERTIFICATE FINDINGS
+  ########################################################
+  - name: "SSL/TLS & Certificate Hygiene"
+    match: "contains_any"
+    patterns:
+      - "general - ssl"
+      - "tls version"
+      - "ssl version 2"
+      - "ssl version 3"
+      - "poodle"
+      - "openssl"
+      - "md5"
+
+  ########################################################
+  # NETWORK / INFRASTRUCTURE WEAKNESSES
+  ########################################################
+  - name: "Network Protocol / Infra"
+    match: "contains_any"
+    patterns:
+      - "dns -"
+      - "snmp -"
+      - "scada -"
+      - "ntp"
+      - "icmp"
+      - "backdoors -"
+      - "ssh weak"
+      - "telnet"
+      - "xdmcp"
+      - "x server"
+      - "mdns"
+      - "amqp cleartext"
+
+  ########################################################
+  # IMAGING / PDF / UTILITIES
+  ########################################################
+  - name: "PDF Viewers / Renderers"
+    match: "contains_any"
+    patterns:
+      - "foxit"
+      - "ghostscript"
+
+  - name: "Imaging / Graphics Tools"
+    match: "contains_any"
+    patterns:
+      - "imagemagick"
+      - "greenshot"
+      - "irfanview"
+
+  ########################################################
+  # DEV RUNTIMES / SCRIPTING
+  ########################################################
+  - name: "Developer Runtime Tools"
+    match: "contains_any"
+    patterns:
+      - "node.js"
+      - "python"
+      - "jquery"
+      - "git_for_windows"
+      - "node-tar"
+      - "r-project"
+
+  ########################################################
+  # MEDIA / VIDEO / ZOOM
+  ########################################################
+  - name: "Zoom"
+    match: "contains_any"
+    patterns:
+      - "zoom:zoom"
+      - "zoom:meetings"
+      - "zoom:zoom_cloud_meetings"
+
+  - name: "Media Players / Codec Apps"
+    match: "contains_any"
+    patterns:
+      - "itunes"
+      - "quicktime"
+      - "vlc_media_player"
+      - "geforce_experience"
+
+  ########################################################
+  # MICROSOFT .NET / DATA / SYSINTERNALS
+  ########################################################
+  - family: "Microsoft .NET Framework"
+    match_any:
+        - "microsoft:.net_framework"
+
+  - family: "Microsoft .NET Core / ASP.NET"
+    match_any:
+      - "microsoft:.net_core"
+      - "microsoft:asp.net_core"
+      - "microsoft:asp.net"
+
+  - family: "Microsoft SQL / Data Tools"
+    match_any:
+      - "microsoft:ole_db_driver_for_sql_server"
+      - "windows - microsoft azure data studio"
+
+  - family: "Microsoft XML Core Services"
+    match_any:
+      - "microsoft:xml_core_services"
+
+  - family: "Microsoft Sysinternals / Sysmon"
+    match_any:
+      - "sysinternals sysmon"
+
+  ########################################################
+  # MICROSOFT OFFICE & COLLAB – CORE APPS
+  ########################################################
+  - family: "Microsoft Office - Core Apps"
+    match_any:
+      - "microsoft:office"
+      - "microsoft:excel"
+      - "microsoft:word"
+      - "microsoft:outlook"
+      - "microsoft:office_compatibility_pack"
+      - "microsoft:office_web_apps"
+      - "microsoft:office_online_server"
+
+  - family: "Microsoft Sharepoint"
+    match_any:
+      - "microsoft:sharepoint_server"
+
+  ########################################################
+  # VMWARE PLATFORM
+  ########################################################
+  - family: "VMware ESXi / Tools"
+    match_any:
+      - "vmware:tools"
+      - "vmware:esxi"
+      - "vmware:esx_server"
+      - "vmware:vcenter_server"
+      - "vmware:vsphere_client"
+      - "vmware:vrealize_operations"
+      - "vmware:workstation"
+
+  ########################################################
+  # DELL SUPPORTASSIST / OS RECOVERY
+  ########################################################
+  - family: "Dell SupportAssist"
+    match_any:
+      - "dell:supportassist"
+      - "dell supportassist os recovery information disclosure"
+      - "dell supportassist os recovery multiple vulnerabilities"
+      - "dell supportassist os recovery symbolic link attack"
+      - "dsa-2025-403"
+      - "dsa-2025-315"
+      - "dsa-2025-051"
+
+  ########################################################
+  # INTEL PLATFORM DRIVERS / FIRMWARE
+  ########################################################
+  - family: "Intel Platform / Firmware"
+    match_any:
+      - "intel:active_management_technology"
+      - "intel:active_management_technology_firmware"
+      - "intel:chipset_device_software"
+      - "intel:dynamic_tuning_technology"
+
+  ########################################################
+  # ENDPOINT SECURITY (AV / EDR)
+  ########################################################
+  - family: "CrowdStrike Falcon"
+    match_any:
+         - "crowdstrike falcon sensor"
+
+
+  - family: "Untrusted Endpoint Security"
+    match_any:
+      - "symantec:endpoint_protection"
+      - "symantec:sonar"
+      - "sophos:sophos_anti-virus"
+      - "sophos:intercept_x_endpoint-virus"
+
+  ########################################################
+  # VULNERABILITY / MGMT AGENTS
+  ########################################################
+  - family: "Vulnerability Scanners / Agents"
+    match_any:
+      - "tenable:nessus_agent"
+
+  ########################################################
+  # UTILITIES – ARCHIVE / EDITORS / NETWORK TOOLS
+  ########################################################
+  - family: "7-zip"
+    match_any:
+      - "7-zip:7-zip"
+
+  - family: "Notepad++"
+    match_any:
+      - "notepad-plus-plus:notepad"
+
+  - family: "Utilities - Archive / Editors"
+    match_any:
+      - "rarlab:winrar"
+
+  - family: "Network Tools - Wireshark"
+    match_any:
+      - "wireshark:wireshark"
+
+  ########################################################
+  # WEB / MIDDLEWARE STACKS
+  ########################################################
+  - family: "Java / Middleware - Log4j"
+    match_any:
+      - "apache:log4j"
+
+  - family: "Web Servers / Proxies"
+    match_any:
+      - "nginx:nginx"
+      - "allegro:rom_pager"
+      - "acme_labs:thttpd"
+      - "haproxy:haproxy"
+
+  ########################################################
+  # LINUX / UNIX SERVER OS
+  ########################################################
+  - family: "Linux / Unix Server OS"
+    match_any:
+      - "oracle:linux"
+      - "debian:debian_linux"
+      - "canonical:ubuntu_linux"
+      - "centos:centos"
+
+  ########################################################
+  # PRINT / DOC MANAGEMENT
+  ########################################################
+  - family: "Print & Document Management"
+    match_any:
+      - "papercut:papercut_mf"
+
+  ########################################################
+  # REMOTE ADMIN – EXTRA (ALREADY COVERED BY REMOTE ADMIN,
+  # BUT LEAVING AS FAMILY OVERRIDE IF NEEDED)
+  ########################################################
+  - family: "Mail Client - Thunderbird"
+    match_any:
+      - "mozilla:thunderbird"
+
+  ########################################################
+  # HPE / ILO
+  ########################################################
+  - family: "HPE iLO / Lights-Out Firmware"
+    match_any:
+      - "hp:integrated_lights-out_firmware"
+
+  ########################################################
+  # WINDOWS CONFIG / HARDENING
+  ########################################################
+  - family: "Windows Configuration / Hardening"
+    match_any:
+      - "windows - microsoft windows unquoted service path enumeration"
+      - "windows - microsoft windows smb registry"
+      - "windows - microsoft windows update reboot required"
+      - "windows - sizerone activex control addtab method remote buffer overflow"
+      - "misc. - loldriver detection (windows)"
+
+  ########################################################
+  # WINDOWS PLATFORM FINDINGS (CATCH-ALL FOR WINDOWS-*
+  ########################################################
+  - family: "Windows Platform Findings"
+    match_any:
+      - "windows - "
+      - "windows : "
+
+  ########################################################
+  # MANAGEENGINE
+  ########################################################
+  - family: "ManageEngine"
+    match_any:
+      - "zohocorp:manageengine_servicedesk_plus"
+
+  ########################################################
+  # PHP (WEB STACK)
+  ########################################################
+  - name: "PHP"
+    match: "startswith"
+    pattern: "php:php"
+
+  ########################################################
+  # AUTODESK
+  ########################################################
+  - family: "Autodesk Applications"
+    match_any:
+      - "autodesk:autocad"
+      - "autodesk:design_review"
+
+defaults:
+  vendor_from_prefix: true
+  unknown_family_name: "Other / Misc"
