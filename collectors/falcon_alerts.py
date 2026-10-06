@@ -67,6 +67,16 @@ def run(ctx: RunContext) -> Dict[str, Any]:
                 "severity": norm_severity(sev_name, "low"),
                 "severity_score": a.get("severity"),
                 "status": status,
+                # The verdict lives in `resolution`, a field separate from
+                # `status` -- status is pure workflow state (new/in_progress/
+                # closed/reopened), resolution is the SOC's triage outcome
+                # (true_positive/false_positive/ignored), set independently
+                # when the alert is closed. Confirmed against real API
+                # responses: status was 'closed' with no distinguishing
+                # value while resolution correctly varied per alert -- an
+                # earlier version of this code wrongly assumed the verdict
+                # lived in `status` itself.
+                "disposition": (a.get("resolution") or "").strip().lower() or None,
                 "name": a.get("display_name") or a.get("name"),
                 "tactic": a.get("tactic"),
                 "technique": a.get("technique"),

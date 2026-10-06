@@ -101,6 +101,8 @@ def run(ctx: RunContext) -> Dict[str, Any]:
         rdoms = _recipient_domains(ev, sender)
         m = ctx.resolver.resolve(SiteContext(email_domains=rdoms))
         actions = as_list(ev.get("actions"))
+        sender_dom = email_domain(sender)
+        recipient_dom = rdoms[0] if rdoms else None
         rows.append({
             "source": "checkpoint_hec",
             "event_id": str(ev.get("eventId")),
@@ -111,8 +113,12 @@ def run(ctx: RunContext) -> Dict[str, Any]:
             "saas": ev.get("saas"),
             "confidence": str(ev.get("confidenceIndicator")) if ev.get("confidenceIndicator") is not None else None,
             "sender": sender or None,
-            "sender_domain": email_domain(sender),
-            "recipient_domain": rdoms[0] if rdoms else None,
+            "sender_domain": sender_dom,
+            "recipient_domain": recipient_dom,
+            # inbound/outbound/internal relative to our own configured
+            # email_domains -- lets the exec report split threat volume
+            # by direction instead of lumping everything together.
+            "direction": ctx.resolver.email_direction(sender_dom, recipient_dom),
             "action_taken": (actions[0] or {}).get("actionType") if actions else None,
             "description": (ev.get("description") or "")[:1000] or None,
             "site_label": m.label,

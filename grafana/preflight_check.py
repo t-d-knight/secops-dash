@@ -81,6 +81,20 @@ def check_grafana_service_local() -> None:
         return
 
     try:
+        # `systemctl is-active` alone can't tell "installed but stopped"
+        # apart from "never installed" -- on at least some systemd
+        # versions it prints the literal string "inactive" for a unit
+        # that doesn't exist at all (exit 4), not "unknown"/"not-found" as
+        # you'd expect. Check list-unit-files first, which only lists a
+        # unit if its file actually exists on disk.
+        unit_files = subprocess.run(
+            ["systemctl", "list-unit-files", "grafana-server.service", "--no-legend"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if not unit_files.stdout.strip():
+            print("[INFO] grafana-server systemd service not found on this host "
+                  "-- Grafana isn't installed here yet, or runs elsewhere.")
+            return
         result = subprocess.run(
             ["systemctl", "is-active", "grafana-server"],
             capture_output=True, text=True, timeout=5,
@@ -88,12 +102,9 @@ def check_grafana_service_local() -> None:
         state = result.stdout.strip()
         if state == "active":
             print("[PASS] grafana-server systemd service is active on this host.")
-        elif state in ("inactive", "failed"):
+        else:
             print(f"[WARN] grafana-server systemd service is installed but {state} -- "
                   f"start it with: sudo systemctl enable --now grafana-server")
-        else:
-            print("[INFO] grafana-server systemd service not found on this host "
-                  "(status: not-found) -- Grafana isn't installed here yet, or runs elsewhere.")
     except Exception as e:
         print(f"[SKIP] Local grafana-server service check failed: {e}")
 

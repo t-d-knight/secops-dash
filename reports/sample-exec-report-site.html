@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Security Posture Report -- Riverside Health -- 2026-10-01 to 2026-10-07</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: #0f172a;
+          background: #f8fafc; margin: 0; }
+  .page { max-width: 900px; margin: 0 auto 24px; background: #fff; padding: 36px 40px 48px; }
+  header { display: flex; justify-content: space-between; align-items: baseline;
+            border-bottom: 3px solid #0f172a; padding-bottom: 14px; margin-bottom: 22px; }
+  h1 { font-size: 22px; margin: 0; }
+  .period { font-size: 15px; color: #64748b; }
+  .meta { font-size: 11px; color: #64748b; text-align: right; }
+  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: #64748b;
+        border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin: 26px 0 12px; }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 4px; }
+  .tiles-3 { grid-template-columns: repeat(3, 1fr); }
+  .tile { border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; }
+  .tile-value { font-size: 26px; font-weight: 700; line-height: 1.1; }
+  .tile-label { font-size: 11px; color: #64748b; margin-top: 3px; }
+  .tile-sub { font-size: 10px; color: #64748b; margin-top: 2px; }
+  .tile-trend { font-size: 10px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .row { display: flex; gap: 24px; align-items: flex-start; }
+  .col { flex: 1; min-width: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { text-align: left; font-size: 10px; text-transform: uppercase; color: #64748b;
+        border-bottom: 1px solid #e2e8f0; padding: 4px 6px; }
+  td { padding: 4px 6px; border-bottom: 1px solid #f1f5f9; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .legend-row { font-size: 11px; color: #64748b; margin-top: 4px; }
+  .legend-dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; }
+  .empty { color: #64748b; font-size: 12px; font-style: italic; }
+  footer { margin-top: 32px; padding-top: 10px; border-top: 1px solid #e2e8f0;
+            font-size: 10px; color: #64748b; }
+  @media screen {
+    .page { box-shadow: 0 1px 4px rgba(15,23,42,.08); border-radius: 4px; }
+  }
+  @media print {
+    body { background: #fff; }
+    .page { padding: 0; max-width: none; margin: 0; box-shadow: none; break-after: page; }
+    h2 { break-after: avoid; }
+    .row, .tiles { break-inside: avoid; }
+  }
+</style></head>
+<body>
+<div class="page">
+<header>
+  <div><h1>Security Posture Report &mdash; Riverside Health</h1>
+       <div class="period">2026-10-01 to 2026-10-07 &middot; Page 1 of 4 &mdash; Endpoint Vulnerabilities</div></div>
+  <div class="meta">Generated 2026-10-07 08:36<br>secops-dashboard</div>
+</header>
+
+<h2>Headline</h2>
+<div class="tiles tiles-3">
+  <div class="tile"><div class="tile-value" style="color:#ea580c">2</div><div class="tile-label">Open vulnerabilities</div><div class="tile-sub">1 critical, 1 high</div><div class="tile-trend" style="color:#94a3b8">No earlier snapshot to compare yet</div></div>
+  <div class="tile"><div class="tile-value" style="color:#16a34a">0 / 0</div><div class="tile-label">Opened vs fixed this period</div><div class="tile-sub">net 0</div><div class="tile-trend" style="color:#94a3b8">No full previous 7 days to compare yet</div></div>
+  <div class="tile"><div class="tile-value" style="color:#16a34a">0</div><div class="tile-label">Known exploited (KEV) open</div><div class="tile-sub">0 past due, 0 ransomware-linked</div><div class="tile-trend" style="color:#94a3b8">No earlier snapshot to compare yet</div></div>
+  <div class="tile"><div class="tile-value" style="color:#ea580c">2</div><div class="tile-label">Critical+high in Google Chrome / Chromium</div><div class="tile-sub">100% of all open critical/high</div><div class="tile-trend" style="color:#94a3b8">No earlier snapshot to compare yet</div></div>
+  <div class="tile"><div class="tile-value" style="color:#dc2626">1</div><div class="tile-label">Remotely exploitable, no auth</div><div class="tile-sub">critical/high reachable over the network without credentials</div><div class="tile-trend" style="color:#94a3b8">No earlier snapshot to compare yet</div></div>
+  <div class="tile"><div class="tile-value" style="color:#d97706">1</div><div class="tile-label">Stale sensors</div><div class="tile-sub">of 2 managed hosts -- vulns on these go unseen</div><div class="tile-trend" style="color:#94a3b8">No earlier snapshot to compare yet</div></div>
+</div>
+
+<h2>Endpoint vulnerabilities &mdash; opened vs fixed by week</h2>
+<p class="empty">No data for this period.</p>
+
+<div class="row">
+  <div class="col">
+    <h2>Open critical+high, by product family</h2>
+    <table><tr><th>Product family</th><th class="num">Crit</th><th class="num">High</th><th class="num">Total open</th></tr><tr><td>Google Chrome / Chromium</td><td class="num" style="color:#dc2626">1</td><td class="num" style="color:#ea580c">1</td><td class="num">2</td></tr></table>
+  </div>
+  <div class="col">
+    <h2>Mean time to remediate (this period)</h2>
+    <table><tr><th>Severity</th><th class="num">Fixed</th><th class="num">Avg days</th><th class="num">SLA met</th></tr>
+    <tr><td colspan="4" class="empty">No fixes recorded this period.</td></tr></table>
+    <p class="legend-row">Policy: critical within 2 days, high within 14 days. 100.0% of open critical/high currently exceed it (1 critical, 1 high).</p>
+  </div>
+</div>
+
+
+<footer>Page 1 of 4 &mdash; secops-dashboard. Figures for Riverside Health only; endpoint vulnerabilities only (Falcon
+Spotlight -- external risks are on page 2); "opened/fixed" and the bar chart cover the report period only;
+open, KEV, exposure and sensor counts are current as of generation time. "Remotely exploitable" = network
+attack vector, no privileges or user interaction needed, with a known exploit. Vulnerability age is measured
+from first detection; anything already present when collection began dates from then (04 Oct 2026).
+Arrows on current counts compare the daily snapshot at the start of the period with the one at its end (or the earliest available, if history is shorter); arrows on period counts compare with the previous 7 days.</footer>
+</div>
+<div class="page">
+<header>
+  <div><h1>Security Posture Report &mdash; Riverside Health</h1>
+       <div class="period">2026-10-01 to 2026-10-07 &middot; Page 2 of 4 &mdash; External Attack Surface</div></div>
+  <div class="meta">Generated 2026-10-07 08:36<br>secops-dashboard</div>
+</header>
+
+<h2>Headline</h2>
+<div class="tiles tiles-3">
+  <div class="tile"><div class="tile-value" style="color:#0f172a">1</div><div class="tile-label">External assets monitored</div><div class="tile-sub">1 domains, 0 IPs</div><div class="tile-trend" style="color:#94a3b8">No earlier snapshot to compare yet</div></div>
+  <div class="tile"><div class="tile-value" style="color:#d97706">2</div><div class="tile-label">Open external risks</div><div class="tile-sub">2 confirmed, 0 unverified (potential)</div><div class="tile-trend" style="color:#94a3b8">No earlier snapshot to compare yet</div></div>
+  <div class="tile"><div class="tile-value" style="color:#ea580c">2</div><div class="tile-label">Confirmed risks open</div><div class="tile-sub">1 critical/high, 0 medium</div></div>
+  <div class="tile"><div class="tile-value" style="color:#dc2626">1</div><div class="tile-label">Leaked credentials</div><div class="tile-sub">open risks from infostealer-infected devices</div></div>
+  <div class="tile"><div class="tile-value" style="color:#ea580c">1</div><div class="tile-label">Critical / high open (any type)</div></div>
+  <div class="tile"><div class="tile-value" style="color:#ea580c">1 / 0</div><div class="tile-label">Opened vs fixed this period</div><div class="tile-sub">net +1</div><div class="tile-trend" style="color:#94a3b8">No full previous 7 days to compare yet</div></div>
+</div>
+
+<h2>Confirmed and high-severity external risks</h2>
+<table><tr><th>Severity</th><th>Type</th><th>Risk</th><th>Asset</th><th class="num">First seen</th></tr>
+<tr><td style="color:#dc2626">Critical</td><td>Unpatched tech</td><td>Unpatched Apache Log4j - Actively Exploited</td><td>portal.riversidehealth.test</td><td class="num">02 Oct</td></tr><tr><td style="color:#2563eb">Low</td><td>Infected device</td><td>Infostealer Infection: s*****@riversidehealth.test compromised</td><td>portal.riversidehealth.test</td><td class="num">25 Sep</td></tr></table>
+
+<div class="row">
+  <div class="col">
+    <h2>Open external risks by category</h2>
+    <table><tr><th>Category</th><th class="num">Confirmed</th><th class="num">Unverified (potential)</th></tr>
+    <tr><td>unpatched technology</td><td class="num">1</td><td class="num">0</td></tr><tr><td>leaked credentials</td><td class="num">1</td><td class="num">0</td></tr></table>
+  </div>
+  <div class="col">
+    <h2>Remediation SLA</h2>
+    <table><tr><th>Severity</th><th class="num">Window</th><th class="num">Open within SLA</th>
+    <th class="num">Fixed in period</th><th class="num">Fixed within SLA</th></tr>
+    <tr><td style="color:#dc2626">Critical</td><td class="num">2d</td><td class="num">0% <span style="color:#64748b">(0/1)</span></td><td class="num">0</td><td class="num">n/a</td></tr><tr><td style="color:#2563eb">Low</td><td class="num">60d</td><td class="num">100% <span style="color:#64748b">(1/1)</span></td><td class="num">0</td><td class="num">n/a</td></tr></table>
+  </div>
+</div>
+
+<footer>Page 2 of 4 &mdash; secops-dashboard. Figures for Riverside Health only; external attack surface from Hadrian. "Confirmed" =
+verified, unpatched-technology and infected-device risks; "potential" risks are unverified detections, many
+predating the current review workflow. Severities are Hadrian's own. A risk closed because a rescan no longer
+finds it counts as fixed. Assets take their site from their Hadrian tag, or from their apex domain if untagged.
+SLA windows are the same policy as endpoint vulnerabilities; Hadrian's Info severity counts as low.
+Arrows on current counts compare the daily snapshot at the start of the period with the one at its end (or the earliest available, if history is shorter); arrows on period counts compare with the previous 7 days.</footer>
+</div>
+<div class="page">
+<header>
+  <div><h1>Security Posture Report &mdash; Riverside Health</h1>
+       <div class="period">2026-10-01 to 2026-10-07 &middot; Page 3 of 4 &mdash; Email</div></div>
+  <div class="meta">Generated 2026-10-07 08:36<br>secops-dashboard</div>
+</header>
+
+<h2>Headline</h2>
+<div class="tiles tiles-3">
+  <div class="tile"><div class="tile-value" style="color:#ea580c">1</div><div class="tile-label">Inbound email threats</div><div class="tile-sub">1 high+ severity</div><div class="tile-trend" style="color:#94a3b8">No full previous 7 days to compare yet</div></div>
+  <div class="tile"><div class="tile-value" style="color:#0f172a">0</div><div class="tile-label">Outbound email threats</div><div class="tile-sub">0 high+ severity</div><div class="tile-trend" style="color:#94a3b8">No full previous 7 days to compare yet</div></div>
+  <div class="tile"><div class="tile-value" style="color:#0f172a">96%</div><div class="tile-label">DMARC pass rate</div><div class="tile-sub">1037 messages seen</div></div>
+</div>
+
+<h2>Email traffic by direction (this period)</h2>
+<svg viewBox="0 0 640 36" width="100%" style="max-width:640px"><rect x="0.0" y="0" width="640.0" height="36" fill="#0ea5e9"><title>Inbound: 1 (100%)</title></rect></svg><div class="legend-row"><span class="legend-dot" style="background:#0ea5e9"></span>Inbound <b>1</b></div>
+
+
+
+<div class="row">
+  <div class="col">
+    <h2>Inbound threats</h2>
+    <table><tr><th>Type</th><th class="num">Events</th><th class="num">High+</th></tr><tr><td>phishing</td><td class="num">1</td><td class="num">1</td></tr></table>
+  </div>
+  <div class="col">
+    <h2>Outbound threats</h2>
+    <table><tr><th>Type</th><th class="num">Events</th><th class="num">High+</th></tr><tr><td colspan=3 class=empty>None this period.</td></tr></table>
+  </div>
+</div>
+
+<h2>Inbound mail volume by type (this period)</h2>
+<table><tr><th>Type</th><th class="num">Events</th><th class="num">% of total</th></tr><tr><td>phishing</td><td class="num">1</td><td class="num">100%</td></tr></table><p class="legend-row">1 total events this period</p>
+
+<footer>Page 3 of 4 &mdash; secops-dashboard. Figures for Riverside Health only; Check Point Harmony Email &amp; Collaboration
+security events for the report period (events, not emails -- one email can raise several).
+Arrows on current counts compare the daily snapshot at the start of the period with the one at its end (or the earliest available, if history is shorter); arrows on period counts compare with the previous 7 days.</footer>
+</div>
+<div class="page">
+<header>
+  <div><h1>Security Posture Report &mdash; Riverside Health</h1>
+       <div class="period">2026-10-01 to 2026-10-07 &middot; Page 4 of 4 &mdash; Alerts &amp; Identity</div></div>
+  <div class="meta">Generated 2026-10-07 08:36<br>secops-dashboard</div>
+</header>
+
+<h2>Headline</h2>
+<div class="tiles tiles-3">
+  <div class="tile"><div class="tile-value" style="color:#0f172a">1 / 0</div><div class="tile-label">Alerts opened vs closed</div><div class="tile-sub">1 crit/high open now</div><div class="tile-trend" style="color:#94a3b8">No full previous 7 days to compare yet</div></div>
+  <div class="tile"><div class="tile-value" style="color:#0f172a">n/a / n/a</div><div class="tile-label">True / false positive rate</div><div class="tile-sub">0 alerts closed with a verdict</div></div>
+  <div class="tile"><div class="tile-value" style="color:#ea580c">1</div><div class="tile-label">Open alerts now</div><div class="tile-sub">1 crit/high</div><div class="tile-trend" style="color:#94a3b8">No earlier snapshot to compare yet</div></div>
+  <div class="tile"><div class="tile-value" style="color:#d97706">1</div><div class="tile-label">Stale accounts</div><div class="tile-trend" style="color:#94a3b8">No earlier snapshot to compare yet</div></div>
+  <div class="tile"><div class="tile-value" style="color:#ea580c">1</div><div class="tile-label">Weak / compromised passwords</div><div class="tile-trend" style="color:#94a3b8">No earlier snapshot to compare yet</div></div>
+  <div class="tile"><div class="tile-value" style="color:#ea580c">1</div><div class="tile-label">High-risk identities (current)</div><div class="tile-trend" style="color:#94a3b8">No earlier snapshot to compare yet</div></div>
+</div>
+
+<h2>Alerts &mdash; volume by week</h2>
+<svg viewBox="0 0 640 166" width="100%" style="max-width:640px"><g transform="translate(0,16)"><rect x="70.9" y="126.0" width="122.7" height="0.0" fill="#0ea5e9" rx="1.5"><title>New alerts 2026-10-01: 0</title></rect><rect x="370.9" y="10.0" width="122.7" height="116.0" fill="#0ea5e9" rx="1.5"><title>New alerts 2026-10-05: 1</title></rect><text x="180.0" y="144" font-size="9" fill="#64748b" text-anchor="middle">01 Oct</text><text x="480.0" y="144" font-size="9" fill="#64748b" text-anchor="middle">05 Oct</text></g><rect x="30" y="0" width="10" height="10" fill="#0ea5e9" rx="2"/><text x="44" y="9" font-size="10" fill="#0f172a">New alerts</text></svg>
+
+<h2>Alert disposition (closed this period)</h2>
+<p class="empty">No alerts closed this period.</p>
+
+<h2>Identity risk (current)</h2>
+<p class="legend-row"><span class="legend-dot" style="background:#ea580c"></span>High <b>1</b></p>
+<table><tr><th>Risk factor</th><th class="num">Accounts</th></tr>
+<tr><td>STALE_ACCOUNT</td><td class="num">1</td></tr><tr><td>WEAK_PASSWORD</td><td class="num">1</td></tr></table>
+
+<footer>Page 4 of 4 &mdash; secops-dashboard. Figures for Riverside Health only; alert counts and the bar chart cover the report
+period only and exclude informational-severity alerts; identity risk is current as of generation time.
+Arrows on current counts compare the daily snapshot at the start of the period with the one at its end (or the earliest available, if history is shorter); arrows on period counts compare with the previous 7 days.</footer>
+</div>
+</body></html>

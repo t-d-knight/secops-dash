@@ -65,6 +65,12 @@ collectors:
   # Runs first; the other Falcon collectors reuse its site answer per host.
   falcon_hosts:
     enabled: true
+    # OUs whose AD computer accounts are expected to have no sensor in THIS
+    # Falcon tenant (a service on its own CID, or one that has left) -> Discover
+    # class "out_of_scope", kept off every missing-sensor list. Exact OU segment
+    # names, case-insensitive; the value is just a note for humans.
+    # out_of_scope_ous:
+    #   SITE-C: "runs its own Falcon CID"
     # filter: "last_seen:>='now-90d'"       # optional FQL
     include_unmanaged: true                 # needs the Assets (Discover) read scope
     # unmanaged_filter: "entity_type:'unmanaged'"
@@ -72,7 +78,11 @@ collectors:
   # Falcon Exposure Management / Spotlight vulnerabilities -> vuln_findings
   falcon_spotlight:
     enabled: true
-    page_size: 1000
+    page_size: 5000                        # CrowdStrike's documented max for this endpoint (confirmed 2026-10-05:
+                                            # 10000 is rejected with "must be between 1 and 5000"); this pull is a
+                                            # full open-vuln pull on every run, not just --full, so the page count
+                                            # matters every night -- ~4x fewer round-trips for ~4x the data, with
+                                            # roughly flat per-request latency (~5s regardless of 1000 vs 5000)
     closed_lookback_days: 30               # first run / --full window for closed vulns
     # filter: "host_info.platform_name:'Windows'"   # optional FQL ANDed onto every pull
 
@@ -89,34 +99,50 @@ collectors:
     page_size: 1000
     # query_file: "collectors/queries/identity_entities.graphql"
 
-  # Hadrian Atlas. The API reference is behind the Hadrian login, so the
-  # paths and field names below are PLACEHOLDERS -- confirm against the API
-  # docs in the console before enabling, or use mode: csv with exports.
+  # Hadrian Atlas (external attack surface). Schema confirmed against the
+  # live API on 2026-10-06 -- see collectors/hadrian.py.
   hadrian:
-    enabled: false
+    enabled: true
     mode: api                     # api | csv
     base_url: "https://api.hadrian.io"
-    auth_header: "Authorization"  # or e.g. "X-API-Key"
-    auth_scheme: "Bearer"         # "" to send the bare key
+    auth_header: "X-Api-Key"      # confirmed: the key goes in this header, not Authorization
+    auth_scheme: ""                # bare key, no "Bearer" prefix
+    organization_id: "YOUR_ORGANIZATION_ID"
     # api_key -> secrets.yaml
+    # Asset tags in Hadrian are the site keys. Tags here are mapped first:
+    tag_aliases: {OLD-SITE: SITE-A}   # a Hadrian tag for a site since merged into another
+    archive_tags: ["zzArchive"]   # abandoned domains pending removal: asset + its risks skipped
+    # Untagged assets whose site was inferred from their apex domain are
+    # listed here -- tag them in Hadrian so its console agrees with us.
+    suggested_tags_out: "reports/hadrian-suggested-tags.csv"
+    detail_workers: 4             # parallel GET /risks/{id} (one per risk, for its asset)
     assets:
-      path: "/v1/assets"
-      items_key: "data"
-      pagination: {type: page, param: page, size_param: page_size, size: 500}
-      fields: {id: id, name: name, type: type, ip: ip_addresses, ports: ports,
-               technologies: technologies, first_seen: first_seen, last_seen: last_seen}
+      path: "/organizations/{organization_id}/assets"
+      items_key: "items"
+      # offset here is a PAGE INDEX, not a row offset -- do not change `type`
+      # to `offset`, that mode increments by row count and will silently
+      # skip pages against this API. `page` mode increments by 1, which is
+      # what Hadrian's pagination actually wants; start at 0, not 1.
+      pagination: {type: page, param: offset, size_param: pageSize, size: 100, start: 0}
+      fields: {id: assetId, name: value, type: platformAssetType,
+               first_seen: detectedOnUtc, last_seen: lastSeenAtUtc}
+      # ip and ports are NOT flat fields on this schema (ip only exists as
+      # `value` on StaticIp/DynamicIp assets, or via services[].ipAsset;
+      # ports come from services[].port) -- collectors/hadrian.py derives
+      # both directly from the record instead of through this field map.
     risks:
-      path: "/v1/risks"
-      items_key: "data"
-      pagination: {type: page, param: page, size_param: page_size, size: 500}
-      full_pull: true             # every run returns all open risks -> unseen ones are expired
-      fields: {id: id, asset_id: asset.id, asset_name: asset.name, ip: asset.ip,
-               title: title, severity: severity, status: status, category: category,
-               cves: cves, cvss: cvss_score, cvss_vector: cvss_vector,
-               exploit_available: exploit_available, description: description,
-               remediation: remediation, first_seen: first_seen, last_seen: last_seen,
-               resolved_at: resolved_at}
-      # open_statuses / fixed_statuses / suppressed_statuses override the defaults
+      path: "/organizations/{organization_id}/risks"
+      detail_path: "/organizations/{organization_id}/risks/{id}"
+      items_key: "items"
+      pagination: {type: page, param: offset, size_param: pageSize, size: 100, start: 0}
+      full_pull: true             # every run returns all risks -> unseen ones are expired
+      # activity (Open/Closed) is the lifecycle; status (New/Reopened/
+      # Resolved/NotFound) refines it. Closed/NotFound = rescan no longer
+      # sees it -> counted as fixed.
+      fields: {id: id, title: title, severity: riskSeverity, activity: activityStatus,
+               status: status, visibility: riskVisibility, risk_type: riskType,
+               category: primaryCategory.id, first_seen: created, last_seen: lastSeen,
+               resolved_at: resolvedOn}
     csv:
       assets_path: "data/hadrian/assets.csv"   # column names = the field map values above
       risks_path: "data/hadrian/risks.csv"

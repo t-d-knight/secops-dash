@@ -37,32 +37,39 @@ crowdstrike: {{base_url: "{M}/falcon"}}
 reporting: {{days_last_seen: 30, require_exploit_for_remote_no_auth: true, stale_sensor_days: 7,
             sla_days: {{critical: 2, high: 14, medium: 30, low: 60}}}}
 sites:
-  - key: BH
-    label: Bendigo Health
-    match: {{falcon_groups: ["BH Workstations"], ad_domains: ["bh.local"], email_domains: ["bendigohealth.org.au"],
+  - key: RVH
+    label: Riverside Health
+    match: {{falcon_groups: ["RVH Workstations"], ad_domains: ["rvh.local"], email_domains: ["riversidehealth.test"],
             cidrs: ["10.1.0.0/16", "203.0.113.0/28"]}}
-  - key: CH
-    label: Castlemaine Health
-    match: {{falcon_tags: ["SensorGroupingTags/CH"], ou_contains: ["ou=castlemaine"],
-            email_domains: ["castlemainehealth.org.au"], hostname_regex: ["^CH-"]}}
+  - key: LKH
+    label: Lakeside Health
+    match: {{falcon_tags: ["SensorGroupingTags/LKH"], ou_contains: ["ou=lakeside"],
+            email_domains: ["lakesidehealth.test"], hostname_regex: ["^LKH-"]}}
 ungrouped_label: Ungrouped
 database: {{host: "{PG['host']}", port: {PG['port']}, name: {DB}, user: "{PG['user']}"}}
 secrets_file: secrets.yaml
 collectors:
-  falcon_hosts: {{enabled: true}}
+  falcon_hosts: {{enabled: true, out_of_scope_ous: {{"Departed Service": "left the alliance"}}}}
   falcon_spotlight: {{enabled: true, page_size: 2}}
   falcon_alerts: {{enabled: true}}
   falcon_identity: {{enabled: true}}
   hadrian:
     enabled: true
     base_url: "{M}/hadrian"
-    assets: {{path: /v1/assets, items_key: data, pagination: {{type: page, size: 1}},
-             fields: {{id: id, name: name, type: type, ip: ip_addresses, ports: ports, technologies: technologies,
-                      first_seen: first_seen, last_seen: last_seen}}}}
-    risks: {{path: /v1/risks, items_key: data, pagination: {{type: page, size: 1}},
-            fields: {{id: id, asset_id: asset.id, asset_name: asset.name, ip: asset.ip, title: title,
-                     severity: severity, status: status, category: category, cves: cves, cvss: cvss_score,
-                     first_seen: first_seen, last_seen: last_seen, resolved_at: resolved_at}}}}
+    organization_id: "org1"
+    tag_aliases: {{OLDRVH: RVH}}
+    archive_tags: ["zzArchive"]
+    suggested_tags_out: "hadrian-suggested-tags.csv"
+    detail_workers: 2
+    assets: {{path: "/organizations/{{organization_id}}/assets", items_key: items,
+             pagination: {{type: page, param: offset, size_param: pageSize, size: 1, start: 0}},
+             fields: {{id: assetId, name: value, type: platformAssetType,
+                      first_seen: detectedOnUtc, last_seen: lastSeenAtUtc}}}}
+    risks: {{path: "/organizations/{{organization_id}}/risks", detail_path: "/organizations/{{organization_id}}/risks/{{id}}",
+            items_key: items, pagination: {{type: page, param: offset, size_param: pageSize, size: 1, start: 0}},
+            fields: {{id: id, title: title, severity: riskSeverity, activity: activityStatus, status: status,
+                     visibility: riskVisibility, risk_type: riskType, category: primaryCategory.id,
+                     first_seen: created, last_seen: lastSeen, resolved_at: resolvedOn}}}}
   checkpoint_hec: {{enabled: true, gateway: "{M}/hec"}}
   entra:
     enabled: true
@@ -151,11 +158,18 @@ def main() -> int:
 
     print("== site resolution")
     sites = dict(q(cur, "SELECT source_asset_id, site_label || '/' || site_matched_by FROM assets"))
-    check(sites.get("aid1") == "Bendigo Health/falcon_groups", f"aid1 via host group: {sites.get('aid1')}")
-    check(sites.get("aid2") == "Castlemaine Health/falcon_tags", f"aid2 via tag: {sites.get('aid2')}")
-    check(sites.get("aid3") == "Bendigo Health/ad_domains", f"aid3 via AD domain: {sites.get('aid3')}")
+    check(sites.get("aid1") == "Riverside Health/falcon_groups", f"aid1 via host group: {sites.get('aid1')}")
+    check(sites.get("aid2") == "Lakeside Health/falcon_tags", f"aid2 via tag: {sites.get('aid2')}")
+    check(sites.get("aid3") == "Riverside Health/ad_domains", f"aid3 via AD domain: {sites.get('aid3')}")
     check(sites.get("aid4") == "Ungrouped/none", f"aid4 ungrouped: {sites.get('aid4')}")
-    check(sites.get("u1") == "Bendigo Health/cidrs", f"unmanaged u1 via CIDR: {sites.get('u1')}")
+    check(sites.get("u1") == "Riverside Health/cidrs", f"unmanaged u1 via CIDR: {sites.get('u1')}")
+    check(sites.get("u5") == "Lakeside Health/discoverer", f"network-only u5 via its discoverer's site: {sites.get('u5')}")
+    cls = dict(q(cur, "SELECT source_asset_id, discovery_class FROM assets WHERE source = 'falcon_unmanaged'"))
+    check(cls == {"u1": "network_device", "u2": "workstation_no_sensor", "u3": "service_account",
+                  "u4": "duplicate_of_managed", "u5": "vmware_nic", "u6": "out_of_scope",
+                  "u7": "secondary_ip_of_managed"}, f"Discover classes {cls}")
+    twin = q(cur, "SELECT managed_twin FROM assets WHERE source_asset_id = 'u4'")[0][0]
+    check(twin == "RVH-WS01", f"duplicate linked to its managed host: {twin}")
 
     print("== vulnerabilities")
     st = dict(q(cur, "SELECT source_rule_id, state FROM vuln_findings"))
@@ -163,43 +177,80 @@ def main() -> int:
     check(st.get("v3") == "SUPPRESSED", "suppressed vuln -> SUPPRESSED")
     check(st.get("v5") == "FIXED", "closed vuln -> FIXED")
     check(st.get("gone") == "EXPIRED", "vanished open vuln -> EXPIRED (not FIXED)")
-    check(st.get("r1") == "OPEN" and st.get("r2") == "FIXED", "Hadrian risks mapped open/fixed")
+    check((st.get("r1"), st.get("r2"), st.get("r3")) == ("OPEN", "FIXED", "REOPENED"),
+          f"Hadrian activity/status -> OPEN/FIXED(NotFound)/REOPENED: {st.get('r1'), st.get('r2'), st.get('r3')}")
+    check("r4" not in st, "risk only on a zzArchive asset skipped")
+    rt = dict(q(cur, "SELECT source_rule_id, risk_type FROM vuln_findings WHERE source = 'hadrian'"))
+    check(rt.get("r1") == "UnpatchedTechnology" and rt.get("r3") == "InfectedDevice", f"risk_type stored: {rt}")
+    xa = dict(q(cur, "SELECT asset_id, site_label || '/' || site_matched_by FROM external_assets"))
+    check(xa == {"a1": "Riverside Health/hadrian_tag", "a2": "Lakeside Health/hadrian_apex"},
+          f"external asset sites (tag, apex; archived skipped): {xa}")
     v1 = q(cur, "SELECT is_remote_no_auth, exploit_available, product_key, fix_id, site_label FROM vuln_findings WHERE source_rule_id='v1'")[0]
-    check(v1 == (True, True, "google:chrome", "R1", "Bendigo Health"), f"v1 enrichment {v1}")
+    check(v1 == (True, True, "google:chrome", "R1", "Riverside Health"), f"v1 enrichment {v1}")
     v2r = q(cur, "SELECT is_remote_no_auth FROM vuln_findings WHERE source_rule_id='v2'")[0][0]
     check(v2r is False, "no vector -> not remote/no-auth (old cvss bug fixed)")
     lf = q(cur, "SELECT last_found > now() - interval '1 day' FROM vuln_findings WHERE source_rule_id='v1'")[0][0]
     check(lf, "last_found taken from host last_seen")
     kev = q(cur, "SELECT count(*) FROM fact_vuln_findings_current WHERE has_kev")[0][0]
-    check(kev == 2, f"KEV joins for Spotlight + Hadrian log4j (got {kev})")
+    check(kev == 1, f"KEV joins Spotlight log4j; Hadrian risks carry no CVEs (got {kev})")
     patch = q(cur, "SELECT title, open_findings, affected_assets FROM patch_impact_summary WHERE fix_key='R1'")
     check(patch and patch[0][1] == 2, f"R1 patch groups both Chrome CVEs: {patch}")
     ext = q(cur, "SELECT site_label, asset_type FROM vuln_findings WHERE source='hadrian' AND source_rule_id='r1'")[0]
-    check(ext == ("Bendigo Health", "internet"), f"Hadrian risk site/type {ext}")
+    check(ext == ("Riverside Health", "internet"), f"Hadrian risk site/type {ext}")
 
     print("== other domains")
     check(q(cur, "SELECT count(*) FROM security_alerts")[0][0] == 2, "2 alerts")
     al2 = q(cur, "SELECT site_label, closed_at IS NOT NULL FROM security_alerts WHERE alert_id='al2'")[0]
-    check(al2 == ("Castlemaine Health", True), f"user-only alert -> site via UPN, closed_at set: {al2}")
+    check(al2 == ("Lakeside Health", True), f"user-only alert -> site via UPN, closed_at set: {al2}")
+    al2d = q(cur, "SELECT status, disposition FROM security_alerts WHERE alert_id='al2'")[0]
+    check(al2d == ("closed", "false_positive"),
+          f"disposition preserved under collapsed status: {al2d}")
     ids = dict(q(cur, "SELECT entity_id, site_label FROM identity_entities"))
-    check(ids == {"e1": "Bendigo Health", "e2": "Castlemaine Health", "e3": "Ungrouped"}, f"identity sites {ids}")
+    check(ids == {"e1": "Riverside Health", "e2": "Lakeside Health", "e3": "Ungrouped"}, f"identity sites {ids}")
     check(q(cur, "SELECT count(*) FROM identity_risk_factors")[0][0] == 3, "3 identity risk factors (not doubled on rerun)")
     hec = dict(q(cur, "SELECT event_id, site_label FROM email_events"))
-    check(hec == {"h1": "Bendigo Health", "h2": "Castlemaine Health"}, f"HEC recipient sites {hec}")
+    check(hec == {"h1": "Riverside Health", "h2": "Lakeside Health", "h3": "Ungrouped"}, f"HEC recipient sites {hec}")
+    dirs = dict(q(cur, "SELECT event_id, direction FROM email_events"))
+    check(dirs == {"h1": "inbound", "h2": "inbound", "h3": "outbound"}, f"HEC direction classified: {dirs}")
     check(q(cur, "SELECT count(*) FROM entra_risky_users")[0][0] == 2, "2 risky users (paged via nextLink)")
     check(q(cur, "SELECT count(*) FROM entra_mfa_registration")[0][0] == 2, "guests excluded from MFA stats")
     la = dict(q(cur, "SELECT site_label, value FROM azure_log_metrics WHERE dimension='failure'"))
-    check(la.get("Bendigo Health") == 15, f"Log Analytics values summed per site: {la}")
+    check(la.get("Riverside Health") == 15, f"Log Analytics values summed per site: {la}")
     dm = q(cur, "SELECT sum(messages), sum(dmarc_pass), count(DISTINCT site_label) FROM dmarc_daily")[0]
     check(tuple(map(int, dm)) == (1537, 1500, 2), f"DMARC aggregates across scroll pages: {dm}")
 
     print("== rollups")
     am = dict(q(cur, "SELECT site_label, stale_sensors FROM daily_asset_metrics WHERE snapshot_date=CURRENT_DATE"))
-    check(am.get("Bendigo Health") == 1, f"stale sensor counted (aid3): {am}")
+    check(am.get("Riverside Health") == 1, f"stale sensor counted (aid3): {am}")
     src = q(cur, "SELECT count(DISTINCT source) FROM daily_source_metrics")[0][0]
     check(src == 2, "daily_source_metrics splits spotlight vs hadrian")
-    idm = dict(q(cur, "SELECT metric, value FROM daily_identity_metrics WHERE site_label='Bendigo Health'"))
+    idm = dict(q(cur, "SELECT metric, value FROM daily_identity_metrics WHERE site_label='Riverside Health'"))
     check(idm.get("factor:WEAK_PASSWORD") == 1 and idm.get("mfa_registered") == 1, f"identity metrics {idm}")
+
+    print("== reports")
+    out = os.path.join(tmp, "out")
+    since = (dt.date.today() - dt.timedelta(days=6)).isoformat()
+    check(run("exec_report.py", "--since", since, "--until", dt.date.today().isoformat(),
+              "--out", os.path.join(out, "exec-region.html")) == 0, "exec_report.py region exited 0")
+    check(run("exec_report.py", "--since", since, "--until", dt.date.today().isoformat(),
+              "--site", "Riverside Health", "--out", os.path.join(out, "exec-site.html")) == 0,
+          "exec_report.py single site exited 0")
+    html_ = open(os.path.join(out, "exec-region.html")).read() if os.path.exists(os.path.join(out, "exec-region.html")) else ""
+    check(html_.count('class="page"') == 4, "exec report has 4 pages")
+    check("someone@riversidehealth.test" not in html_ and "s*****@riversidehealth.test" in html_,
+          "exec report masks the infostealer account")
+    check(run("action_pack.py", "--out-dir", out) == 0, "action_pack.py exited 0")
+    packs = sorted(os.listdir(out)) if os.path.isdir(out) else []
+    check(sum(f.endswith(".xlsx") for f in packs) == 4, f"action pack per site + region: {packs}")
+    # SAMPLES_DIR=reports python3 tests/run_e2e.py  -> refresh the committed synthetic samples
+    if os.environ.get("SAMPLES_DIR") and not failures:
+        import shutil
+        dest = os.environ["SAMPLES_DIR"]
+        shutil.copy(os.path.join(out, "exec-region.html"), os.path.join(dest, "sample-exec-report.html"))
+        shutil.copy(os.path.join(out, "exec-site.html"), os.path.join(dest, "sample-exec-report-site.html"))
+        region_pack = next(f for f in packs if f.startswith("region-"))
+        shutil.copy(os.path.join(out, region_pack), os.path.join(dest, "sample-action-pack.xlsx"))
+        print(f"  samples written to {dest}")
 
     print("== dashboard SQL")
     n = 0
@@ -210,7 +261,7 @@ def main() -> int:
             for p in ps:
                 yield p
                 yield from walk(p.get("panels", []))
-        site_vals = "'Bendigo Health','Castlemaine Health','Ungrouped'"
+        site_vals = "'Riverside Health','Lakeside Health','Ungrouped'"
         for p in walk(d.get("panels", [])):
             for t in p.get("targets", []):
                 sql = t.get("rawSql")

@@ -1,0 +1,27 @@
+# Local config (real site names, API client IDs) -- see config.yaml.example
+/config.yaml
+# Credentials -- see secrets.yaml.example
+/secrets.yaml
+
+# Other dev files
+bld.txt
+
+# Generated exec reports -- real site names and counts, not for git
+/reports/*
+# ...except the synthetic e2e-test previews, kept as committed examples
+# (regenerate: SAMPLES_DIR=reports python3 tests/run_e2e.py)
+!/reports/sample-exec-report.html
+!/reports/sample-exec-report-site.html
+!/reports/sample-action-pack.xlsx
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# Runtime logs (cron writes here; dir itself is tracked via .gitkeep)
+/logs/*
+!/logs/.gitkeep

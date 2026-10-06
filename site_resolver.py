@@ -10,17 +10,17 @@ first signal type that matches ANY site wins. Within one signal type, sites
 are checked in config order, so put narrower rules first if they overlap.
 
     sites:
-      - key: "BH"
-        label: "Bendigo Health"
+      - key: "RVH"
+        label: "Riverside Health"
         match:
-          falcon_tags:   ["SensorGroupingTags/BH"]     # exact, case-insensitive
-          falcon_groups: ["BH - Workstations"]          # host group NAME, exact
-          ou_contains:   ["OU=Bendigo Health"]          # substring of the DN/OU path
-          ad_sites:      ["BH-Main"]                    # AD Sites & Services site name (Falcon site_name)
-          ad_domains:    ["bh.local"]                   # AD/NetBIOS domain, exact (FQDN suffix also matches)
-          hostname_regex: ["^BH[-_]"]
+          falcon_tags:   ["SensorGroupingTags/RVH"]     # exact, case-insensitive
+          falcon_groups: ["RVH - Workstations"]          # host group NAME, exact
+          ou_contains:   ["OU=Riverside Health"]          # substring of the DN/OU path
+          ad_sites:      ["RVH-Main"]                    # AD Sites & Services site name (Falcon site_name)
+          ad_domains:    ["rvh.local"]                   # AD/NetBIOS domain, exact (FQDN suffix also matches)
+          hostname_regex: ["^RVH[-_]"]
           cidrs:         ["10.10.0.0/16"]
-          email_domains: ["bendigohealth.org.au"]       # exact or subdomain
+          email_domains: ["riversidehealth.test"]       # exact or subdomain
 
 Anything nothing matches lands in `ungrouped_label`, and the matcher that
 fired is recorded alongside the label (site_matched_by) so mapping gaps are
@@ -196,3 +196,30 @@ class SiteResolver:
     def site_rows(self) -> List[Tuple[str, str]]:
         """(key, label) for every configured site, plus Ungrouped."""
         return [(s["key"], s["label"]) for s in self.sites] + [("UNGROUPED", self.ungrouped)]
+
+    def is_own_domain(self, domain: Optional[str]) -> bool:
+        """True if `domain` is (or is a subdomain of) any configured site's
+        email_domains -- i.e. it's one of ours, not an external party's."""
+        d = (domain or "").strip().lower()
+        if not d:
+            return False
+        for site in self.sites:
+            for want in site["email_domains"]:
+                if d == want or d.endswith("." + want):
+                    return True
+        return False
+
+    def email_direction(self, sender_domain: Optional[str], recipient_domain: Optional[str]) -> str:
+        """Classify a mail event as inbound/outbound/internal relative to
+        our own configured email domains. 'unknown' when neither side
+        resolves to a domain we recognize as ours or can be confirmed
+        external (e.g. no recipient could be extracted from the event)."""
+        s_own = self.is_own_domain(sender_domain)
+        r_own = self.is_own_domain(recipient_domain)
+        if s_own and r_own:
+            return "internal"
+        if s_own and not r_own:
+            return "outbound"
+        if r_own and not s_own:
+            return "inbound"
+        return "unknown"

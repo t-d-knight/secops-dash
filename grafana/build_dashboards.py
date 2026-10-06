@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Dashboard-as-code for the three non-vuln SecOps dashboards. Edit the panel
+Dashboard-as-code for the four non-vuln SecOps dashboards. Edit the panel
 definitions here and re-run; the generated JSON is committed alongside so it
 can be imported without running anything.
 
@@ -16,6 +16,12 @@ $site is the multi-select site variable (sourced from dim_site).
 """
 import json
 import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import discovery_classes as dc
+from email_types import BULK_EVENT_TYPES, THREAT_EVENT_TYPES, sql_in
 
 DS = {"type": "postgres", "uid": "${DS_POSTGRESQL}"}
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -504,23 +510,43 @@ def endpoint_identity():
 # =====================================================================
 def email_external():
     b = Builder()
+    # event_type is split into genuine threats vs bulk mail classification
+    # (see email_types.py) -- on real data, graymail+spam alone was ~97% of
+    # all HEC events, which was swamping "Top sending domains (threats)"
+    # with legitimate bulk senders (LinkedIn, Zoom, Canva notification
+    # traffic) instead of actual phishing/malware senders.
     b.row("Email threats (Check Point HEC)")
-    for t, title in (("phishing", "Phishing"), ("malware", "Malware"), ("suspicious", "Suspicious"), ("dlp", "DLP")):
+    for t, title in (("phishing", "Phishing"), ("malware", "Malware"), ("suspicious", "Suspicious"),
+                      ("dlp", "DLP"), ("anomaly", "Anomaly")):
         b.stat(f"{title} (range)", f"SELECT count(*) FROM email_events WHERE site_label IN ($site) "
                f"AND event_type LIKE '%{t}%' AND {rng_ts('created_at')}", thresholds=NEUTRAL)
     b.stat("High+ severity (range)", f"SELECT count(*) FROM email_events WHERE site_label IN ($site) "
            f"AND severity IN ('critical','high') AND {rng_ts('created_at')}", thresholds=BAD_UP)
     b.stat("Not remediated", f"SELECT count(*) FROM email_events WHERE site_label IN ($site) "
-           f"AND state IN ('new','detected','pending') AND {rng_ts('created_at')}", thresholds=BAD_UP,
-           description="Events still in a detected/pending state -- not quarantined or otherwise actioned.")
+           f"AND state IN ('new','detected','pending') AND event_type IN {sql_in(THREAT_EVENT_TYPES)} "
+           f"AND {rng_ts('created_at')}", h=8, thresholds=BAD_UP,
+           description="Threat events (not bulk/graymail) still in a detected/pending state -- not quarantined "
+                        "or otherwise actioned.")
+    # Widths below are picked to tile the 24-unit grid exactly (4+20=24,
+    # 12+12=24) -- rebalance together if you add/remove a panel in this row.
     b.ts("Email events per day by type", f"""
         SELECT snapshot_date::timestamp AS time, event_type AS metric, sum(events) AS value
         FROM daily_email_metrics WHERE site_label IN ($site) AND {rng_d('snapshot_date')}
-        GROUP BY 1, 2 ORDER BY 1""", w=16, stack=True, bars=True)
+        GROUP BY 1, 2 ORDER BY 1""", w=20, h=8, stack=True, bars=True,
+        description="Every HEC event type, including bulk mail classification (graymail/spam) -- see the "
+                     "Top sending domains panels below for threats and bulk mail split apart.")
     b.table("Top sending domains (threats)", f"""
         SELECT sender_domain AS "Sender domain", count(*) AS "Events", count(DISTINCT site_label) AS "Sites hit"
         FROM email_events WHERE site_label IN ($site) AND {rng_ts('created_at')} AND sender_domain IS NOT NULL
-        GROUP BY 1 ORDER BY 2 DESC LIMIT 15""", w=8, h=8)
+        AND event_type IN {sql_in(THREAT_EVENT_TYPES)}
+        GROUP BY 1 ORDER BY 2 DESC LIMIT 15""", w=12, h=8)
+    b.table("Top sending domains (bulk / graymail)", f"""
+        SELECT sender_domain AS "Sender domain", count(*) AS "Events", count(DISTINCT site_label) AS "Sites hit"
+        FROM email_events WHERE site_label IN ($site) AND {rng_ts('created_at')} AND sender_domain IS NOT NULL
+        AND event_type IN {sql_in(BULK_EVENT_TYPES)}
+        GROUP BY 1 ORDER BY 2 DESC LIMIT 15""", w=12, h=8,
+        description="Bulk mail classification and SaaS-usage visibility (graymail/spam/shadow IT) -- real "
+                     "volume, not inherently malicious. Kept visible so it isn't just dropped from the data.")
     b.table("Recent High+ email events", f"""
         SELECT created_at AS "Time", event_type AS "Type", severity AS "Severity", state AS "State",
                site_label AS "Site", sender AS "Sender", recipient_domain AS "Recipient domain",
@@ -603,10 +629,253 @@ def email_external():
                      "Check Point HEC email threats, DMARC alignment from parsedmarc, and Hadrian external attack surface.", b)
 
 
+# =====================================================================
+#  4. SecOps Cyber Team Worklist
+# =====================================================================
+# "Assessed" = Falcon has ever returned a vulnerability record (any status)
+# for the host. A fully patched, assessed host with no history would read
+# as unassessed -- rare enough on this estate to be a fair proxy, and the
+# API has no "assessed, zero findings" signal to do better with.
+ACTIVE_HOSTS = ("SELECT * FROM assets WHERE source = 'falcon' AND NOT retired "
+                "AND last_seen > now() - interval '7 days'")
+ASSESSED = "SELECT DISTINCT source_asset_id FROM vuln_findings WHERE source = 'falcon_spotlight'"
+CONFIRMED = "('Verified','UnpatchedTechnology','InfectedDevice')"
+
+
+def worklist():
+    b = Builder()
+    b.text(
+        "### Cyber Team Worklist\n"
+        "Coverage gaps, data-quality problems and triage queues -- the things to fix so every other "
+        "dashboard and report is telling the truth. Point-in-time (the time picker doesn't apply), "
+        "filtered by **Site**. Start with **Feed health**: a failing feed makes everything downstream stale.",
+        h=3)
+
+    b.row("Feed health")
+    b.table("Collectors (latest run each)", """
+        SELECT DISTINCT ON (collector) collector AS "Collector", status AS "Status",
+               started_at AS "Last run", round(EXTRACT(EPOCH FROM finished_at - started_at))::int AS "Seconds",
+               (SELECT max(started_at) FROM collector_runs c2 WHERE c2.collector = r.collector AND c2.status = 'ok')
+                   AS "Last success",
+               left(error, 200) AS "Error"
+        FROM collector_runs r ORDER BY collector, started_at DESC""", h=7, overrides=[
+        {"matcher": {"id": "byName", "options": "Status"},
+         "properties": [{"id": "custom.cellOptions", "value": {"type": "color-background"}},
+                        {"id": "mappings", "value": [{"type": "value", "options": {
+                            "ok": {"color": "green", "index": 0}, "partial": {"color": "orange", "index": 1},
+                            "error": {"color": "red", "index": 2}, "running": {"color": "blue", "index": 3}}}]}]}],
+        description="Disabled feeds keep their last run here. An 'error' row for a feed you rely on means its "
+                    "panels and report figures are stale since 'Last success'.")
+
+    b.row("Endpoint coverage")
+    b.stat("Active managed hosts (7d)", f"SELECT count(*) FROM ({ACTIVE_HOSTS}) a WHERE site_label IN ($site)",
+           thresholds=NEUTRAL)
+    b.stat("Vulnerability assessment coverage", f"""
+        SELECT 100.0 * count(*) FILTER (WHERE a.source_asset_id IN ({ASSESSED})) / NULLIF(count(*), 0)
+        FROM ({ACTIVE_HOSTS}) a WHERE a.site_label IN ($site)""", unit="percent", decimals=1,
+           thresholds=GOOD_PCT,
+           description="Active managed hosts Falcon has returned vulnerability data for. Everything below 100% is "
+                       "estate the vuln figures can't see.")
+    b.stat("Active hosts not assessed", f"""
+        SELECT count(*) FROM ({ACTIVE_HOSTS}) a
+        WHERE a.site_label IN ($site) AND a.source_asset_id NOT IN ({ASSESSED})""", thresholds=BAD_UP)
+    b.stat("Stale sensors", """
+        SELECT count(*) FROM assets WHERE source = 'falcon' AND NOT retired AND site_label IN ($site)
+          AND last_seen <= now() - interval '7 days'""", thresholds=BAD_UP,
+           description="Managed hosts silent for 7+ days: unprotected, unassessed, or decommissioned but not "
+                       "removed from Falcon.")
+    b.stat("Named machines missing a sensor", f"""
+        SELECT count(*) FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND site_label IN ($site)
+          AND discovery_class IN {dc.sql_in(dc.NAMED_MACHINES)}""", thresholds=BAD_UP,
+           description="AD computer accounts in active use (servers, workstations, DCs) with no Falcon sensor -- "
+                       "Discover's unmanaged list minus duplicates, service accounts, appliances and stale objects. "
+                       "Network-only devices are counted separately below.")
+    b.stat("Hosts in Ungrouped", """
+        SELECT count(*) FROM assets WHERE NOT retired AND site_label = 'Ungrouped'""", thresholds=BAD_UP,
+           description="Managed + unmanaged hosts no site rule matched (ignores the Site filter). Fix with "
+                       "falcon_groups / ou_contains / hostname_regex in config.yaml.")
+    b.table("Coverage by site", f"""
+        SELECT s.site_label AS "Site", COALESCE(a.active,0) AS "Active hosts",
+               COALESCE(a.assessed,0) AS "Assessed",
+               round(100.0 * COALESCE(a.assessed,0) / NULLIF(a.active,0), 1) AS "% assessed",
+               COALESCE(st.n,0) AS "Stale sensors", COALESCE(u.n,0) AS "Missing a sensor"
+        FROM dim_site s
+        LEFT JOIN (SELECT site_label, count(*) AS active,
+                          count(*) FILTER (WHERE source_asset_id IN ({ASSESSED})) AS assessed
+                   FROM ({ACTIVE_HOSTS}) x GROUP BY 1) a ON a.site_label = s.site_label
+        LEFT JOIN (SELECT site_label, count(*) n FROM assets WHERE source = 'falcon' AND NOT retired
+                     AND last_seen <= now() - interval '7 days' GROUP BY 1) st ON st.site_label = s.site_label
+        LEFT JOIN (SELECT site_label, count(*) n FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired
+                     AND discovery_class IN {dc.sql_in(dc.NAMED_MACHINES)} GROUP BY 1) u ON u.site_label = s.site_label
+        WHERE s.site_label IN ($site)
+        ORDER BY "% assessed" NULLS LAST, "Active hosts" DESC""", w=10, h=10,
+            overrides=[thresh_bg("% assessed", GOOD_PCT)])
+    b.table("Active hosts with no vulnerability data", f"""
+        SELECT a.hostname AS "Hostname", a.site_label AS "Site", a.product_type AS "Type",
+               a.os_version AS "OS", a.sensor_version AS "Sensor", a.last_seen AS "Last seen",
+               array_to_string(a.groups, ', ') AS "Host groups"
+        FROM ({ACTIVE_HOSTS}) a
+        WHERE a.site_label IN ($site) AND a.source_asset_id NOT IN ({ASSESSED})
+        ORDER BY a.site_label, a.hostname""", w=14, h=10,
+            description="Compare sensor version, host groups and policy against assessed hosts to find what "
+                        "Exposure Management isn't covering.")
+
+    b.row("Missing endpoints")
+    b.table("Stale sensors (silent 7+ days)", """
+        SELECT hostname AS "Hostname", site_label AS "Site", product_type AS "Type", os_version AS "OS",
+               last_seen AS "Last seen", (now()::date - last_seen::date) AS "Days silent",
+               sensor_version AS "Sensor", array_to_string(ous, ' / ') AS "OU"
+        FROM assets WHERE source = 'falcon' AND NOT retired AND site_label IN ($site)
+          AND last_seen <= now() - interval '7 days'
+        ORDER BY last_seen""", w=12, h=10, overrides=[bg("Days silent", "continuous-YlRd")],
+            description="Decommissioned: remove from Falcon. Still in use: fix the sensor.")
+    b.table("Unmanaged assets by class", f"""
+        SELECT {dc.sql_case()} AS "Class", count(*) AS "Assets",
+               CASE WHEN discovery_class IN {dc.sql_in(dc.ACTIONABLE)} THEN 'Yes' ELSE 'No' END AS "Needs a sensor?",
+               {dc.sql_case(part=1)} AS "What to do"
+        FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND site_label IN ($site)
+        GROUP BY discovery_class
+        ORDER BY "Needs a sensor?" DESC, "Assets" DESC""", w=12, h=10,
+            description="Discover's unmanaged list, sorted into real machines without a sensor vs records that "
+                        "aren't missing endpoints at all. Classified by collectors/falcon_hosts.py.")
+
+    b.row("Missing sensors: named machines")
+    b.table("Servers, DCs and workstations with no sensor (AD accounts in use)", f"""
+        SELECT hostname AS "Hostname", {dc.sql_case()} AS "Class", site_label AS "Site",
+               os_version AS "OS", last_seen AS "Last AD logon", description AS "AD description",
+               ad_created::date AS "AD account created", domain AS "Domain"
+        FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND site_label IN ($site)
+          AND discovery_class IN {dc.sql_in(dc.NAMED_MACHINES)}
+        ORDER BY CASE discovery_class WHEN 'domain_controller_no_sensor' THEN 1 WHEN 'server_no_sensor' THEN 2
+                                      WHEN 'cloud_no_sensor' THEN 3 ELSE 4 END,
+                 site_label, hostname""", h=12,
+            description="Real, in-use Windows machines Falcon knows from AD but that have no sensor. Install one, "
+                        "or record why not (vendor-supported clinical systems). A workstation here can also be a "
+                        "renamed managed host -- check the name in Falcon first.")
+
+    b.row("Missing sensors: devices seen on the network")
+    b.table("Network devices with no sensor (passive discovery)", f"""
+        SELECT COALESCE(hostname, '(no hostname)') AS "Hostname", {dc.sql_case()} AS "Class",
+               COALESCE(mac_vendor, '?') AS "MAC vendor", array_to_string(ips, ', ') AS "IPs",
+               array_to_string(mac_addresses, ', ') AS "MACs", site_label AS "Site", last_seen AS "Last seen"
+        FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND site_label IN ($site)
+          AND discovery_class IN ('vmware_nic', 'network_device')
+        ORDER BY mac_vendor NULLS LAST, site_label, ips""", w=16, h=12,
+            description="Seen talking on the network by managed sensors, no AD account. VMware MACs are VMs "
+                        "without a sensor or ESXi management interfaces; Dell/Intel/HP/Lenovo NICs are often PCs; "
+                        "printers, phones and IoT can't take a sensor.")
+    b.table("Network devices by MAC vendor", """
+        SELECT COALESCE(mac_vendor, '(unknown)') AS "MAC vendor", count(*) AS "Devices",
+               count(*) FILTER (WHERE hostname IS NOT NULL) AS "With hostname"
+        FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND site_label IN ($site)
+          AND discovery_class IN ('vmware_nic', 'network_device')
+        GROUP BY 1 ORDER BY 2 DESC""", w=8, h=12)
+
+    b.row("Not missing endpoints (AD cleanup)", collapsed=True)
+    b.table("Discover records that aren't unsensored machines", f"""
+        SELECT hostname AS "Hostname", {dc.sql_case()} AS "Class", managed_twin AS "Managed host",
+               site_label AS "Site", os_version AS "OS", ad_enabled AS "AD enabled", last_seen AS "Last AD logon",
+               description AS "AD description"
+        FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND site_label IN ($site)
+          AND discovery_class NOT IN {dc.sql_in(dc.ACTIONABLE)}
+        ORDER BY discovery_class, hostname""", h=12,
+            description="Duplicates of managed hosts (Falcon didn't link the AD object), service accounts, "
+                        "appliances, cluster/listener names, disabled or stale AD accounts. No sensor needed; "
+                        "disabled/stale ones are AD cleanup.")
+
+    b.row("External attack surface (Hadrian) hygiene")
+    b.stat("Potential risks to triage", f"""
+        SELECT count(*) FROM vuln_findings WHERE source = 'hadrian' AND state IN ('OPEN','REOPENED')
+          AND risk_type = 'Potential' AND site_label IN ($site)""", thresholds=BAD_UP,
+           description="Unverified detections: confirm (promote) or dismiss in Hadrian.")
+    b.stat("Confirmed risks open", f"""
+        SELECT count(*) FROM vuln_findings WHERE source = 'hadrian' AND state IN ('OPEN','REOPENED')
+          AND risk_type IN {CONFIRMED} AND site_label IN ($site)""", thresholds=BAD_UP)
+    b.stat("Infostealer infections", """
+        SELECT count(*) FROM vuln_findings WHERE source = 'hadrian' AND state IN ('OPEN','REOPENED')
+          AND risk_type = 'InfectedDevice' AND site_label IN ($site)""", thresholds=BAD_UP)
+    b.stat("Assets not matched by tag", """
+        SELECT count(*) FROM external_assets WHERE source = 'hadrian' AND NOT retired
+          AND site_matched_by <> 'hadrian_tag' AND site_label IN ($site)""", thresholds=BAD_UP,
+           description="Tag these in Hadrian -- the collector also writes them to reports/hadrian-suggested-tags.csv.")
+    b.stat("Assets not seen in 30 days", """
+        SELECT count(*) FROM external_assets WHERE source = 'hadrian' AND NOT retired AND site_label IN ($site)
+          AND (last_seen IS NULL OR last_seen < now() - interval '30 days')""", thresholds=BAD_UP,
+           description="Hadrian hasn't observed these recently: gone, moved, or no longer reachable. Archive "
+                       "(zzArchive) if abandoned.")
+    b.stat("Reopened risks", """
+        SELECT count(*) FROM vuln_findings WHERE source = 'hadrian' AND state = 'REOPENED'
+          AND site_label IN ($site)""", thresholds=BAD_UP,
+           description="Risks marked fixed that Hadrian found again -- the fix didn't hold.")
+    b.table("Triage queue: potential risks by title", """
+        SELECT title AS "Risk", max(plugin_family) AS "Category", max(vendor_priority) AS "Severity",
+               count(*) AS "Open", count(DISTINCT site_label) AS "Sites", min(first_found)::date AS "Oldest"
+        FROM vuln_findings WHERE source = 'hadrian' AND state IN ('OPEN','REOPENED') AND risk_type = 'Potential'
+          AND site_label IN ($site)
+        GROUP BY title
+        ORDER BY CASE max(vendor_priority) WHEN 'Critical' THEN 1 WHEN 'High' THEN 2 WHEN 'Medium' THEN 3
+                                           WHEN 'Low' THEN 4 ELSE 5 END, count(*) DESC""", w=14, h=10,
+            overrides=[sev_cell("Severity")],
+            description="Grouped so one decision clears many: confirm or dismiss each title across its assets.")
+    b.table("Infostealer infections", """
+        SELECT title AS "Infection", site_label AS "Site", hostname AS "Asset", first_found::date AS "First seen",
+               state AS "State"
+        FROM vuln_findings WHERE source = 'hadrian' AND state IN ('OPEN','REOPENED')
+          AND risk_type = 'InfectedDevice' AND site_label IN ($site)
+        ORDER BY first_found""", w=10, h=10,
+            description="Compromised credentials harvested from infected devices. Reset the named accounts and "
+                        "find the device. Not masked here -- this dashboard is for the cyber team.")
+    b.table("External assets: not tag-matched or not recently seen", """
+        SELECT name AS "Asset", asset_type AS "Type", site_label AS "Site", site_matched_by AS "Site from",
+               last_seen AS "Last seen by Hadrian"
+        FROM external_assets WHERE source = 'hadrian' AND NOT retired AND site_label IN ($site)
+          AND (site_matched_by <> 'hadrian_tag' OR last_seen IS NULL OR last_seen < now() - interval '30 days')
+        ORDER BY last_seen NULLS FIRST""", h=8)
+
+    b.row("Identity site mapping")
+    b.table("Identities in Ungrouped, by domain and OU", """
+        SELECT COALESCE(domain, '(none)') AS "Domain",
+               COALESCE(NULLIF(split_part(ou, ',', 1), ''), '(none)') AS "OU (first part)",
+               count(*) AS "Identities", count(*) FILTER (WHERE enabled) AS "Enabled"
+        FROM identity_entities WHERE NOT retired AND site_label = 'Ungrouped'
+        GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 200""", w=12, h=10,
+            description="Ignores the Site filter. Each row is a mapping rule waiting to be written: add the "
+                        "domain or OU fragment to the right site in config.yaml.")
+    b.table("Identities per site", """
+        SELECT s.site_label AS "Site", count(e.entity_id) AS "Identities",
+               count(e.entity_id) FILTER (WHERE e.enabled) AS "Enabled"
+        FROM dim_site s LEFT JOIN identity_entities e ON e.site_label = s.site_label AND NOT e.retired
+        GROUP BY 1 ORDER BY 2 DESC""", w=12, h=10,
+            description="A site with far fewer identities than staff is a sign its accounts are landing in "
+                        "Ungrouped (or another site).")
+
+    b.row("DMARC (parsedmarc)", collapsed=True)
+    b.text("Populates once the **dmarc** collector is enabled and can reach the parsedmarc OpenSearch "
+           "(`collectors.dmarc.opensearch_url` in config.yaml). Until then these panels are empty -- check "
+           "**Feed health** above for its last error.", h=3)
+    b.table("DMARC pass rate by sending domain (range)", f"""
+        SELECT header_from AS "From domain", sum(messages) AS "Messages",
+               round(100.0 * sum(dmarc_pass) / NULLIF(sum(messages), 0), 1) AS "Pass %",
+               sum(quarantined) AS "Quarantined", sum(rejected) AS "Rejected"
+        FROM dmarc_daily WHERE site_label IN ($site) AND {rng_d('report_date')}
+        GROUP BY 1 ORDER BY "Pass %" NULLS LAST, 2 DESC""", w=12, h=9, overrides=[thresh_bg("Pass %", GOOD_PCT)])
+    b.table("Top failing sources (range)", f"""
+        SELECT header_from AS "From domain", COALESCE(source_name, source_base_domain, source_ip) AS "Source",
+               source_country AS "Country", sum(messages - dmarc_pass) AS "Failing messages",
+               bool_or(spf_aligned > 0) AS "Any SPF aligned", bool_or(dkim_aligned > 0) AS "Any DKIM aligned"
+        FROM dmarc_daily WHERE site_label IN ($site) AND {rng_d('report_date')}
+        GROUP BY 1, 2, 3 HAVING sum(messages - dmarc_pass) > 0 ORDER BY 4 DESC LIMIT 50""", w=12, h=9,
+            description="Legitimate senders failing here need SPF/DKIM set up; unknown ones are spoofing.")
+
+    return dashboard("secops-worklist", "SecOps Cyber Team Worklist",
+                     "Coverage gaps, data quality and triage queues for the cyber team", b)
+
+
 def main():
     for fname, fn in (("secops-overview.json", overview),
                       ("secops-endpoint-identity.json", endpoint_identity),
-                      ("secops-email-external.json", email_external)):
+                      ("secops-email-external.json", email_external),
+                      ("secops-worklist.json", worklist)):
         path = os.path.join(HERE, fname)
         with open(path, "w") as f:
             json.dump(fn(), f, indent=2)

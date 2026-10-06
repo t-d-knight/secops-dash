@@ -56,6 +56,7 @@ class NormalizedFinding:
     vendor_priority: Optional[str] = None   # e.g. Falcon ExPRT rating, Hadrian priority
 
     last_fixed: Optional[dt.datetime] = None
+    risk_type: Optional[str] = None         # Hadrian riskType (Potential/Verified/...)
     cves: List[str] = field(default_factory=list)
 
 
@@ -68,7 +69,7 @@ _COLS = [
     "product_key", "product_vendor", "product_family",
     "site_label", "site_tag", "site_matched_by", "asset_type", "hostname",
     "fix_id", "fix_title", "vendor_priority",
-    "first_found", "last_found", "last_fixed",
+    "first_found", "last_found", "last_fixed", "risk_type",
 ]
 
 _UPDATABLE = [c for c in _COLS if c not in (

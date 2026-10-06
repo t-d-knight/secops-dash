@@ -22,6 +22,11 @@ a complete, unfiltered mirror of vendor state.
 fixed_* counts are windowed off vuln_findings.last_fixed (state='FIXED'),
 fixing the previous fill_daily_product_metrics.py bug where fixed_* counted
 ALL-TIME fixed findings every single day instead of "fixed since N days ago".
+Those are still rolling windows, though -- never SUM them across days. For
+"how many opened/fixed in this period", sum daily_vuln_flow_metrics, which
+(like daily_mttr_metrics, daily_alert_metrics' new_*/closed_today and
+daily_email_metrics) is keyed by the day the event happened and recomputed
+--flow-lookback-days back every run.
 
 --dry-run prints the computed rollup for today without writing, so it can be
 diffed against the old scripts' output during a validation window before
@@ -394,10 +399,16 @@ def write_epss_metrics(cur, snapshot_date: dt.date, data: Dict[str, Dict[str, An
 #  and did it beat its SLA band?" broken down by severity.
 # ------------------------------------------------------------
 
-def rollup_mttr_metrics(cur, snapshot_date: dt.date) -> List[Dict[str, Any]]:
+def rollup_mttr_metrics(cur, start: dt.date, snapshot_date: dt.date) -> List[Dict[str, Any]]:
+    """One row per (last_fixed day, site, severity) for every day in
+    [start, snapshot_date] -- not just the run day, which a 02:00 cron run
+    would have almost nothing fixed on yet (and yesterday's fixes would
+    never be counted). Late-arriving fixes land within the window."""
     cur.execute(
         """
         SELECT
+            vf.last_fixed::date AS snapshot_date,
+            vf.source,
             vf.site_label,
             max(vf.site_tag) AS site_tag,
             vf.severity,
@@ -412,11 +423,11 @@ def rollup_mttr_metrics(cur, snapshot_date: dt.date) -> List[Dict[str, Any]]:
         FROM vuln_findings vf
         JOIN sla_policy sp ON sp.severity = vf.severity
         WHERE vf.state = 'FIXED'
-          AND vf.last_fixed >= %(snap)s::date
+          AND vf.last_fixed >= %(start)s::date
           AND vf.last_fixed <  %(snap)s::date + INTERVAL '1 day'
-        GROUP BY vf.site_label, vf.severity
+        GROUP BY vf.last_fixed::date, vf.source, vf.site_label, vf.severity
         """,
-        {"snap": snapshot_date.isoformat()},
+        {"start": start.isoformat(), "snap": snapshot_date.isoformat()},
     )
     cols = [d.name for d in cur.description]
     rows = [dict(zip(cols, r)) for r in cur.fetchall()]
@@ -427,16 +438,19 @@ def rollup_mttr_metrics(cur, snapshot_date: dt.date) -> List[Dict[str, Any]]:
     return rows
 
 
-def write_mttr_metrics(cur, snapshot_date: dt.date, rows: List[Dict[str, Any]]) -> None:
+def write_mttr_metrics(cur, start: dt.date, snapshot_date: dt.date, rows: List[Dict[str, Any]]) -> None:
+    # Replace the whole window, so a day whose fix was later reopened drops
+    # back out instead of keeping a stale count.
+    cur.execute("DELETE FROM daily_mttr_metrics WHERE snapshot_date BETWEEN %s AND %s", (start, snapshot_date))
     for r in rows:
         cur.execute(
             """
             INSERT INTO daily_mttr_metrics (
-                snapshot_date, site_label, site_tag, severity,
+                snapshot_date, source, site_label, site_tag, severity,
                 fixed_count, avg_remediation_days, median_remediation_days,
                 sla_compliant_count, sla_compliance_rate
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            ON CONFLICT (snapshot_date, site_label, severity) DO UPDATE SET
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT (snapshot_date, site_label, severity, source) DO UPDATE SET
                 site_tag = EXCLUDED.site_tag,
                 fixed_count = EXCLUDED.fixed_count,
                 avg_remediation_days = EXCLUDED.avg_remediation_days,
@@ -444,7 +458,7 @@ def write_mttr_metrics(cur, snapshot_date: dt.date, rows: List[Dict[str, Any]]) 
                 sla_compliant_count = EXCLUDED.sla_compliant_count,
                 sla_compliance_rate = EXCLUDED.sla_compliance_rate;
             """,
-            (snapshot_date.isoformat(), r["site_label"], r["site_tag"], r["severity"],
+            (r["snapshot_date"].isoformat(), r["source"], r["site_label"], r["site_tag"], r["severity"],
              r["fixed_count"], r["avg_remediation_days"], r["median_remediation_days"],
              r["sla_compliant_count"], r["sla_compliance_rate"]),
         )
@@ -508,29 +522,83 @@ def rollup_asset_metrics(cur, cfg: Dict[str, Any], snapshot_date: dt.date) -> No
     )
 
 
-def rollup_alert_metrics(cur, snapshot_date: dt.date) -> None:
-    cur.execute("DELETE FROM daily_alert_metrics WHERE snapshot_date = %s", (snapshot_date,))
+def rollup_alert_metrics(cur, start: dt.date, snapshot_date: dt.date) -> None:
+    """new_*/closed_today/median per EVENT day, recomputed for every day in
+    [start, snapshot_date] -- counting only the run day itself lost nearly
+    a full day of alerts to a 02:00 cron run. open_* is point-in-time, so
+    only the run day's row gets it; other days keep whatever their own run
+    recorded (NULL if none ran -- see db_schema.py)."""
     cur.execute(
         """
         INSERT INTO daily_alert_metrics
             (snapshot_date, site_label, new_critical, new_high, new_medium, new_low,
              open_total, open_crit_high, closed_today, median_hours_to_close)
-        SELECT %(snap)s, s.site_label,
-            COALESCE(count(*) FILTER (WHERE a.created_at::date = %(snap)s AND a.severity='critical'), 0),
-            COALESCE(count(*) FILTER (WHERE a.created_at::date = %(snap)s AND a.severity='high'), 0),
-            COALESCE(count(*) FILTER (WHERE a.created_at::date = %(snap)s AND a.severity='medium'), 0),
-            COALESCE(count(*) FILTER (WHERE a.created_at::date = %(snap)s AND a.severity='low'), 0),
-            COALESCE(count(*) FILTER (WHERE a.status <> 'closed'), 0),
-            COALESCE(count(*) FILTER (WHERE a.status <> 'closed' AND a.severity IN ('critical','high')), 0),
-            COALESCE(count(*) FILTER (WHERE a.closed_at::date = %(snap)s), 0),
+        SELECT d::date, s.site_label,
+            count(*) FILTER (WHERE a.created_at::date = d AND a.severity='critical'),
+            count(*) FILTER (WHERE a.created_at::date = d AND a.severity='high'),
+            count(*) FILTER (WHERE a.created_at::date = d AND a.severity='medium'),
+            count(*) FILTER (WHERE a.created_at::date = d AND a.severity='low'),
+            NULL, NULL,
+            count(*) FILTER (WHERE a.closed_at::date = d),
             round((percentile_cont(0.5) WITHIN GROUP (
                 ORDER BY EXTRACT(EPOCH FROM a.closed_at - a.created_at) / 3600.0
-            ) FILTER (WHERE a.closed_at::date = %(snap)s))::numeric, 2)
-        FROM sites s
+            ) FILTER (WHERE a.closed_at::date = d))::numeric, 2)
+        FROM generate_series(%(start)s::date, %(snap)s::date, INTERVAL '1 day') AS d
+        CROSS JOIN sites s
         LEFT JOIN security_alerts a ON a.site_label = s.site_label
-        GROUP BY s.site_label
+             AND (a.created_at::date = d::date OR a.closed_at::date = d::date)
+        GROUP BY d, s.site_label
+        ON CONFLICT (snapshot_date, site_label) DO UPDATE SET
+            new_critical = EXCLUDED.new_critical, new_high = EXCLUDED.new_high,
+            new_medium = EXCLUDED.new_medium, new_low = EXCLUDED.new_low,
+            closed_today = EXCLUDED.closed_today,
+            median_hours_to_close = EXCLUDED.median_hours_to_close
+        """,
+        {"start": start, "snap": snapshot_date},
+    )
+    cur.execute(
+        """
+        UPDATE daily_alert_metrics m SET open_total = o.open_total, open_crit_high = o.open_crit_high
+        FROM (
+            SELECT s.site_label,
+                count(*) FILTER (WHERE a.status <> 'closed') AS open_total,
+                count(*) FILTER (WHERE a.status <> 'closed' AND a.severity IN ('critical','high')) AS open_crit_high
+            FROM sites s LEFT JOIN security_alerts a ON a.site_label = s.site_label
+            GROUP BY s.site_label
+        ) o
+        WHERE m.snapshot_date = %(snap)s AND m.site_label = o.site_label
         """,
         {"snap": snapshot_date},
+    )
+
+
+def rollup_vuln_flow_metrics(cur, start: dt.date, snapshot_date: dt.date) -> None:
+    """Vulns opened (first_found) and fixed (last_fixed) per EVENT day, for
+    every day in [start, snapshot_date]. This is what "opened vs fixed this
+    period" sums -- unlike daily_product_metrics.new_*/fixed_*, which are
+    rolling N-day windows (every finding repeats across N snapshots, so
+    summing them over a period overcounts ~N times). EXPIRED isn't
+    "opened": Spotlight expires huge volumes of short-lived records."""
+    cur.execute("DELETE FROM daily_vuln_flow_metrics WHERE snapshot_date BETWEEN %s AND %s", (start, snapshot_date))
+    cur.execute(
+        """
+        INSERT INTO daily_vuln_flow_metrics (snapshot_date, site_label, severity, source, opened, fixed)
+        SELECT d, site_label, severity, source, sum(opened), sum(fixed) FROM (
+            SELECT first_found::date AS d, site_label, severity, source, count(*) AS opened, 0 AS fixed
+            FROM vuln_findings
+            WHERE state IN ('OPEN','REOPENED','FIXED')
+              AND first_found >= %(start)s::date AND first_found < %(snap)s::date + INTERVAL '1 day'
+            GROUP BY 1, 2, 3, 4
+            UNION ALL
+            SELECT last_fixed::date, site_label, severity, source, 0, count(*)
+            FROM vuln_findings
+            WHERE state = 'FIXED'
+              AND last_fixed >= %(start)s::date AND last_fixed < %(snap)s::date + INTERVAL '1 day'
+            GROUP BY 1, 2, 3, 4
+        ) x
+        GROUP BY 1, 2, 3, 4
+        """,
+        {"start": start, "snap": snapshot_date},
     )
 
 
@@ -570,12 +638,12 @@ def rollup_email_metrics(cur, snapshot_date: dt.date, lookback_days: int = 3) ->
     cur.execute("DELETE FROM daily_email_metrics WHERE snapshot_date >= %s", (start,))
     cur.execute(
         """
-        INSERT INTO daily_email_metrics (snapshot_date, site_label, event_type, events, high_plus)
-        SELECT created_at::date, site_label, COALESCE(event_type, 'unknown'),
+        INSERT INTO daily_email_metrics (snapshot_date, site_label, event_type, direction, events, high_plus)
+        SELECT created_at::date, site_label, COALESCE(event_type, 'unknown'), COALESCE(direction, 'unknown'),
                count(*), count(*) FILTER (WHERE severity IN ('critical','high'))
         FROM email_events
         WHERE created_at::date >= %s AND created_at::date <= %s
-        GROUP BY 1, 2, 3
+        GROUP BY 1, 2, 3, 4
         """,
         (start, snapshot_date),
     )
@@ -588,6 +656,12 @@ def main():
     parser = argparse.ArgumentParser(description="Roll up vuln_findings into daily snapshot tables")
     parser.add_argument("--config", default="config.yaml")
     parser.add_argument("--new-window-days", type=int, default=7, help="new_*/fixed_* window in days")
+    parser.add_argument("--flow-lookback-days", type=int, default=14,
+                        help="per-event-day tables (vuln flow, mttr, alerts, email) are recomputed this many "
+                             "days back every run, so late-arriving events land on their own day")
+    parser.add_argument("--backfill-days", type=int,
+                        help="one-off: recompute the per-event-day tables this far back instead (bounded by "
+                             "source retention -- FIXED findings 180d, alerts/email 365d)")
     parser.add_argument("--dry-run", action="store_true", help="Print computed rollup without writing")
     args = parser.parse_args()
 
@@ -595,6 +669,7 @@ def main():
     db_schema.ensure_schema(cfg)
     days_last_seen = cfg.get("reporting", {}).get("days_last_seen", 30)
     snapshot_date = dt.date.today()
+    flow_start = snapshot_date - dt.timedelta(days=args.backfill_days or args.flow_lookback_days)
 
     conn = pg_connect(cfg)
     cur = conn.cursor()
@@ -604,7 +679,7 @@ def main():
     product_rows = rollup_product_metrics(cur, days_last_seen, args.new_window_days)
     kev_data = rollup_kev_metrics(cur, cfg, days_last_seen)
     epss_data = rollup_epss_metrics(cur, cfg, days_last_seen)
-    mttr_rows = rollup_mttr_metrics(cur, snapshot_date)
+    mttr_rows = rollup_mttr_metrics(cur, flow_start, snapshot_date)
 
     if args.dry_run:
         print(f"[rollup] DRY RUN for {snapshot_date}")
@@ -622,19 +697,21 @@ def main():
     write_product_metrics(cur, snapshot_date, product_rows)
     write_kev_metrics(cur, snapshot_date, kev_data)
     write_epss_metrics(cur, snapshot_date, epss_data)
-    write_mttr_metrics(cur, snapshot_date, mttr_rows)
+    write_mttr_metrics(cur, flow_start, snapshot_date, mttr_rows)
+    rollup_vuln_flow_metrics(cur, flow_start, snapshot_date)
 
     rollup_source_metrics(cur, snapshot_date, days_last_seen)
     rollup_asset_metrics(cur, cfg, snapshot_date)
-    rollup_alert_metrics(cur, snapshot_date)
+    rollup_alert_metrics(cur, flow_start, snapshot_date)
     rollup_identity_metrics(cur, snapshot_date)
-    rollup_email_metrics(cur, snapshot_date)
+    rollup_email_metrics(cur, snapshot_date, (snapshot_date - flow_start).days)
 
     conn.commit()
     conn.close()
     print(f"[rollup] Wrote vuln snapshots (daily_site/sla/product/kev/epss/mttr, "
           f"{len(product_rows)} product rows, {len(mttr_rows)} mttr rows) and "
-          f"daily_source/asset/alert/identity/email metrics for {snapshot_date}.")
+          f"daily_source/asset/alert/identity/email metrics for {snapshot_date}; "
+          f"per-event-day tables (vuln flow, mttr, alerts, email) recomputed from {flow_start}.")
 
 
 if __name__ == "__main__":

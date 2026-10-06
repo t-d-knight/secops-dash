@@ -1,0 +1,1703 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_POSTGRESQL",
+      "label": "PostgreSQL",
+      "description": "Postgres datasource pointing at the secops_dashboard database",
+      "type": "datasource",
+      "pluginId": "postgres",
+      "pluginName": "PostgreSQL"
+    }
+  ],
+  "__requires": [
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "10.0.0"
+    },
+    {
+      "type": "datasource",
+      "id": "postgres",
+      "name": "PostgreSQL",
+      "version": "1.0.0"
+    }
+  ],
+  "id": null,
+  "uid": "secops-worklist",
+  "title": "SecOps Cyber Team Worklist",
+  "description": "Coverage gaps, data quality and triage queues for the cyber team",
+  "tags": [
+    "secops"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "1h",
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "type": "dashboards",
+      "tags": [
+        "secops"
+      ],
+      "asDropdown": false,
+      "title": "SecOps",
+      "includeVars": true,
+      "keepTime": true
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "site",
+        "type": "query",
+        "label": "Site",
+        "datasource": {
+          "type": "postgres",
+          "uid": "${DS_POSTGRESQL}"
+        },
+        "query": "SELECT site_label FROM dim_site ORDER BY site_label = 'Ungrouped', site_label",
+        "definition": "SELECT site_label FROM dim_site",
+        "refresh": 1,
+        "sort": 0,
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 2,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 3
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "### Cyber Team Worklist\nCoverage gaps, data-quality problems and triage queues -- the things to fix so every other dashboard and report is telling the truth. Point-in-time (the time picker doesn't apply), filtered by **Site**. Start with **Feed health**: a failing feed makes everything downstream stale."
+      }
+    },
+    {
+      "id": 3,
+      "type": "row",
+      "title": "Feed health",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Collectors (latest run each)",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 24,
+        "h": 7
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "ok": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "partial": {
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "error": {
+                        "color": "red",
+                        "index": 2
+                      },
+                      "running": {
+                        "color": "blue",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT DISTINCT ON (collector) collector AS \"Collector\", status AS \"Status\", started_at AS \"Last run\", round(EXTRACT(EPOCH FROM finished_at - started_at))::int AS \"Seconds\", (SELECT max(started_at) FROM collector_runs c2 WHERE c2.collector = r.collector AND c2.status = 'ok') AS \"Last success\", left(error, 200) AS \"Error\" FROM collector_runs r ORDER BY collector, started_at DESC"
+        }
+      ],
+      "description": "Disabled feeds keep their last run here. An 'error' row for a feed you rely on means its panels and report figures are stale since 'Last success'."
+    },
+    {
+      "id": 5,
+      "type": "row",
+      "title": "Endpoint coverage",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Active managed hosts (7d)",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM (SELECT * FROM assets WHERE source = 'falcon' AND NOT retired AND last_seen > now() - interval '7 days') a WHERE site_label IN ($site)"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Vulnerability assessment coverage",
+      "gridPos": {
+        "x": 4,
+        "y": 12,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "green",
+                "value": 95
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT 100.0 * count(*) FILTER (WHERE a.source_asset_id IN (SELECT DISTINCT source_asset_id FROM vuln_findings WHERE source = 'falcon_spotlight')) / NULLIF(count(*), 0) FROM (SELECT * FROM assets WHERE source = 'falcon' AND NOT retired AND last_seen > now() - interval '7 days') a WHERE a.site_label IN ($site)"
+        }
+      ],
+      "description": "Active managed hosts Falcon has returned vulnerability data for. Everything below 100% is estate the vuln figures can't see."
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Active hosts not assessed",
+      "gridPos": {
+        "x": 8,
+        "y": 12,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM (SELECT * FROM assets WHERE source = 'falcon' AND NOT retired AND last_seen > now() - interval '7 days') a WHERE a.site_label IN ($site) AND a.source_asset_id NOT IN (SELECT DISTINCT source_asset_id FROM vuln_findings WHERE source = 'falcon_spotlight')"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "Stale sensors",
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM assets WHERE source = 'falcon' AND NOT retired AND site_label IN ($site) AND last_seen <= now() - interval '7 days'"
+        }
+      ],
+      "description": "Managed hosts silent for 7+ days: unprotected, unassessed, or decommissioned but not removed from Falcon."
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Named machines missing a sensor",
+      "gridPos": {
+        "x": 16,
+        "y": 12,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND site_label IN ($site) AND discovery_class IN ('domain_controller_no_sensor', 'server_no_sensor', 'workstation_no_sensor', 'cloud_no_sensor')"
+        }
+      ],
+      "description": "AD computer accounts in active use (servers, workstations, DCs) with no Falcon sensor -- Discover's unmanaged list minus duplicates, service accounts, appliances and stale objects. Network-only devices are counted separately below."
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Hosts in Ungrouped",
+      "gridPos": {
+        "x": 20,
+        "y": 12,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM assets WHERE NOT retired AND site_label = 'Ungrouped'"
+        }
+      ],
+      "description": "Managed + unmanaged hosts no site rule matched (ignores the Site filter). Fix with falcon_groups / ou_contains / hostname_regex in config.yaml."
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Coverage by site",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 10,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "% assessed"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 80
+                    },
+                    {
+                      "color": "green",
+                      "value": 95
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT s.site_label AS \"Site\", COALESCE(a.active,0) AS \"Active hosts\", COALESCE(a.assessed,0) AS \"Assessed\", round(100.0 * COALESCE(a.assessed,0) / NULLIF(a.active,0), 1) AS \"% assessed\", COALESCE(st.n,0) AS \"Stale sensors\", COALESCE(u.n,0) AS \"Missing a sensor\" FROM dim_site s LEFT JOIN (SELECT site_label, count(*) AS active, count(*) FILTER (WHERE source_asset_id IN (SELECT DISTINCT source_asset_id FROM vuln_findings WHERE source = 'falcon_spotlight')) AS assessed FROM (SELECT * FROM assets WHERE source = 'falcon' AND NOT retired AND last_seen > now() - interval '7 days') x GROUP BY 1) a ON a.site_label = s.site_label LEFT JOIN (SELECT site_label, count(*) n FROM assets WHERE source = 'falcon' AND NOT retired AND last_seen <= now() - interval '7 days' GROUP BY 1) st ON st.site_label = s.site_label LEFT JOIN (SELECT site_label, count(*) n FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND discovery_class IN ('domain_controller_no_sensor', 'server_no_sensor', 'workstation_no_sensor', 'cloud_no_sensor') GROUP BY 1) u ON u.site_label = s.site_label WHERE s.site_label IN ($site) ORDER BY \"% assessed\" NULLS LAST, \"Active hosts\" DESC"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "Active hosts with no vulnerability data",
+      "gridPos": {
+        "x": 10,
+        "y": 16,
+        "w": 14,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT a.hostname AS \"Hostname\", a.site_label AS \"Site\", a.product_type AS \"Type\", a.os_version AS \"OS\", a.sensor_version AS \"Sensor\", a.last_seen AS \"Last seen\", array_to_string(a.groups, ', ') AS \"Host groups\" FROM (SELECT * FROM assets WHERE source = 'falcon' AND NOT retired AND last_seen > now() - interval '7 days') a WHERE a.site_label IN ($site) AND a.source_asset_id NOT IN (SELECT DISTINCT source_asset_id FROM vuln_findings WHERE source = 'falcon_spotlight') ORDER BY a.site_label, a.hostname"
+        }
+      ],
+      "description": "Compare sensor version, host groups and policy against assessed hosts to find what Exposure Management isn't covering."
+    },
+    {
+      "id": 14,
+      "type": "row",
+      "title": "Missing endpoints",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 15,
+      "type": "table",
+      "title": "Stale sensors (silent 7+ days)",
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 12,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Days silent"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-YlRd"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT hostname AS \"Hostname\", site_label AS \"Site\", product_type AS \"Type\", os_version AS \"OS\", last_seen AS \"Last seen\", (now()::date - last_seen::date) AS \"Days silent\", sensor_version AS \"Sensor\", array_to_string(ous, ' / ') AS \"OU\" FROM assets WHERE source = 'falcon' AND NOT retired AND site_label IN ($site) AND last_seen <= now() - interval '7 days' ORDER BY last_seen"
+        }
+      ],
+      "description": "Decommissioned: remove from Falcon. Still in use: fix the sensor."
+    },
+    {
+      "id": 16,
+      "type": "table",
+      "title": "Unmanaged assets by class",
+      "gridPos": {
+        "x": 12,
+        "y": 27,
+        "w": 12,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT CASE discovery_class WHEN 'domain_controller_no_sensor' THEN 'Domain controller, no sensor' WHEN 'server_no_sensor' THEN 'Windows server, no sensor' WHEN 'workstation_no_sensor' THEN 'Windows workstation, no sensor' WHEN 'cloud_no_sensor' THEN 'Cloud instance, no sensor' WHEN 'vmware_nic' THEN 'VMware NIC seen on network' WHEN 'network_device' THEN 'Device seen on network' WHEN 'appliance_ad_account' THEN 'Appliance with an AD account' WHEN 'duplicate_of_managed' THEN 'Same name as a managed host' WHEN 'secondary_ip_of_managed' THEN 'Extra IP of a managed host' WHEN 'service_account' THEN 'Service account (gMSA/MSA)' WHEN 'cluster_name' THEN 'Cluster / listener name' WHEN 'out_of_scope' THEN 'Outside this Falcon tenant' WHEN 'disabled_ad_account' THEN 'Disabled AD computer account' WHEN 'stale_ad_account' THEN 'AD account, no logon in 60+ days' ELSE COALESCE(discovery_class, 'unclassified') END AS \"Class\", count(*) AS \"Assets\", CASE WHEN discovery_class IN ('domain_controller_no_sensor', 'server_no_sensor', 'workstation_no_sensor', 'cloud_no_sensor', 'vmware_nic', 'network_device') THEN 'Yes' ELSE 'No' END AS \"Needs a sensor?\", CASE discovery_class WHEN 'domain_controller_no_sensor' THEN 'Install a sensor now (or retire the DC)' WHEN 'server_no_sensor' THEN 'Install a sensor, or record why it can''t have one' WHEN 'workstation_no_sensor' THEN 'Install a sensor; check it isn''t a renamed managed host' WHEN 'cloud_no_sensor' THEN 'Install a sensor' WHEN 'vmware_nic' THEN 'VM without a sensor, or an ESXi management interface: identify by IP' WHEN 'network_device' THEN 'Identify by IP/MAC vendor: PC needing a sensor, or printer/IoT/appliance' WHEN 'appliance_ad_account' THEN 'Can''t take a sensor (ISE, vCenter, NAS...): confirm it''s known' WHEN 'duplicate_of_managed' THEN 'Already has a sensor -- Falcon didn''t link the AD record' WHEN 'secondary_ip_of_managed' THEN 'Shares a managed host''s MAC: cluster/listener IP or multi-homed' WHEN 'service_account' THEN 'Not a machine' WHEN 'cluster_name' THEN 'Not a machine (SQL AG listener, cluster or DAG name)' WHEN 'out_of_scope' THEN 'Managed in another CID, or a departed service''s leftover AD object: no sensor needed here (collectors.falcon_hosts.out_of_scope_ous)' WHEN 'disabled_ad_account' THEN 'Not in use: delete from AD when convenient' WHEN 'stale_ad_account' THEN 'Probably gone: confirm and delete from AD' ELSE COALESCE(discovery_class, 'unclassified') END AS \"What to do\" FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND site_label IN ($site) GROUP BY discovery_class ORDER BY \"Needs a sensor?\" DESC, \"Assets\" DESC"
+        }
+      ],
+      "description": "Discover's unmanaged list, sorted into real machines without a sensor vs records that aren't missing endpoints at all. Classified by collectors/falcon_hosts.py."
+    },
+    {
+      "id": 17,
+      "type": "row",
+      "title": "Missing sensors: named machines",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 37,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 18,
+      "type": "table",
+      "title": "Servers, DCs and workstations with no sensor (AD accounts in use)",
+      "gridPos": {
+        "x": 0,
+        "y": 38,
+        "w": 24,
+        "h": 12
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT hostname AS \"Hostname\", CASE discovery_class WHEN 'domain_controller_no_sensor' THEN 'Domain controller, no sensor' WHEN 'server_no_sensor' THEN 'Windows server, no sensor' WHEN 'workstation_no_sensor' THEN 'Windows workstation, no sensor' WHEN 'cloud_no_sensor' THEN 'Cloud instance, no sensor' WHEN 'vmware_nic' THEN 'VMware NIC seen on network' WHEN 'network_device' THEN 'Device seen on network' WHEN 'appliance_ad_account' THEN 'Appliance with an AD account' WHEN 'duplicate_of_managed' THEN 'Same name as a managed host' WHEN 'secondary_ip_of_managed' THEN 'Extra IP of a managed host' WHEN 'service_account' THEN 'Service account (gMSA/MSA)' WHEN 'cluster_name' THEN 'Cluster / listener name' WHEN 'out_of_scope' THEN 'Outside this Falcon tenant' WHEN 'disabled_ad_account' THEN 'Disabled AD computer account' WHEN 'stale_ad_account' THEN 'AD account, no logon in 60+ days' ELSE COALESCE(discovery_class, 'unclassified') END AS \"Class\", site_label AS \"Site\", os_version AS \"OS\", last_seen AS \"Last AD logon\", description AS \"AD description\", ad_created::date AS \"AD account created\", domain AS \"Domain\" FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND site_label IN ($site) AND discovery_class IN ('domain_controller_no_sensor', 'server_no_sensor', 'workstation_no_sensor', 'cloud_no_sensor') ORDER BY CASE discovery_class WHEN 'domain_controller_no_sensor' THEN 1 WHEN 'server_no_sensor' THEN 2 WHEN 'cloud_no_sensor' THEN 3 ELSE 4 END, site_label, hostname"
+        }
+      ],
+      "description": "Real, in-use Windows machines Falcon knows from AD but that have no sensor. Install one, or record why not (vendor-supported clinical systems). A workstation here can also be a renamed managed host -- check the name in Falcon first."
+    },
+    {
+      "id": 19,
+      "type": "row",
+      "title": "Missing sensors: devices seen on the network",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 50,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 20,
+      "type": "table",
+      "title": "Network devices with no sensor (passive discovery)",
+      "gridPos": {
+        "x": 0,
+        "y": 51,
+        "w": 16,
+        "h": 12
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT COALESCE(hostname, '(no hostname)') AS \"Hostname\", CASE discovery_class WHEN 'domain_controller_no_sensor' THEN 'Domain controller, no sensor' WHEN 'server_no_sensor' THEN 'Windows server, no sensor' WHEN 'workstation_no_sensor' THEN 'Windows workstation, no sensor' WHEN 'cloud_no_sensor' THEN 'Cloud instance, no sensor' WHEN 'vmware_nic' THEN 'VMware NIC seen on network' WHEN 'network_device' THEN 'Device seen on network' WHEN 'appliance_ad_account' THEN 'Appliance with an AD account' WHEN 'duplicate_of_managed' THEN 'Same name as a managed host' WHEN 'secondary_ip_of_managed' THEN 'Extra IP of a managed host' WHEN 'service_account' THEN 'Service account (gMSA/MSA)' WHEN 'cluster_name' THEN 'Cluster / listener name' WHEN 'out_of_scope' THEN 'Outside this Falcon tenant' WHEN 'disabled_ad_account' THEN 'Disabled AD computer account' WHEN 'stale_ad_account' THEN 'AD account, no logon in 60+ days' ELSE COALESCE(discovery_class, 'unclassified') END AS \"Class\", COALESCE(mac_vendor, '?') AS \"MAC vendor\", array_to_string(ips, ', ') AS \"IPs\", array_to_string(mac_addresses, ', ') AS \"MACs\", site_label AS \"Site\", last_seen AS \"Last seen\" FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND site_label IN ($site) AND discovery_class IN ('vmware_nic', 'network_device') ORDER BY mac_vendor NULLS LAST, site_label, ips"
+        }
+      ],
+      "description": "Seen talking on the network by managed sensors, no AD account. VMware MACs are VMs without a sensor or ESXi management interfaces; Dell/Intel/HP/Lenovo NICs are often PCs; printers, phones and IoT can't take a sensor."
+    },
+    {
+      "id": 21,
+      "type": "table",
+      "title": "Network devices by MAC vendor",
+      "gridPos": {
+        "x": 16,
+        "y": 51,
+        "w": 8,
+        "h": 12
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT COALESCE(mac_vendor, '(unknown)') AS \"MAC vendor\", count(*) AS \"Devices\", count(*) FILTER (WHERE hostname IS NOT NULL) AS \"With hostname\" FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND site_label IN ($site) AND discovery_class IN ('vmware_nic', 'network_device') GROUP BY 1 ORDER BY 2 DESC"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "row",
+      "title": "Not missing endpoints (AD cleanup)",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 63,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 23,
+          "type": "table",
+          "title": "Discover records that aren't unsensored machines",
+          "gridPos": {
+            "x": 0,
+            "y": 64,
+            "w": 24,
+            "h": 12
+          },
+          "datasource": {
+            "type": "postgres",
+            "uid": "${DS_POSTGRESQL}"
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          },
+          "options": {
+            "showHeader": true,
+            "footer": {
+              "show": false
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "format": "table",
+              "rawQuery": true,
+              "editorMode": "code",
+              "rawSql": "SELECT hostname AS \"Hostname\", CASE discovery_class WHEN 'domain_controller_no_sensor' THEN 'Domain controller, no sensor' WHEN 'server_no_sensor' THEN 'Windows server, no sensor' WHEN 'workstation_no_sensor' THEN 'Windows workstation, no sensor' WHEN 'cloud_no_sensor' THEN 'Cloud instance, no sensor' WHEN 'vmware_nic' THEN 'VMware NIC seen on network' WHEN 'network_device' THEN 'Device seen on network' WHEN 'appliance_ad_account' THEN 'Appliance with an AD account' WHEN 'duplicate_of_managed' THEN 'Same name as a managed host' WHEN 'secondary_ip_of_managed' THEN 'Extra IP of a managed host' WHEN 'service_account' THEN 'Service account (gMSA/MSA)' WHEN 'cluster_name' THEN 'Cluster / listener name' WHEN 'out_of_scope' THEN 'Outside this Falcon tenant' WHEN 'disabled_ad_account' THEN 'Disabled AD computer account' WHEN 'stale_ad_account' THEN 'AD account, no logon in 60+ days' ELSE COALESCE(discovery_class, 'unclassified') END AS \"Class\", managed_twin AS \"Managed host\", site_label AS \"Site\", os_version AS \"OS\", ad_enabled AS \"AD enabled\", last_seen AS \"Last AD logon\", description AS \"AD description\" FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND site_label IN ($site) AND discovery_class NOT IN ('domain_controller_no_sensor', 'server_no_sensor', 'workstation_no_sensor', 'cloud_no_sensor', 'vmware_nic', 'network_device') ORDER BY discovery_class, hostname"
+            }
+          ],
+          "description": "Duplicates of managed hosts (Falcon didn't link the AD object), service accounts, appliances, cluster/listener names, disabled or stale AD accounts. No sensor needed; disabled/stale ones are AD cleanup."
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "type": "row",
+      "title": "External attack surface (Hadrian) hygiene",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 76,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 25,
+      "type": "stat",
+      "title": "Potential risks to triage",
+      "gridPos": {
+        "x": 0,
+        "y": 77,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM vuln_findings WHERE source = 'hadrian' AND state IN ('OPEN','REOPENED') AND risk_type = 'Potential' AND site_label IN ($site)"
+        }
+      ],
+      "description": "Unverified detections: confirm (promote) or dismiss in Hadrian."
+    },
+    {
+      "id": 26,
+      "type": "stat",
+      "title": "Confirmed risks open",
+      "gridPos": {
+        "x": 4,
+        "y": 77,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM vuln_findings WHERE source = 'hadrian' AND state IN ('OPEN','REOPENED') AND risk_type IN ('Verified','UnpatchedTechnology','InfectedDevice') AND site_label IN ($site)"
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "type": "stat",
+      "title": "Infostealer infections",
+      "gridPos": {
+        "x": 8,
+        "y": 77,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM vuln_findings WHERE source = 'hadrian' AND state IN ('OPEN','REOPENED') AND risk_type = 'InfectedDevice' AND site_label IN ($site)"
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "type": "stat",
+      "title": "Assets not matched by tag",
+      "gridPos": {
+        "x": 12,
+        "y": 77,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM external_assets WHERE source = 'hadrian' AND NOT retired AND site_matched_by <> 'hadrian_tag' AND site_label IN ($site)"
+        }
+      ],
+      "description": "Tag these in Hadrian -- the collector also writes them to reports/hadrian-suggested-tags.csv."
+    },
+    {
+      "id": 29,
+      "type": "stat",
+      "title": "Assets not seen in 30 days",
+      "gridPos": {
+        "x": 16,
+        "y": 77,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM external_assets WHERE source = 'hadrian' AND NOT retired AND site_label IN ($site) AND (last_seen IS NULL OR last_seen < now() - interval '30 days')"
+        }
+      ],
+      "description": "Hadrian hasn't observed these recently: gone, moved, or no longer reachable. Archive (zzArchive) if abandoned."
+    },
+    {
+      "id": 30,
+      "type": "stat",
+      "title": "Reopened risks",
+      "gridPos": {
+        "x": 20,
+        "y": 77,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM vuln_findings WHERE source = 'hadrian' AND state = 'REOPENED' AND site_label IN ($site)"
+        }
+      ],
+      "description": "Risks marked fixed that Hadrian found again -- the fix didn't hold."
+    },
+    {
+      "id": 31,
+      "type": "table",
+      "title": "Triage queue: potential risks by title",
+      "gridPos": {
+        "x": 0,
+        "y": 81,
+        "w": 14,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Severity"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Critical": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "High": {
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "Medium": {
+                        "color": "dark-yellow",
+                        "index": 2
+                      },
+                      "Low": {
+                        "color": "yellow",
+                        "index": 3
+                      },
+                      "critical": {
+                        "color": "red",
+                        "index": 4
+                      },
+                      "high": {
+                        "color": "orange",
+                        "index": 5
+                      },
+                      "medium": {
+                        "color": "dark-yellow",
+                        "index": 6
+                      },
+                      "low": {
+                        "color": "yellow",
+                        "index": 7
+                      },
+                      "info": {
+                        "color": "blue",
+                        "index": 8
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT title AS \"Risk\", max(plugin_family) AS \"Category\", max(vendor_priority) AS \"Severity\", count(*) AS \"Open\", count(DISTINCT site_label) AS \"Sites\", min(first_found)::date AS \"Oldest\" FROM vuln_findings WHERE source = 'hadrian' AND state IN ('OPEN','REOPENED') AND risk_type = 'Potential' AND site_label IN ($site) GROUP BY title ORDER BY CASE max(vendor_priority) WHEN 'Critical' THEN 1 WHEN 'High' THEN 2 WHEN 'Medium' THEN 3 WHEN 'Low' THEN 4 ELSE 5 END, count(*) DESC"
+        }
+      ],
+      "description": "Grouped so one decision clears many: confirm or dismiss each title across its assets."
+    },
+    {
+      "id": 32,
+      "type": "table",
+      "title": "Infostealer infections",
+      "gridPos": {
+        "x": 14,
+        "y": 81,
+        "w": 10,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT title AS \"Infection\", site_label AS \"Site\", hostname AS \"Asset\", first_found::date AS \"First seen\", state AS \"State\" FROM vuln_findings WHERE source = 'hadrian' AND state IN ('OPEN','REOPENED') AND risk_type = 'InfectedDevice' AND site_label IN ($site) ORDER BY first_found"
+        }
+      ],
+      "description": "Compromised credentials harvested from infected devices. Reset the named accounts and find the device. Not masked here -- this dashboard is for the cyber team."
+    },
+    {
+      "id": 33,
+      "type": "table",
+      "title": "External assets: not tag-matched or not recently seen",
+      "gridPos": {
+        "x": 0,
+        "y": 91,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT name AS \"Asset\", asset_type AS \"Type\", site_label AS \"Site\", site_matched_by AS \"Site from\", last_seen AS \"Last seen by Hadrian\" FROM external_assets WHERE source = 'hadrian' AND NOT retired AND site_label IN ($site) AND (site_matched_by <> 'hadrian_tag' OR last_seen IS NULL OR last_seen < now() - interval '30 days') ORDER BY last_seen NULLS FIRST"
+        }
+      ]
+    },
+    {
+      "id": 34,
+      "type": "row",
+      "title": "Identity site mapping",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 99,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 35,
+      "type": "table",
+      "title": "Identities in Ungrouped, by domain and OU",
+      "gridPos": {
+        "x": 0,
+        "y": 100,
+        "w": 12,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT COALESCE(domain, '(none)') AS \"Domain\", COALESCE(NULLIF(split_part(ou, ',', 1), ''), '(none)') AS \"OU (first part)\", count(*) AS \"Identities\", count(*) FILTER (WHERE enabled) AS \"Enabled\" FROM identity_entities WHERE NOT retired AND site_label = 'Ungrouped' GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 200"
+        }
+      ],
+      "description": "Ignores the Site filter. Each row is a mapping rule waiting to be written: add the domain or OU fragment to the right site in config.yaml."
+    },
+    {
+      "id": 36,
+      "type": "table",
+      "title": "Identities per site",
+      "gridPos": {
+        "x": 12,
+        "y": 100,
+        "w": 12,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT s.site_label AS \"Site\", count(e.entity_id) AS \"Identities\", count(e.entity_id) FILTER (WHERE e.enabled) AS \"Enabled\" FROM dim_site s LEFT JOIN identity_entities e ON e.site_label = s.site_label AND NOT e.retired GROUP BY 1 ORDER BY 2 DESC"
+        }
+      ],
+      "description": "A site with far fewer identities than staff is a sign its accounts are landing in Ungrouped (or another site)."
+    },
+    {
+      "id": 37,
+      "type": "row",
+      "title": "DMARC (parsedmarc)",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 110,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 38,
+          "type": "text",
+          "title": "",
+          "gridPos": {
+            "x": 0,
+            "y": 111,
+            "w": 24,
+            "h": 3
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "Populates once the **dmarc** collector is enabled and can reach the parsedmarc OpenSearch (`collectors.dmarc.opensearch_url` in config.yaml). Until then these panels are empty -- check **Feed health** above for its last error."
+          }
+        },
+        {
+          "id": 39,
+          "type": "table",
+          "title": "DMARC pass rate by sending domain (range)",
+          "gridPos": {
+            "x": 0,
+            "y": 114,
+            "w": 12,
+            "h": 9
+          },
+          "datasource": {
+            "type": "postgres",
+            "uid": "${DS_POSTGRESQL}"
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Pass %"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "red",
+                          "value": null
+                        },
+                        {
+                          "color": "orange",
+                          "value": 80
+                        },
+                        {
+                          "color": "green",
+                          "value": 95
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "footer": {
+              "show": false
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "format": "table",
+              "rawQuery": true,
+              "editorMode": "code",
+              "rawSql": "SELECT header_from AS \"From domain\", sum(messages) AS \"Messages\", round(100.0 * sum(dmarc_pass) / NULLIF(sum(messages), 0), 1) AS \"Pass %\", sum(quarantined) AS \"Quarantined\", sum(rejected) AS \"Rejected\" FROM dmarc_daily WHERE site_label IN ($site) AND report_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1 ORDER BY \"Pass %\" NULLS LAST, 2 DESC"
+            }
+          ]
+        },
+        {
+          "id": 40,
+          "type": "table",
+          "title": "Top failing sources (range)",
+          "gridPos": {
+            "x": 12,
+            "y": 114,
+            "w": 12,
+            "h": 9
+          },
+          "datasource": {
+            "type": "postgres",
+            "uid": "${DS_POSTGRESQL}"
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          },
+          "options": {
+            "showHeader": true,
+            "footer": {
+              "show": false
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "format": "table",
+              "rawQuery": true,
+              "editorMode": "code",
+              "rawSql": "SELECT header_from AS \"From domain\", COALESCE(source_name, source_base_domain, source_ip) AS \"Source\", source_country AS \"Country\", sum(messages - dmarc_pass) AS \"Failing messages\", bool_or(spf_aligned > 0) AS \"Any SPF aligned\", bool_or(dkim_aligned > 0) AS \"Any DKIM aligned\" FROM dmarc_daily WHERE site_label IN ($site) AND report_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1, 2, 3 HAVING sum(messages - dmarc_pass) > 0 ORDER BY 4 DESC LIMIT 50"
+            }
+          ],
+          "description": "Legitimate senders failing here need SPF/DKIM set up; unknown ones are spoofing."
+        }
+      ]
+    }
+  ]
+}

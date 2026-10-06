@@ -150,6 +150,10 @@ DDL_STATEMENTS = [
     "ALTER TABLE vuln_findings ADD COLUMN IF NOT EXISTS fix_id TEXT;",
     "ALTER TABLE vuln_findings ADD COLUMN IF NOT EXISTS fix_title TEXT;",
     "ALTER TABLE vuln_findings ADD COLUMN IF NOT EXISTS vendor_priority TEXT;",
+    # Hadrian riskType (Potential | Verified | UnpatchedTechnology |
+    # InfectedDevice): separates confirmed external risks from unverified
+    # "potential" ones. NULL for sources without the concept.
+    "ALTER TABLE vuln_findings ADD COLUMN IF NOT EXISTS risk_type TEXT;",
     "CREATE INDEX IF NOT EXISTS idx_vuln_findings_source_state ON vuln_findings (source, state);",
     "CREATE INDEX IF NOT EXISTS idx_vuln_findings_fix ON vuln_findings (source, fix_id) WHERE state IN ('OPEN','REOPENED');",
     # --- core ------------------------------------------------------------
@@ -210,6 +214,19 @@ DDL_STATEMENTS = [
     );
     """,
     "CREATE INDEX IF NOT EXISTS idx_assets_site ON assets (site_label) WHERE NOT retired;",
+    # Discover detail for telling real unsensored machines from noise (see
+    # collectors/falcon_hosts.py classify_unmanaged). mac_addresses is also
+    # filled for managed hosts (primary MAC) so an unmanaged record sharing a
+    # managed host's MAC can be recognised as that host's secondary IP.
+    "ALTER TABLE assets ADD COLUMN IF NOT EXISTS mac_addresses TEXT[];",
+    "ALTER TABLE assets ADD COLUMN IF NOT EXISTS mac_vendor TEXT;",
+    "ALTER TABLE assets ADD COLUMN IF NOT EXISTS data_providers TEXT[];",
+    "ALTER TABLE assets ADD COLUMN IF NOT EXISTS ad_uac INTEGER;",
+    "ALTER TABLE assets ADD COLUMN IF NOT EXISTS ad_enabled BOOLEAN;",
+    "ALTER TABLE assets ADD COLUMN IF NOT EXISTS ad_created TIMESTAMPTZ;",
+    "ALTER TABLE assets ADD COLUMN IF NOT EXISTS description TEXT;",
+    "ALTER TABLE assets ADD COLUMN IF NOT EXISTS discovery_class TEXT;",
+    "ALTER TABLE assets ADD COLUMN IF NOT EXISTS managed_twin TEXT;",
     """
     CREATE TABLE IF NOT EXISTS external_assets (
         source           TEXT NOT NULL,
@@ -240,6 +257,8 @@ DDL_STATEMENTS = [
         severity         TEXT NOT NULL,       -- critical | high | medium | low | info
         severity_score   INTEGER,
         status           TEXT,                -- new | in_progress | closed
+        disposition      TEXT,                -- raw vendor verdict: new | in_progress | reopened |
+                                               -- closed | true_positive | false_positive | ignored
         name             TEXT,
         tactic           TEXT,
         technique        TEXT,
@@ -254,7 +273,9 @@ DDL_STATEMENTS = [
         PRIMARY KEY (source, alert_id)
     );
     """,
+    "ALTER TABLE security_alerts ADD COLUMN IF NOT EXISTS disposition TEXT;",
     "CREATE INDEX IF NOT EXISTS idx_alerts_created ON security_alerts (created_at);",
+    "CREATE INDEX IF NOT EXISTS idx_alerts_disposition ON security_alerts (source, disposition);",
     # --- identity --------------------------------------------------------
     """
     CREATE TABLE IF NOT EXISTS identity_entities (
@@ -354,6 +375,9 @@ DDL_STATEMENTS = [
         sender            TEXT,
         sender_domain     TEXT,
         recipient_domain  TEXT,
+        -- inbound/outbound/internal/unknown, relative to our own
+        -- configured email_domains (see site_resolver.email_direction)
+        direction         TEXT,
         action_taken      TEXT,
         description       TEXT,
         site_label        TEXT NOT NULL,
@@ -364,6 +388,8 @@ DDL_STATEMENTS = [
     );
     """,
     "CREATE INDEX IF NOT EXISTS idx_email_events_created ON email_events (created_at);",
+    "ALTER TABLE email_events ADD COLUMN IF NOT EXISTS direction TEXT;",
+    "CREATE INDEX IF NOT EXISTS idx_email_events_direction ON email_events (direction);",
     """
     CREATE TABLE IF NOT EXISTS dmarc_daily (
         report_date         DATE NOT NULL,
@@ -441,6 +467,29 @@ DDL_STATEMENTS = [
         PRIMARY KEY (snapshot_date, site_label)
     );
     """,
+    # new_*/closed_today/median are per EVENT day (created_at/closed_at) and
+    # recomputed over a lookback window every run, so past days get filled
+    # in. open_* is a point-in-time count only the run day itself can know:
+    # NULL on a day no run snapshotted (e.g. backfilled history), never a
+    # fake 0.
+    "ALTER TABLE daily_alert_metrics ALTER COLUMN open_total DROP NOT NULL;",
+    "ALTER TABLE daily_alert_metrics ALTER COLUMN open_crit_high DROP NOT NULL;",
+    # Vulns opened/fixed per EVENT day (first_found / last_fixed), recomputed
+    # over a lookback window like daily_alert_metrics. Kept as its own
+    # snapshot table (540-day retention) because maintenance.sh purges FIXED
+    # findings after 180 days -- a quarter-on-quarter comparison can't be
+    # recomputed from vuln_findings alone. EXPIRED findings are not counted
+    # as opened (Spotlight expires huge volumes of short-lived records).
+    """
+    CREATE TABLE IF NOT EXISTS daily_vuln_flow_metrics (
+        snapshot_date   DATE NOT NULL,
+        site_label      TEXT NOT NULL,
+        severity        TEXT NOT NULL,
+        opened          INTEGER NOT NULL DEFAULT 0,
+        fixed           INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (snapshot_date, site_label, severity)
+    );
+    """,
     """
     CREATE TABLE IF NOT EXISTS daily_identity_metrics (
         snapshot_date   DATE NOT NULL,
@@ -455,10 +504,30 @@ DDL_STATEMENTS = [
         snapshot_date  DATE NOT NULL,
         site_label     TEXT NOT NULL,
         event_type     TEXT NOT NULL,
+        -- inbound/outbound/internal/unknown; see email_events.direction
+        direction      TEXT NOT NULL DEFAULT 'unknown',
         events         INTEGER NOT NULL DEFAULT 0,
         high_plus      INTEGER NOT NULL DEFAULT 0,
-        PRIMARY KEY (snapshot_date, site_label, event_type)
+        PRIMARY KEY (snapshot_date, site_label, event_type, direction)
     );
+    """,
+    # Pre-existing (pre-direction) tables: backfill the column as 'unknown'
+    # (matching every row's old implicit "direction wasn't tracked" state)
+    # and widen the PK to include it -- safe even with existing rows since
+    # the old PK was unique per (date, site, event_type) already, so adding
+    # a column that's constant across those rows can't create duplicates.
+    "ALTER TABLE daily_email_metrics ADD COLUMN IF NOT EXISTS direction TEXT NOT NULL DEFAULT 'unknown';",
+    """
+    DO $$ BEGIN
+        ALTER TABLE daily_email_metrics DROP CONSTRAINT daily_email_metrics_pkey;
+    EXCEPTION WHEN undefined_object THEN NULL;
+    END $$;
+    """,
+    """
+    DO $$ BEGIN
+        ALTER TABLE daily_email_metrics ADD PRIMARY KEY (snapshot_date, site_label, event_type, direction);
+    EXCEPTION WHEN invalid_table_definition THEN NULL;
+    END $$;
     """,
     "CREATE INDEX IF NOT EXISTS idx_vuln_findings_state ON vuln_findings (state);",
     "CREATE INDEX IF NOT EXISTS idx_vuln_findings_severity ON vuln_findings (severity);",
@@ -528,6 +597,36 @@ DDL_STATEMENTS = [
         sla_compliance_rate          NUMERIC(5,2),
         PRIMARY KEY (snapshot_date, site_label, severity)
     );
+    """,
+    # Per-source split of the per-event-day vuln tables, so endpoint
+    # (Spotlight) and external (Hadrian) opened/fixed/MTTR can be reported
+    # separately -- Grafana panels SUM across sources and are unaffected.
+    # Existing rows are all Spotlight (Hadrian had never run when added).
+    "ALTER TABLE daily_vuln_flow_metrics ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'falcon_spotlight';",
+    """
+    DO $$ BEGIN
+        ALTER TABLE daily_vuln_flow_metrics DROP CONSTRAINT daily_vuln_flow_metrics_pkey;
+    EXCEPTION WHEN undefined_object THEN NULL;
+    END $$;
+    """,
+    """
+    DO $$ BEGIN
+        ALTER TABLE daily_vuln_flow_metrics ADD PRIMARY KEY (snapshot_date, site_label, severity, source);
+    EXCEPTION WHEN invalid_table_definition THEN NULL;
+    END $$;
+    """,
+    "ALTER TABLE daily_mttr_metrics ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'falcon_spotlight';",
+    """
+    DO $$ BEGIN
+        ALTER TABLE daily_mttr_metrics DROP CONSTRAINT daily_mttr_metrics_pkey;
+    EXCEPTION WHEN undefined_object THEN NULL;
+    END $$;
+    """,
+    """
+    DO $$ BEGIN
+        ALTER TABLE daily_mttr_metrics ADD PRIMARY KEY (snapshot_date, site_label, severity, source);
+    EXCEPTION WHEN invalid_table_definition THEN NULL;
+    END $$;
     """,
     # EPSS (Exploit Prediction Scoring System, FIRST.org): daily-updated
     # probability (0-1) a CVE will be exploited in the wild in the next 30

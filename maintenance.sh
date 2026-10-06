@@ -39,6 +39,7 @@ DELETE FROM daily_asset_metrics    WHERE snapshot_date < CURRENT_DATE - ${RETENT
 DELETE FROM daily_alert_metrics    WHERE snapshot_date < CURRENT_DATE - ${RETENTION_DAYS_DB};
 DELETE FROM daily_identity_metrics WHERE snapshot_date < CURRENT_DATE - ${RETENTION_DAYS_DB};
 DELETE FROM daily_email_metrics    WHERE snapshot_date < CURRENT_DATE - ${RETENTION_DAYS_DB};
+DELETE FROM daily_vuln_flow_metrics WHERE snapshot_date < CURRENT_DATE - ${RETENTION_DAYS_DB};
 DELETE FROM azure_log_metrics      WHERE snapshot_date < CURRENT_DATE - ${RETENTION_DAYS_DB};
 
 -- closed-out findings (open ones mirror vendor state and are never aged out)
