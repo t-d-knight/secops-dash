@@ -16,8 +16,9 @@ show up in Grafana automatically.
 import os
 from typing import Any, Dict, List
 
-from collectors.base import RunContext, as_list, parse_ts, upsert_rows
+from collectors.base import RunContext, as_list, parse_ts, upsert_rows, TextArray
 from collectors.falcon_client import FalconClient
+import identity_categories as ic
 from site_resolver import SiteContext, email_domain
 
 NAME = "falcon_identity"
@@ -36,6 +37,9 @@ def _load_query(ctx: RunContext) -> str:
 def run(ctx: RunContext) -> Dict[str, Any]:
     fc = FalconClient(ctx.cfg, ctx.ccfg)
     query = _load_query(ctx)
+    rules = ic.kind_rules(ctx.ccfg.get("account_kinds"))
+    out_of_scope = {str(o).strip().lower() for o in ctx.ccfg.get("out_of_scope_ous") or []}
+    kinds: Dict[str, int] = {}
 
     entities: List[Dict[str, Any]] = []
     factors: List[Dict[str, Any]] = []
@@ -48,12 +52,28 @@ def run(ctx: RunContext) -> Dict[str, Any]:
         for n in block.get("nodes") or []:
             ad = next((a for a in as_list(n.get("accounts")) if a and a.get("samAccountName")), {}) or {}
             upn = n.get("secondaryDisplayName")
+            # ou is a path that starts with the AD domain ("corp.example.org/SITE-B/
+            # Users"): match site rules against the OU segments only, or a rule
+            # whose fragment also appears in a domain name matches every account
+            # in that domain (it did -- thousands of one site's accounts landed
+            # in another).
+            segs = [x for x in str(ad.get("ou") or "").split("/") if x.strip()]
+            if segs and "." in segs[0]:
+                segs = segs[1:]
             m = ctx.resolver.resolve(SiteContext(
-                ous=as_list(ad.get("ou")),
+                ous=segs,
                 ad_domains=as_list(ad.get("domain")),
                 email_domains=as_list(email_domain(upn)),
             ))
             eid = n.get("entityId")
+            roles = sorted({r.get("type") for r in as_list(n.get("roles")) if r and r.get("type")})
+            groups = sorted({g.get("primaryDisplayName") for a in as_list(n.get("accounts")) if a
+                             for g in as_list(a.get("containingGroupEntities")) if g and g.get("primaryDisplayName")})
+            kind, privileged = ic.classify_account(rules, ad.get("ou"), groups,
+                                                   ad.get("samAccountName") or upn or n.get("primaryDisplayName"), roles)
+            if out_of_scope and {x.strip().lower() for x in segs} & out_of_scope:
+                kind = "out_of_scope"   # departed service: kept, but off the reports and action packs
+            kinds[kind] = kinds.get(kind, 0) + 1
             entities.append({
                 "source": "falcon_identity",
                 "entity_id": eid,
@@ -71,6 +91,12 @@ def run(ctx: RunContext) -> Dict[str, Any]:
                 "site_label": m.label,
                 "site_tag": m.key,
                 "site_matched_by": m.matched_by,
+                "account_kind": kind,
+                "access_account": (None if kind == "out_of_scope" else
+                                   ic.classify_access(ctx.ccfg.get("access_domain"), ad.get("domain"), m.label, groups)),
+                "is_privileged": privileged,
+                "roles": TextArray(roles),
+                "ad_groups": TextArray(groups),
                 "collected_at": ctx.run_started,
                 "retired": False,
             })
@@ -95,4 +121,4 @@ def run(ctx: RunContext) -> Dict[str, Any]:
     cur.execute("UPDATE identity_entities SET retired = TRUE "
                 "WHERE source = 'falcon_identity' AND collected_at < %s", (ctx.run_started,))
     ctx.conn.commit()
-    return {"entities": n, "risk_factors": len(factors)}
+    return {"entities": n, "risk_factors": len(factors), "account_kinds": kinds}

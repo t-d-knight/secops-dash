@@ -82,6 +82,11 @@ IDENTITY_PAGES = [
                        "enabled": True}]},
         {"entityId": "e3", "primaryDisplayName": "Who Knows", "secondaryDisplayName": None, "type": "USER",
          "riskScore": 0.1, "riskScoreSeverity": "LOW", "riskFactors": [], "accounts": []},
+        # a Riverside staff member's VPN-only account in the shared domain
+        {"entityId": "e4", "primaryDisplayName": "Ann Nurse", "secondaryDisplayName": "ann@riversidehealth.test",
+         "type": "USER", "riskScore": 0.2, "riskScoreSeverity": "LOW", "riskFactors": [],
+         "accounts": [{"domain": "SHARED.LOCAL", "samAccountName": "ann.vpn", "ou": "shared.local/RVH/Users",
+                       "enabled": True, "containingGroupEntities": [{"primaryDisplayName": "SSL-VPN-Standard-User"}]}]},
     ], "pageInfo": {"hasNextPage": False, "endCursor": None}},
 ]
 
@@ -145,6 +150,45 @@ DISCOVER = [   # Discover "unmanaged" records, one per classify_unmanaged() clas
      "mac_addresses": ["00:50:56:AA:BB:01"], "system_manufacturer": "VMware, Inc.",
      "last_seen_timestamp": iso(0)},                                                                  # secondary_ip_of_managed (aid1's MAC)
 ]
+
+def _mail(rcpt, *, incoming=True, internal=False, scl="1", ap="clean", quarantined=False, restored=False, hours=3):
+    return {"received": NOW - dt.timedelta(hours=hours), "entityPayload.origRecipient": rcpt,
+            "entityPayload.isIncoming": incoming, "entityPayload.isInternal": internal,
+            "entityPayload.saasSpamVerdict": scl, "entitySecurityResult.combinedVerdict.ap": ap,
+            "entityPayload.isQuarantined": quarantined, "entityPayload.isRestored": restored,
+            "entityPayload.isRestoreRequested": False, "entityPayload.isRestoreDeclined": False,
+            "entityPayload.mode": "inline"}
+
+
+# Emails for HEC entity search (/v1.0/search/query), which the funnel
+# collector only ever counts (responseEnvelope.recordsNumber).
+HEC_MAIL = [
+    _mail("nurse@riversidehealth.test"),                                            # clean, delivered
+    _mail("ward@riversidehealth.test", scl="5", ap="graymail", quarantined=True),     # MS junk, CP quarantined
+    _mail("ed@riversidehealth.test", scl="9", ap="spam", quarantined=True),           # MS quarantined
+    _mail("ed@riversidehealth.test", ap="phishing", quarantined=True, restored=True),  # phishing, later released
+    _mail("jo@lakesidehealth.test"),
+    _mail("jo@lakesidehealth.test", incoming=False, internal=True),                  # internal, counted separately
+    _mail("someone@unmapped.test"),                                                  # no site -> Ungrouped
+]
+
+
+def hec_count(rd):
+    f = rd.get("entityFilter") or {}
+    lo, hi = dt.datetime.fromisoformat(f["startDate"].replace("Z", "+00:00")), \
+        dt.datetime.fromisoformat(f["endDate"].replace("Z", "+00:00"))
+    n = 0
+    for m in HEC_MAIL:
+        if not lo <= m["received"] <= hi:
+            continue
+        ok = True
+        for x in rd.get("entityExtendedFilter") or []:
+            v, want, op = m.get(x["saasAttrName"]), str(x["saasAttrValue"]).lower(), x["saasAttrOp"]
+            v = str(v).lower()
+            ok &= (v == want) if op == "is" else (v != want) if op == "isNot" else (want in v) if op == "contains" else False
+        n += ok
+    return n
+
 
 HEC_PAGES = [
     [{"eventId": "h1", "type": "phishing", "severity": "4", "state": "remediated", "saas": "office365_emails",
@@ -306,6 +350,9 @@ class H(BaseHTTPRequestHandler):
             assert "entities(" in body["query"] and "__TYPES__" not in body["query"], body
             page = 1 if (body.get("variables") or {}).get("after") == "c1" else 0
             return self._send({"data": {"entities": IDENTITY_PAGES[page]}})
+        if p == "/hec/app/hec-api/v1.0/search/query":
+            return self._send({"responseEnvelope": {"recordsNumber": hec_count(body["requestData"])},
+                               "responseData": []})
         if p == "/hec/app/hec-api/v1.0/event/query":
             assert self.headers.get("x-av-req-id")
             rd = body["requestData"]

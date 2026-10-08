@@ -1,0 +1,32 @@
+# secops-dashboard schedule. Install as the service account (not root):
+#   sed "s#/opt/secops-dashboard#$PWD#g" crontab.example | crontab -
+# Times are the server's local time.
+#
+# Everything after the 02:00 collection waits on its lock (flock -w) rather
+# than starting at a fixed time, so a long collection never leaves a report,
+# publish, backup or maintenance run working on half-collected data. The
+# collector itself uses flock -n: if something still holds the lock at 02:00
+# it skips the night, so nothing heavy is ever scheduled before it.
+#
+# Logs: logs/*.log (rotated and pruned by maintenance.sh).
+
+# Nightly collection + rollups
+0  2 * * *        /opt/secops-dashboard/run_collector.sh >> /opt/secops-dashboard/logs/collector.log 2>&1
+
+# Weekly exec reports (last Mon-Sun week), region + every site, HTML + PDF -> reports/week-YYYY-Www/
+30 3 * * 1        cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock venv/bin/python3 exec_report.py --config config.yaml --period week --all-sites >> logs/report.log 2>&1
+
+# Quarterly exec reports (last calendar quarter) -> reports/quarter-YYYY-Qn/
+30 3 1 1,4,7,10 * cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock venv/bin/python3 exec_report.py --config config.yaml --period quarter --all-sites >> logs/report.log 2>&1
+
+# Monthly per-site action packs (Excel) -> reports/monthly-YYYY-MM/
+0  4 1 * *        cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock venv/bin/python3 action_pack.py --config config.yaml >> logs/report.log 2>&1
+
+# Publish anything new to the file share (no-op unless publish.enabled in config.yaml)
+30 7 * * *        cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock venv/bin/python3 publish.py --config config.yaml >> logs/publish.log 2>&1
+
+# Database backup (pg_dump, keeps 7 days in backups/) -- needs ~/.pgpass, see backup.sh
+0  9 * * *        cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock ./backup.sh >> logs/backup.log 2>&1
+
+# Weekly maintenance: retention pruning, VACUUM, log rotation -- needs ~/.pgpass, see maintenance.sh
+0 10 * * 0        cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock ./maintenance.sh >> logs/maintenance.log 2>&1

@@ -1,8 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-# maintenance.sh -- weekly pruning + VACUUM + log cleanup.
-#   0 3 * * 0 /opt/secops-dashboard/maintenance.sh >> /opt/secops-dashboard/logs/maintenance.log 2>&1
+# maintenance.sh -- weekly pruning + VACUUM + log rotation/cleanup.
+# Scheduled in crontab.example (Sundays, after the nightly collection --
+# never before it: run_collector.sh skips the night if its lock is held).
 #
 # psql needs password-free auth as DB_USER: a ~/.pgpass line
 #   127.0.0.1:5432:secops_dashboard:secops_user:yourpassword
@@ -22,6 +23,7 @@ RETENTION_DAYS_FINDINGS="${RETENTION_DAYS_FINDINGS:-180}" # reporting.findings_r
 RETENTION_DAYS_EVENTS="${RETENTION_DAYS_EVENTS:-365}"     # reporting.events_retention_days
 RETENTION_DAYS_RUNS=90
 RETENTION_DAYS_LOGS=30
+LOG_ROTATE_MB="${LOG_ROTATE_MB:-20}"
 
 TS="$(date -Iseconds)"
 echo "[$TS] ===== secops dashboard maintenance start ====="
@@ -40,6 +42,7 @@ DELETE FROM daily_alert_metrics    WHERE snapshot_date < CURRENT_DATE - ${RETENT
 DELETE FROM daily_identity_metrics WHERE snapshot_date < CURRENT_DATE - ${RETENTION_DAYS_DB};
 DELETE FROM daily_email_metrics    WHERE snapshot_date < CURRENT_DATE - ${RETENTION_DAYS_DB};
 DELETE FROM daily_vuln_flow_metrics WHERE snapshot_date < CURRENT_DATE - ${RETENTION_DAYS_DB};
+DELETE FROM daily_email_flow_metrics WHERE snapshot_date < CURRENT_DATE - ${RETENTION_DAYS_DB};
 DELETE FROM azure_log_metrics      WHERE snapshot_date < CURRENT_DATE - ${RETENTION_DAYS_DB};
 
 -- closed-out findings (open ones mirror vendor state and are never aged out)
@@ -62,10 +65,16 @@ DELETE FROM collector_runs WHERE started_at < now() - INTERVAL '${RETENTION_DAYS
 SQL
 
 echo "[$TS] vacuumdb…"
-vacuumdb -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -z
+vacuumdb -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -z --schema=public   # our tables only: system catalogs belong to postgres
 
-echo "[$TS] cleaning logs older than ${RETENTION_DAYS_LOGS} days…"
+echo "[$TS] rotating logs over ${LOG_ROTATE_MB}MB, removing rotated logs older than ${RETENTION_DAYS_LOGS} days…"
 mkdir -p "$LOG_DIR"
-find "$LOG_DIR" -type f -name "*.log" -mtime +"$RETENTION_DAYS_LOGS" -delete
+# cron appends to the same files forever, so rotate by size; the manifest
+# (logs/publish-manifest.json) is never touched.
+find "$LOG_DIR" -maxdepth 1 -type f -name "*.log" -size +"${LOG_ROTATE_MB}"M | while read -r f; do
+    mv "$f" "$f.$(date +%Y%m%d)" && gzip -f "$f.$(date +%Y%m%d)"
+done
+find "$LOG_DIR" -maxdepth 1 -type f -name "*.log.*.gz" -mtime +"$RETENTION_DAYS_LOGS" -delete
+find "$LOG_DIR" -maxdepth 1 -type f -name "*.log" -mtime +"$RETENTION_DAYS_LOGS" -delete
 
 echo "[$TS] ===== secops dashboard maintenance complete ====="

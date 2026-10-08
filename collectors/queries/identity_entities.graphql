@@ -16,6 +16,9 @@ query ($after: Cursor) {
         type
         severity
       }
+      roles {
+        type
+      }
       accounts {
         ... on ActiveDirectoryAccountDescriptor {
           domain
@@ -25,6 +28,9 @@ query ($after: Cursor) {
           creationTime
           passwordAttributes {
             lastChange
+          }
+          containingGroupEntities {
+            primaryDisplayName
           }
         }
       }

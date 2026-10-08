@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """
-Four-page exec security posture report: what moved the dial this week,
+Five-page exec security posture report: what moved the dial this week,
 month or quarter, for people who will never open Grafana -- region-wide,
 or for a single site.
 
-Page 1 is endpoint vulnerabilities (Falcon Spotlight): KEV, SLA, network
-exposure, sensor coverage and which product families drive it. Page 2 is
-the external attack surface (Hadrian). Page 3 is email threat traffic
-(Check Point HEC). Page 4 is the behaviour/people side (alert volume and
-disposition, identity risk). All four are rendered into one HTML file with
-print page-breaks between them, so it opens as one document but
-prints/exports as four pages.
+Page 1 is the estate: managed devices, OS support status, machines with no
+sensor and internet-facing assets. Page 2 is endpoint vulnerabilities
+(Falcon Spotlight): KEV, SLA, network
+exposure, sensor coverage and which product families drive it. Page 3 is
+the external attack surface (Hadrian). Page 4 is email (Check Point HEC
+mail flow and threats). Page 5 is the behaviour/people side (alert volume
+and disposition, identity risk). All five are rendered into one HTML file
+with print page-breaks between them, so it opens as one document but
+prints/exports as five pages.
 
 Pulls from the daily_* rollups (rollup_daily_metrics.py) wherever one
 exists -- they're already the right shape for "this period vs that one".
@@ -58,10 +60,15 @@ import datetime as dt
 import html
 import os
 import re
+import shutil
+import subprocess
+import tempfile
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import config as config_mod
+import identity_categories as ic
+import os_lifecycle
 from db import pg_connect
 from email_types import THREAT_EVENT_TYPES
 
@@ -149,6 +156,7 @@ ENDPOINT = "source <> 'hadrian'"
 # load and the day assessment was switched on for the rest of the estate.
 # Excluded from "opened", and no snapshot/period comparison crosses one.
 BULK_DATES: List[dt.date] = []
+OS_EOS: Dict[str, dt.date] = os_lifecycle.table()   # + reporting.os_end_of_support, set in main
 NOT_BULK = "snapshot_date <> ALL(%(bulk)s::date[])"
 
 
@@ -282,20 +290,22 @@ def fetch_alerts(cur, p: Period, site: Optional[str]) -> dict:
 
 
 def fetch_identity(cur, site: Optional[str]) -> dict:
-    # Current snapshot only -- identity_risk_factors is wholesale-replaced
-    # every run, so there's no "this period" slice, only "right now".
-    # Factors carry no site of their own: take it from the entity, and skip
-    # retired entities -- the same join rollup_identity_metrics uses, so the
-    # tile and its trend snapshot count the same way.
-    factors = qall(cur, f"""
-        SELECT f.factor_type, COUNT(*) FROM identity_risk_factors f
-        JOIN identity_entities e ON e.source = f.source AND e.entity_id = f.entity_id AND NOT e.retired
-        WHERE {SITE.replace("site_label", "e.site_label")}
-        GROUP BY f.factor_type ORDER BY 2 DESC""", site=site)
-    severities = qall(cur, f"SELECT risk_severity, COUNT(*) FROM identity_entities "
-                           f"WHERE NOT retired AND risk_severity IS NOT NULL AND {SITE} GROUP BY risk_severity",
-                      site=site)
-    return {"factors": factors, "severities": dict(severities)}
+    """Current counts for the stakeholder identity categories
+    (identity_categories.py): distinct enabled accounts per category and per
+    group. "Right now" only -- identity_risk_factors is replaced every run;
+    trends come from the daily cat:/catgroup: snapshots. Factors carry no site
+    of their own, so it's taken from the entity."""
+    row = q1(cur, ic.counts_sql(SITE.replace("site_label", "e.site_label")), site=site)
+    n = len(ic.CATEGORIES)
+    stale_access = q1(cur, f"""
+        SELECT count(*) FROM identity_entities e
+        WHERE NOT e.retired AND {ic.ENABLED_FILTER} AND e.access_account IS NOT NULL
+          AND {SITE.replace("site_label", "e.site_label")}
+          AND EXISTS (SELECT 1 FROM identity_risk_factors f WHERE f.source = e.source AND f.entity_id = e.entity_id
+                      AND f.factor_type = 'STALE_ACCOUNT')""", site=site)[0]
+    return {"cats": {c.key: int(row[i]) for i, c in enumerate(ic.CATEGORIES)},
+            "groups": {g: int(row[n + i]) for i, g in enumerate(ic.GROUPS)},
+            "stale_access": int(stale_access)}
 
 
 def fetch_email(cur, p: Period, site: Optional[str]) -> dict:
@@ -330,6 +340,99 @@ def fetch_email(cur, p: Period, site: Optional[str]) -> dict:
             "dmarc_messages": dmarc[0], "dmarc_pass": dmarc[1]}
 
 
+def fetch_email_flow(cur, p: Period, site: Optional[str]) -> Dict[str, int]:
+    """Mail-flow funnel totals for the period (daily_email_flow_metrics,
+    collectors/checkpoint_hec_flow.py). Counts emails, not events."""
+    return {m: int(v) for m, v in qall(cur, f"""
+        SELECT metric, COALESCE(SUM(value),0) FROM daily_email_flow_metrics
+        WHERE snapshot_date BETWEEN %(since)s AND %(until)s AND {SITE} GROUP BY 1""",
+        since=p.since, until=p.until, site=site)}
+
+
+def funnel_stages(f: Dict[str, int]) -> dict:
+    """Derive the funnel boxes from the stored counts. Microsoft's SCL 7-9
+    is quarantined before mail reaches users' mailboxes, so Check Point's
+    stage is what Microsoft let through; "delivered" is what neither
+    quarantined (counted directly, not by subtraction of overlapping sets)."""
+    external = f.get("incoming", 0)
+    # incoming + internal, as Check Point's console counts "Inbound" (the
+    # collector keeps the two disjoint, internal ones as internal_<metric>)
+    f = {m: f.get(m, 0) + f.get("internal_" + m, 0) for m in [k for k in f if not k.startswith("internal_")]}
+    inbound = f.get("incoming", 0)
+    ms_q, junk = f.get("ms_quarantine", 0), f.get("ms_junk", 0)
+    delivered = max(f.get("not_cp_quarantined", 0) - f.get("ms_quarantine_not_cp", 0), 0)
+    return {
+        "external": external, "internal": max(inbound - external, 0),
+        "inbound": inbound, "ms_inbox": max(inbound - junk - ms_q, 0), "ms_junk": junk, "ms_quarantine": ms_q,
+        "to_cp": max(inbound - ms_q, 0), "clean": f.get("cp_clean", 0), "graymail": f.get("cp_graymail", 0),
+        "spam": f.get("cp_spam", 0), "malicious": f.get("cp_phishing", 0) + f.get("cp_malware", 0),
+        "malware": f.get("cp_malware", 0), "suspicious": f.get("cp_suspicious_phishing", 0),
+        "cp_quarantined": f.get("cp_quarantined", 0), "delivered": delivered,
+        "filtered": max(inbound - delivered, 0),
+        "restore_requested": f.get("restore_requested", 0), "restored": f.get("restored", 0),
+        "restore_declined": f.get("restore_declined", 0),
+    }
+
+
+def fetch_estate(cur, site: Optional[str]) -> dict:
+    """What's being protected, right now: Falcon-managed devices by type and
+    OS (with vendor support status), machines with no sensor, and Hadrian's
+    internet-facing domains and IPs. Per-site rows for the region report."""
+    eos = os_lifecycle.sql_eos("os_version", OS_EOS)
+    os_rows = qall(cur, f"""
+        SELECT COALESCE(os_version, 'Unknown'), count(*),
+               count(*) FILTER (WHERE last_seen > now() - interval '7 days'),
+               count(*) FILTER (WHERE product_type = 'workstation'),
+               count(*) FILTER (WHERE product_type IN ('server', 'domain_controller'))
+        FROM assets WHERE source = 'falcon' AND NOT retired AND {SITE}
+        GROUP BY 1 ORDER BY 2 DESC""", site=site)
+    dev = q1(cur, f"""
+        SELECT count(*), count(*) FILTER (WHERE last_seen > now() - interval '7 days'),
+               count(*) FILTER (WHERE product_type = 'workstation'), count(*) FILTER (WHERE product_type = 'server'),
+               count(*) FILTER (WHERE product_type = 'domain_controller')
+        FROM assets WHERE source = 'falcon' AND NOT retired AND {SITE}""", site=site)
+    missing = q1(cur, f"""
+        SELECT count(*) FILTER (WHERE discovery_class IN ('domain_controller_no_sensor','server_no_sensor',
+                                                          'workstation_no_sensor','cloud_no_sensor')),
+               count(*) FILTER (WHERE discovery_class IN ('vmware_nic','network_device'))
+        FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND {SITE}""", site=site)
+    ext = q1(cur, f"""
+        SELECT count(*) FILTER (WHERE asset_type = 'Domain'), count(*) FILTER (WHERE asset_type ILIKE '%%ip')
+        FROM external_assets WHERE source = 'hadrian' AND NOT retired AND {SITE}""", site=site)
+    by_site = [] if site else qall(cur, f"""
+        SELECT s.site_label, COALESCE(a.ws,0), COALESCE(a.srv,0), COALESCE(a.unsup,0), COALESCE(m.n,0),
+               COALESCE(x.domains,0), COALESCE(x.ips,0)
+        FROM dim_site s
+        LEFT JOIN (SELECT site_label, count(*) FILTER (WHERE product_type = 'workstation') ws,
+                          count(*) FILTER (WHERE product_type IN ('server','domain_controller')) srv,
+                          count(*) FILTER (WHERE {eos} < current_date) unsup
+                   FROM assets WHERE source = 'falcon' AND NOT retired GROUP BY 1) a ON a.site_label = s.site_label
+        LEFT JOIN (SELECT site_label, count(*) n FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired
+                     AND discovery_class IN ('domain_controller_no_sensor','server_no_sensor','workstation_no_sensor',
+                                             'cloud_no_sensor') GROUP BY 1) m ON m.site_label = s.site_label
+        LEFT JOIN (SELECT site_label, count(*) FILTER (WHERE asset_type = 'Domain') domains,
+                          count(*) FILTER (WHERE asset_type ILIKE '%%ip') ips
+                   FROM external_assets WHERE source = 'hadrian' AND NOT retired GROUP BY 1) x
+               ON x.site_label = s.site_label
+        WHERE COALESCE(a.ws,0) + COALESCE(a.srv,0) + COALESCE(m.n,0) + COALESCE(x.domains,0) > 0
+        ORDER BY COALESCE(a.ws,0) + COALESCE(a.srv,0) DESC""")
+    today = dt.date.today()
+    oses = []
+    for name, n, active, ws, srv in os_rows:
+        end = os_lifecycle.lookup(name, OS_EOS)
+        status = ("unknown" if end is None else "unsupported" if end < today
+                  else "ending" if (end - today).days < os_lifecycle.ENDING_SOON_DAYS else "supported")
+        oses.append((name, int(n), int(active), int(ws), int(srv), end, status))
+    return {
+        "devices": dev[0], "active": dev[1], "workstations": dev[2], "servers": dev[3], "dcs": dev[4],
+        "oses": oses,
+        "unsupported": sum(o[1] for o in oses if o[6] == "unsupported"),
+        "ending": sum(o[1] for o in oses if o[6] == "ending"),
+        "missing_named": missing[0], "missing_network": missing[1],
+        "domains": ext[0], "ips": ext[1], "by_site": by_site,
+    }
+
+
 def fetch_site_breakdown(cur) -> List[Tuple]:
     """Region report: every site, worst first."""
     return qall(cur, f"""
@@ -358,6 +461,7 @@ def fetch_product_breakdown(cur, site: Optional[str], limit: int = 10) -> List[T
 
 
 CONFIRMED_TYPES = ("Verified", "UnpatchedTechnology", "InfectedDevice")
+
 RISK_TYPE_LABEL = {"Verified": "Verified", "UnpatchedTechnology": "Unpatched tech",
                    "InfectedDevice": "Infected device", "Potential": "Potential"}
 VENDOR_SEV_ORDER = "CASE vendor_priority WHEN 'Critical' THEN 1 WHEN 'High' THEN 2 WHEN 'Medium' THEN 3 " \
@@ -384,6 +488,7 @@ def fetch_external(cur, p: Period, site: Optional[str]) -> dict:
     top = qall(cur, f"""
         SELECT vendor_priority, risk_type, title, hostname, site_label, first_found::date
         FROM vuln_findings WHERE {EXTERNAL} AND state IN ('OPEN','REOPENED') AND {SITE}
+          AND vendor_priority IN ('Critical','High','Medium')
           AND (risk_type IN {CONFIRMED_TYPES} OR vendor_priority IN ('Critical','High'))
         ORDER BY CASE WHEN vendor_priority IN ('Critical','High') THEN 1
                       WHEN risk_type = 'InfectedDevice' THEN 2 ELSE 3 END,
@@ -423,7 +528,10 @@ def fetch_external(cur, p: Period, site: Optional[str]) -> dict:
         "confirmed_crit_high": sev(confirmed, "Critical") + sev(confirmed, "High"),
         "confirmed_medium": sev(confirmed, "Medium"),
         "crit_high_any": sev(open_rows, "Critical") + sev(open_rows, "High"),
-        "leaked_creds": sum(r[3] for r in open_rows if r[2] == "leaked-credentials"),
+        "leaked_creds": q1(cur, f"""
+            SELECT count(*) FROM vuln_findings vf WHERE vf.{EXTERNAL} AND vf.state IN ('OPEN','REOPENED')
+              AND vf.risk_type = 'InfectedDevice' AND {SITE.replace("site_label", "vf.site_label")}
+              AND {ic.ACTIVE_LEAK_SQL}""", site=site)[0],
         "opened": movement[0], "fixed": movement[1],
         "categories": sorted(cats.items(), key=lambda kv: (-kv[1][0], -kv[1][1])),
         "top": top,
@@ -480,6 +588,7 @@ def history_start(cur) -> Dict[str, Optional[dt.date]]:
         "external_snap": q1(cur, f"SELECT MIN(snapshot_date) FROM daily_source_metrics WHERE {EXTERNAL}")[0],
         "alerts": q1(cur, "SELECT MIN(created_at)::date FROM security_alerts")[0],
         "email": q1(cur, "SELECT MIN(snapshot_date) FROM daily_email_metrics")[0],
+        "email_flow": q1(cur, "SELECT MIN(snapshot_date) FROM daily_email_flow_metrics")[0],
     }
 
 
@@ -493,6 +602,7 @@ def fetch_trends(cur, p: Period, site: Optional[str], hist: Dict[str, Optional[d
     pv = fetch_vulns(cur, prev, site, flows_only=True) if covered("vulns") else None
     pa = fetch_alerts(cur, prev, site) if covered("alerts") else None
     pe = fetch_email(cur, prev, site) if covered("email") else None
+    pf = funnel_stages(fetch_email_flow(cur, prev, site)) if covered("email_flow") else None
     px = fetch_external(cur, prev, site) if covered("external") else None
     ext_since = hist["external_snap"] and f"snapshot_date >= '{hist['external_snap'].isoformat()}'"
     return {
@@ -500,23 +610,27 @@ def fetch_trends(cur, p: Period, site: Optional[str], hist: Dict[str, Optional[d
         "kev_open": snapshot_trend(cur, "daily_kev_metrics", "kev_open_total", p, site, after_bulk()),
         "open_alerts": snapshot_trend(cur, "daily_alert_metrics", "open_total", p, site,
                                       "open_total IS NOT NULL"),
-        "stale": snapshot_trend(cur, "daily_identity_metrics", "value", p, site,
-                                "metric = 'factor:STALE_ACCOUNT'"),
-        "weak_pw": snapshot_trend(cur, "daily_identity_metrics", "value", p, site,
-                                  "metric IN ('factor:WEAK_PASSWORD', 'factor:CREDENTIAL_THEFT')"),
-        "high_risk_ids": snapshot_trend(cur, "daily_identity_metrics", "value", p, site,
-                                        "metric = 'risk:high'"),
+        "idcat": {k: snapshot_trend(cur, "daily_identity_metrics", "value", p, site, f"metric = '{m}'")
+                  for k, m in [(c.key, f"cat:{c.key}") for c in ic.CATEGORIES]
+                  + [(f"group:{g}", f"catgroup:{g}") for g in ic.GROUPS]},
         "prev_word": p.prev_word,
         "vuln_history_start": hist.get("vulns"),
         "prev_opened": pv and pv["opened"], "prev_fixed": pv and pv["fixed"],
         "prev_alerts": pa and (pa["new_crit"] + pa["new_high"] + pa["new_med"] + pa["new_low"]),
         "prev_inbound": pe and pe["totals"].get("inbound", [0, 0])[0],
         "prev_outbound": pe and pe["totals"].get("outbound", [0, 0])[0],
+        "prev_flow_inbound": pf and pf["inbound"], "prev_flow_malicious": pf and pf["malicious"],
         "top_family": top_family and snapshot_trend(
             cur, "daily_product_metrics", "open_crit + open_high", p, site,
             "product_family = '%s' AND %s" % (top_family.replace("'", "''"), after_bulk())),
         "remote_ch": snapshot_trend(cur, "daily_site_metrics", "remote_crit + remote_high", p, site, after_bulk()),
         "stale_sensors": snapshot_trend(cur, "daily_asset_metrics", "stale_sensors", p, site),
+        "devices": snapshot_trend(cur, "daily_asset_metrics", "managed_hosts", p, site),
+        "unsupported_os": snapshot_trend(cur, "daily_asset_metrics", "unsupported_os", p, site,
+                                         "unsupported_os IS NOT NULL"),
+        "ext_domains": snapshot_trend(cur, "daily_asset_metrics", "external_domains", p, site,
+                                      "external_domains IS NOT NULL"),
+        "ext_ips": snapshot_trend(cur, "daily_asset_metrics", "external_ips", p, site, "external_ips IS NOT NULL"),
         "ext_assets": snapshot_trend(cur, "daily_asset_metrics", "external_assets", p, site, ext_since)
                       if ext_since else None,
         "ext_open": snapshot_trend(cur, "daily_source_metrics", "total", p, site, EXTERNAL),
@@ -525,11 +639,21 @@ def fetch_trends(cur, p: Period, site: Optional[str], hist: Dict[str, Optional[d
 
 
 # ------------------------------------------------------------------ SVG
+def compact(n: float) -> str:
+    """1234 -> 1.2k, 4550279 -> 4.6M: short enough to sit above a bar."""
+    n = float(n)
+    for div, suffix in ((1e6, "M"), (1e3, "k")):
+        if abs(n) >= div:
+            v = n / div
+            return f"{v:.1f}{suffix}" if v < 100 else f"{v:.0f}{suffix}"
+    return f"{n:.0f}"
+
+
 def svg_bars(buckets: Sequence[Tuple[dt.date, int, int]], bucket: str = "week", names=("Opened", "Fixed"),
              colors=("#dc2626", "#16a34a"), width=640, height=150) -> str:
     if not buckets:
         return '<p class="empty">No data for this period.</p>'
-    pad_l, pad_b, pad_t = 30, 24, 10
+    pad_l, pad_b, pad_t = 30, 24, 22   # pad_t leaves room for the tallest bar's value label
     plot_w, plot_h = width - pad_l - 10, height - pad_b - pad_t
     vmax = max((max(row[1:]) for row in buckets), default=0) or 1
     n = len(buckets)
@@ -546,6 +670,9 @@ def svg_bars(buckets: Sequence[Tuple[dt.date, int, int]], bucket: str = "week", 
             by = pad_t + (plot_h - bh)
             bars.append(f'<rect x="{bx:.1f}" y="{by:.1f}" width="{bar_w*0.9:.1f}" height="{bh:.1f}" '
                         f'fill="{colors[j]}" rx="1.5"><title>{names[j]} {b}: {v}</title></rect>')
+            if v:   # printed value -- the PDF has no hover, so the number has to be on the page
+                bars.append(f'<text x="{bx + bar_w * 0.45:.1f}" y="{by - 3:.1f}" font-size="8" fill="{INK}" '
+                            f'text-anchor="middle">{compact(v)}</text>')
         labels.append(f'<text x="{gx + group_w/2:.1f}" y="{height-6}" font-size="9" fill="{MUTED}" '
                        f'text-anchor="middle">{b.strftime(label_fmt)}</text>')
     legend = "".join(
@@ -555,6 +682,61 @@ def svg_bars(buckets: Sequence[Tuple[dt.date, int, int]], bucket: str = "week", 
     )
     return (f'<svg viewBox="0 0 {width} {height+16}" width="100%" style="max-width:{width}px">'
             f'<g transform="translate(0,16)">{"".join(bars)}{"".join(labels)}</g>{legend}</svg>')
+
+
+def svg_funnel(st: dict, width=640) -> str:
+    """Inbound -> Microsoft -> Check Point -> delivered, as stacked rows of
+    labelled boxes (equal widths -- proportional ones would make the small,
+    important boxes unreadable; each shows its share of inbound instead)."""
+    if not st["inbound"]:
+        return '<p class="empty">No mail-flow data for this period.</p>'
+    inbound = st["inbound"]
+    pad_l, row_h, gap = 112, 46, 22
+    plot_w = width - pad_l
+    out, y = [], 0
+
+    def share(n):
+        pc = 100.0 * n / inbound
+        return "<0.1%" if 0 < pc < 0.1 else f"{pc:.1f}%" if pc < 10 else f"{pc:.0f}%"
+
+    def boxes(cells, fills):
+        nonlocal y
+        w = plot_w / len(cells)
+        for i, ((label, n), fill) in enumerate(zip(cells, fills)):
+            x = pad_l + i * w
+            ink = "#ffffff" if fill in (SEVERITY_COLOR["critical"], INK, "#475569") else INK
+            out.append(f'<rect x="{x + 2:.1f}" y="{y}" width="{w - 4:.1f}" height="{row_h}" rx="4" fill="{fill}"/>'
+                       f'<text x="{x + w / 2:.1f}" y="{y + 18}" font-size="10" fill="{ink}" text-anchor="middle">'
+                       f'{html.escape(label)}</text>'
+                       f'<text x="{x + w / 2:.1f}" y="{y + 36}" font-size="13" font-weight="700" fill="{ink}" '
+                       f'text-anchor="middle">{n:,} <tspan font-size="10" font-weight="400">({share(n)})</tspan></text>')
+        y += row_h
+
+    def stage(label):
+        out.append(f'<text x="0" y="{y + row_h / 2 + 4}" font-size="10" font-weight="700" fill="{MUTED}">'
+                   f'{html.escape(label)}</text>')
+
+    def arrow(text):
+        nonlocal y
+        out.append(f'<text x="{pad_l + plot_w / 2:.1f}" y="{y + 15}" font-size="10" fill="{MUTED}" '
+                   f'text-anchor="middle">&#8595; {html.escape(text)} &#8595;</text>')
+        y += gap
+
+    stage("INBOUND")
+    boxes([("Inbound + internal emails", inbound)], ["#cbd5e1"])
+    arrow(f"{inbound:,} emails")
+    stage("MICROSOFT 365")
+    boxes([("Inbox", st["ms_inbox"]), ("Junk folder", st["ms_junk"]), ("Quarantined", st["ms_quarantine"])],
+          ["#e2e8f0", "#cbd5e1", "#475569"])
+    arrow(f"{st['to_cp']:,} passed on to Check Point")
+    stage("CHECK POINT")
+    boxes([("Clean", st["clean"]), ("Graymail + spam", st["graymail"] + st["spam"]),
+           ("Phishing + malware", st["malicious"]), ("Suspicious", st["suspicious"])],
+          ["#e2e8f0", "#cbd5e1", SEVERITY_COLOR["critical"], SEVERITY_COLOR["medium"]])
+    arrow(f"{st['delivered']:,} delivered")
+    stage("END USERS")
+    boxes([("Delivered to users", st["delivered"])], ["#cbd5e1"])
+    return f'<svg viewBox="0 0 {width} {y}" width="100%" style="max-width:{width}px">{"".join(out)}</svg>'
 
 
 def svg_stacked_bar(parts: Sequence[Tuple[str, int, str]], width=640, height=36) -> str:
@@ -567,14 +749,25 @@ def svg_stacked_bar(parts: Sequence[Tuple[str, int, str]], width=640, height=36)
         rects.append(f'<rect x="{x:.1f}" y="0" width="{max(w,0):.1f}" height="{height}" fill="{color}">'
                      f'<title>{html.escape(label)}: {v} ({v/total*100:.0f}%)</title></rect>')
         legend.append(f'<span class="legend-dot" style="background:{color}"></span>'
-                      f'{html.escape(label)} <b>{v}</b>')
+                      f'{html.escape(label)} <b>{v:,}</b>')
         x += w
     return (f'<svg viewBox="0 0 {width} {height}" width="100%" style="max-width:{width}px">'
             f'{"".join(rects)}</svg><div class="legend-row">{" &nbsp;&nbsp; ".join(legend)}</div>')
 
 
 # ----------------------------------------------------------------- tiles
+def fmt_value(value: Any) -> str:
+    """Thousands separators for tile figures: 4550279 -> 4,550,279, and
+    "31048 / 235" -> "31,048 / 235". Anything already formatted passes through."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return f"{value:,.0f}"
+    if isinstance(value, str):
+        return re.sub(r"(?<![\d.,])\d{4,}(?![\d.,%])", lambda m: f"{int(m.group(0)):,}", value)
+    return str(value)
+
+
 def tile(label: str, value: str, color: str = INK, sub: str = "", trend: str = "") -> str:
+    value = fmt_value(value)
     sub_html = f'<div class="tile-sub">{html.escape(sub)}</div>' if sub else ""
     return (f'<div class="tile"><div class="tile-value" style="color:{color}">{html.escape(str(value))}</div>'
             f'<div class="tile-label">{html.escape(label)}</div>{sub_html}{trend}</div>')
@@ -642,7 +835,7 @@ def pct(n: float, d: float) -> str:
 
 def email_table(rows: List[Tuple[str, int, int]]) -> str:
     body = "".join(
-        f'<tr><td>{html.escape(t)}</td><td class="num">{n}</td><td class="num">{hp}</td></tr>'
+        f'<tr><td>{html.escape(t)}</td><td class="num">{n:,}</td><td class="num">{hp:,}</td></tr>'
         for t, n, hp in rows)
     return (f'<table><tr><th>Type</th><th class="num">Events</th><th class="num">High+</th></tr>'
             f'{body or "<tr><td colspan=3 class=empty>None this period.</td></tr>"}</table>')
@@ -681,9 +874,9 @@ def _sev_table(rows: List[Tuple], first_col: str, extra_col: Optional[str] = Non
     head = (f'<tr><th>{first_col}</th><th class="num">Crit</th><th class="num">High</th>'
             f'<th class="num">Total open</th>{f"<th class=num>{extra_col}</th>" if extra_col else ""}</tr>')
     body = "".join(
-        f'<tr><td>{html.escape(str(r[0]))}</td><td class="num" style="color:{SEVERITY_COLOR["critical"]}">{r[1]}</td>'
-        f'<td class="num" style="color:{SEVERITY_COLOR["high"]}">{r[2]}</td><td class="num">{r[3]}</td>'
-        + (f'<td class="num">{r[4]}</td>' if extra_col else "") + '</tr>'
+        f'<tr><td>{html.escape(str(r[0]))}</td><td class="num" style="color:{SEVERITY_COLOR["critical"]}">{r[1]:,}</td>'
+        f'<td class="num" style="color:{SEVERITY_COLOR["high"]}">{r[2]:,}</td><td class="num">{r[3]:,}</td>'
+        + (f'<td class="num">{r[4]:,}</td>' if extra_col else "") + '</tr>'
         for r in rows)
     span = 5 if extra_col else 4
     return f'<table>{head}{body or f"<tr><td colspan={span} class=empty>No open vulnerabilities.</td></tr>"}</table>'
@@ -715,6 +908,65 @@ def sla_gap_note(v: dict) -> str:
             f'({v["sla_breach_crit"]:,} critical, {v["sla_breach_high"]:,} high).</p>')
 
 
+def build_page_estate(p: Period, scope: str, site: Optional[str], es: dict, tr: dict) -> str:
+    status_style = {"unsupported": ("Unsupported", SEVERITY_COLOR["critical"]),
+                    "ending": ("Ends within 12 months", SEVERITY_COLOR["medium"]),
+                    "supported": ("Supported", MUTED), "unknown": ("Not assessed", FAINT)}
+    os_rows = "".join(
+        f'<tr><td>{html.escape(name)}</td><td class="num">{n:,}</td><td class="num">{active:,}</td>'
+        f'<td class="num">{ws:,}</td><td class="num">{srv:,}</td>'
+        f'<td class="num">{end.strftime("%d %b %Y") if end else "&ndash;"}</td>'
+        f'<td style="color:{status_style[st][1]}">{status_style[st][0]}</td></tr>'
+        for name, n, active, ws, srv, end, st in es["oses"])
+    worst = [(o[0], o[1]) for o in es["oses"] if o[6] == "unsupported"][:2]
+    ending = [(o[0], o[5], o[1]) for o in es["oses"] if o[6] == "ending"]
+    site_rows = "".join(
+        f'<tr><td>{html.escape(r[0])}</td>' + "".join(f'<td class="num">{int(x):,}</td>' for x in r[1:3])
+        + f'<td class="num" style="color:{SEVERITY_COLOR["critical"] if r[3] else INK}">{int(r[3]):,}</td>'
+        + "".join(f'<td class="num">{int(x):,}</td>' for x in r[4:]) + '</tr>'
+        for r in es["by_site"])
+    site_section = "" if site is not None else f"""
+<h2>Estate by site</h2>
+<table><tr><th>Site</th><th class="num">Workstations</th><th class="num">Servers</th><th class="num">Unsupported OS</th>
+<th class="num">Missing a sensor</th><th class="num">Domains</th><th class="num">Public IPs</th></tr>
+{site_rows or '<tr><td colspan="7" class="empty">No assets recorded.</td></tr>'}</table>"""
+    scope_note = "Org-wide figures across all sites" if site is None else f"Figures for {html.escape(site)} only"
+
+    return f"""<div class="page">
+{header(p, scope, "1 of 5 &mdash; Estate")}
+
+<h2>What we're protecting</h2>
+<div class="tiles tiles-3">
+  {tile("Managed devices", f"{es['devices']:,}", INK,
+        f"{es['workstations']:,} workstations, {es['servers']:,} servers, {es['dcs']:,} DCs -- "
+        f"{es['active']:,} active this week", trend_line(tr.get("devices")))}
+  {tile("Devices on an unsupported OS", f"{es['unsupported']:,}",
+        SEVERITY_COLOR["critical"] if es["unsupported"] else GOOD,
+        ", ".join(f"{n:,} {name}" for name, n in worst) or "none", trend_line(tr.get("unsupported_os")))}
+  {tile("OS support ending within 12 months", f"{es['ending']:,}",
+        SEVERITY_COLOR["medium"] if es["ending"] else GOOD,
+        ", ".join(f"{name} ({end:%b %Y})" for name, end, _ in ending) or "none")}
+  {tile("Machines missing a sensor", f"{es['missing_named']:,}",
+        SEVERITY_COLOR["high"] if es["missing_named"] else GOOD,
+        f"in-use servers/workstations in AD -- plus {es['missing_network']:,} unidentified network devices")}
+  {tile("Internet-facing domains", f"{es['domains']:,}", INK, "monitored by Hadrian", trend_line(tr.get("ext_domains")))}
+  {tile("Public IP addresses", f"{es['ips']:,}", INK, "monitored by Hadrian", trend_line(tr.get("ext_ips")))}
+</div>
+
+<h2>Operating systems (Falcon-managed devices)</h2>
+<table><tr><th>Operating system</th><th class="num">Devices</th><th class="num">Active (7d)</th>
+<th class="num">Workstations</th><th class="num">Servers</th><th class="num">Support ends</th><th>Status</th></tr>
+{os_rows or '<tr><td colspan="7" class="empty">No managed devices.</td></tr>'}</table>
+{site_section}
+
+<footer>Page 1 of 5 &mdash; secops-dashboard. {scope_note}; current as of generation time. Devices = Falcon-managed
+hosts; "missing a sensor" = in-use AD computer accounts Falcon has no sensor on (duplicates, service accounts,
+appliances and out-of-scope services excluded). Support dates are the vendor's end of security updates; Windows 11
+is reported without its feature-update build, so isn't assessed. Override dates (e.g. Windows 10 Extended Security
+Updates) under reporting.os_end_of_support. {TREND_NOTE.format(prev_word=html.escape(tr["prev_word"]))}</footer>
+</div>"""
+
+
 def build_page1(p: Period, scope: str, site: Optional[str], v: dict, products: List[Tuple],
                 sites: List[Tuple], tr: dict) -> str:
     crit_open = v["open_now"].get("critical", 0)
@@ -740,21 +992,21 @@ def build_page1(p: Period, scope: str, site: Optional[str], v: dict, products: L
 {_sev_table(sites, "Site")}"""
 
     return f"""<div class="page">
-{header(p, scope, "1 of 4 &mdash; Endpoint Vulnerabilities")}
+{header(p, scope, "2 of 5 &mdash; Endpoint Vulnerabilities")}
 
 <h2>Headline</h2>
 <div class="tiles tiles-3">
   {tile("Open vulnerabilities", total_open, SEVERITY_COLOR["high"] if crit_open or high_open else INK,
-        f"{crit_open} critical, {high_open} high", trend_line(tr["open_vulns"]))}
+        f"{crit_open:,} critical, {high_open:,} high", trend_line(tr["open_vulns"]))}
   {tile("Opened vs fixed this period", f"{v['opened']} / {v['fixed']}", net_color,
-        f"net {'+' if net_vuln>0 else ''}{net_vuln}", opened_fixed_line(tr["prev_opened"], tr["prev_fixed"], tr["prev_word"], v["opened"], v["fixed"]))}
+        f"net {'+' if net_vuln>0 else ''}{net_vuln:,}", opened_fixed_line(tr["prev_opened"], tr["prev_fixed"], tr["prev_word"], v["opened"], v["fixed"]))}
   {tile("Known exploited (KEV) open", v["kev_open"], SEVERITY_COLOR["critical"] if v["kev_open"] else GOOD,
-        f"{v['kev_past_due']} past due, {v['kev_ransomware']} ransomware-linked", trend_line(tr["kev_open"]))}
+        f"{v['kev_past_due']:,} past due, {v['kev_ransomware']:,} ransomware-linked", trend_line(tr["kev_open"]))}
   {top_family_tile(products, crit_open + high_open, tr, site is None)}
   {tile("Remotely exploitable, no auth", v["remote_ch"], SEVERITY_COLOR["critical"] if v["remote_ch"] else GOOD,
         "critical/high reachable over the network without credentials", trend_line(tr["remote_ch"]))}
   {tile("Stale sensors", v["stale_sensors"], SEVERITY_COLOR["medium"] if v["stale_sensors"] else GOOD,
-        f"of {v['managed_hosts']} managed hosts -- vulns on these go unseen", trend_line(tr["stale_sensors"]))}
+        f"of {v['managed_hosts']:,} managed hosts -- vulns on these go unseen", trend_line(tr["stale_sensors"]))}
 </div>
 
 <h2>Endpoint vulnerabilities &mdash; opened vs fixed by {by}</h2>
@@ -775,8 +1027,8 @@ def build_page1(p: Period, scope: str, site: Optional[str], v: dict, products: L
 </div>
 {site_section}
 
-<footer>Page 1 of 4 &mdash; secops-dashboard. {scope_note}; endpoint vulnerabilities only (Falcon
-Spotlight -- external risks are on page 2); "opened/fixed" and the bar chart cover the report period only;
+<footer>Page 2 of 5 &mdash; secops-dashboard. {scope_note}; endpoint vulnerabilities only (Falcon
+Spotlight -- external risks are on page 3); "opened/fixed" and the bar chart cover the report period only;
 open, KEV, exposure and sensor counts are current as of generation time. "Remotely exploitable" = network
 attack vector, no privileges or user interaction needed, with a known exploit. Vulnerability age is measured
 from first detection; anything already present when collection began dates from then{history_note}.
@@ -784,7 +1036,9 @@ from first detection; anything already present when collection began dates from 
 </div>"""
 
 
-def build_page_email(p: Period, scope: str, site: Optional[str], em: dict, tr: dict) -> str:
+def build_page_email(p: Period, scope: str, site: Optional[str], em: dict, flow: Dict[str, int], tr: dict) -> str:
+    st = funnel_stages(flow)
+    has_flow = bool(st["inbound"])
     in_total = em["totals"].get("inbound", [0, 0])
     out_total = em["totals"].get("outbound", [0, 0])
     classified = sum(t[0] for d, t in em["totals"].items() if d != "unknown")
@@ -799,19 +1053,39 @@ def build_page_email(p: Period, scope: str, site: Optional[str], em: dict, tr: d
     bulk_note = (f'<p class="empty">Plus {bulk_total:,} graymail / spam / shadow IT events this period '
                  f'(bulk mail classification, not counted as threats above).</p>' if bulk_total else "")
     scope_note = "Org-wide figures across all sites" if site is None else f"Figures for {html.escape(site)} only"
+    admin_note = (f'<p class="legend-row">Admin actions: {st["restore_requested"]:,} restore requests, '
+                  f'{st["restored"]:,} emails released from quarantine, {st["restore_declined"]:,} requests declined.</p>'
+                  if has_flow else "")
+    # the funnel counts emails and supersedes the event-based volume table; keep that only as a fallback
+    volume_section = "" if has_flow else (
+        '<h2>Inbound mail volume by type (this period)</h2>'
+        + email_volume_table(em["all_by_direction"].get("inbound", [])))
 
     return f"""<div class="page">
-{header(p, scope, "3 of 4 &mdash; Email")}
+{header(p, scope, "4 of 5 &mdash; Email")}
 
 <h2>Headline</h2>
 <div class="tiles tiles-3">
+  {tile("Emails handled", f"{st['inbound']:,}" if has_flow else "n/a", INK,
+        f"{st['external']:,} from outside, {st['internal']:,} internal" if has_flow else "mail-flow collector not run",
+        flow_line(tr["prev_flow_inbound"], st["inbound"], tr["prev_word"], up_is_bad=False) if has_flow else "")}
+  {tile("Filtered before reaching users", pct(st["filtered"], st["inbound"]) if has_flow else "n/a", INK,
+        f"{st['filtered']:,} emails quarantined by Microsoft or Check Point" if has_flow else "")}
+  {tile("Phishing + malware caught", f"{st['malicious']:,}" if has_flow else "n/a",
+        SEVERITY_COLOR["critical"] if st["malicious"] else INK,
+        f"phishing + malware ({st['malware']:,} malware), {st['suspicious']:,} suspicious" if has_flow else "",
+        flow_line(tr["prev_flow_malicious"], st["malicious"], tr["prev_word"]) if has_flow else "")}
   {tile("Inbound email threats", in_total[0], SEVERITY_COLOR["high"] if in_total[1] else INK,
-        f"{in_total[1]} high+ severity", flow_line(tr["prev_inbound"], in_total[0], tr["prev_word"]))}
+        f"{in_total[1]:,} high+ severity", flow_line(tr["prev_inbound"], in_total[0], tr["prev_word"]))}
   {tile("Outbound email threats", out_total[0], SEVERITY_COLOR["high"] if out_total[1] else INK,
         f"{out_total[1]} high+ severity", flow_line(tr["prev_outbound"], out_total[0], tr["prev_word"]))}
   {tile("DMARC pass rate", pct(em["dmarc_pass"], em["dmarc_messages"]), INK,
         f"{em['dmarc_messages']} messages seen")}
 </div>
+
+<h2>Inbound mail flow (this period)</h2>
+{svg_funnel(st)}
+{admin_note}
 
 <h2>Email traffic by direction (this period)</h2>
 {svg_stacked_bar(dir_parts) if dir_parts else '<p class="empty">No email events recorded.</p>'}
@@ -829,11 +1103,13 @@ def build_page_email(p: Period, scope: str, site: Optional[str], em: dict, tr: d
   </div>
 </div>
 
-<h2>Inbound mail volume by type (this period)</h2>
-{email_volume_table(em["all_by_direction"].get("inbound", []))}
+{volume_section}
 
-<footer>Page 3 of 4 &mdash; secops-dashboard. {scope_note}; Check Point Harmony Email &amp; Collaboration
-security events for the report period (events, not emails -- one email can raise several).
+<footer>Page 4 of 5 &mdash; secops-dashboard. {scope_note}; Check Point Harmony Email &amp; Collaboration.
+Mail flow counts emails (Microsoft's spam verdict: junk = SCL 5-6, quarantined = SCL 7-9; then Check Point's
+verdict); "inbound" includes internal mail, as Check Point's console counts it. "Phishing + malware" is Check
+Point's per-email verdict -- broader than the console's "Malicious" box. Threat tables count security events (one
+email can raise several). Site = recipient domain.
 {TREND_NOTE.format(prev_word=html.escape(tr["prev_word"]))}</footer>
 </div>"""
 
@@ -861,7 +1137,7 @@ def build_page_external(p: Period, scope: str, site: Optional[str], x: dict, tr:
     scope_note = "Org-wide figures across all sites" if site is None else f"Figures for {html.escape(site)} only"
 
     return f"""<div class="page">
-{header(p, scope, "2 of 4 &mdash; External Attack Surface")}
+{header(p, scope, "3 of 5 &mdash; External Attack Surface")}
 
 <h2>Headline</h2>
 <div class="tiles tiles-3">
@@ -873,7 +1149,7 @@ def build_page_external(p: Period, scope: str, site: Optional[str], x: dict, tr:
         (SEVERITY_COLOR["medium"] if x["confirmed"] else GOOD),
         f"{x['confirmed_crit_high']} critical/high, {x['confirmed_medium']} medium")}
   {tile("Leaked credentials", x["leaked_creds"], SEVERITY_COLOR["critical"] if x["leaked_creds"] else GOOD,
-        "open risks from infostealer-infected devices")}
+        "infostealer leaks naming a still-enabled account of ours")}
   {tile("Critical / high open (any type)", x["crit_high_any"],
         SEVERITY_COLOR["high"] if x["crit_high_any"] else GOOD)}
   {tile("Opened vs fixed this period", f"{x['opened']} / {x['fixed']}",
@@ -899,7 +1175,7 @@ def build_page_external(p: Period, scope: str, site: Optional[str], x: dict, tr:
   </div>
 </div>
 
-<footer>Page 2 of 4 &mdash; secops-dashboard. {scope_note}; external attack surface from Hadrian. "Confirmed" =
+<footer>Page 3 of 5 &mdash; secops-dashboard. {scope_note}; external attack surface from Hadrian. "Confirmed" =
 verified, unpatched-technology and infected-device risks; "potential" risks are unverified detections, many
 predating the current review workflow. Severities are Hadrian's own. A risk closed because a rescan no longer
 finds it counts as fixed. Assets take their site from their Hadrian tag, or from their apex domain if untagged.
@@ -917,29 +1193,25 @@ def build_page2(p: Period, scope: str, site: Optional[str], a: dict, idn: dict, 
     closed_with_verdict = tp + fp
     alerts_opened = a["new_crit"] + a["new_high"] + a["new_med"] + a["new_low"]
 
-    # Exact factor_type matches, not a substring-match-and-take-first: real
-    # CrowdStrike Identity Protection data has several distinct factors
-    # containing "STALE"/"PASSWORD" (STALE_ACCOUNT_USAGE, DUPLICATE_PASSWORD,
-    # INSUFFICIENT_PASSWORD_ROTATION, ...) and `next()` over a COUNT-DESC-
-    # ordered list silently picks whichever one happens to be biggest --
-    # on real data that was DUPLICATE_PASSWORD, not WEAK_PASSWORD, under a
-    # tile literally labelled "Weak / compromised passwords".
-    factor_counts = dict(idn["factors"])
-    stale = factor_counts.get("STALE_ACCOUNT", 0)
-    weak_pw = factor_counts.get("WEAK_PASSWORD", 0) + factor_counts.get("CREDENTIAL_THEFT", 0)
-    high_risk_ids = idn["severities"].get("high", 0)
-    factor_rows = "".join(
-        f'<tr><td>{html.escape(t)}</td><td class="num">{n}</td></tr>' for t, n in idn["factors"])
-    sev_order = ("high", "medium", "low")
-    sev_summary = " &nbsp; ".join(
-        f'<span class="legend-dot" style="background:{SEVERITY_COLOR.get(s, MUTED)}"></span>'
-        f'{s.title()} <b>{idn["severities"].get(s, 0)}</b>'
-        for s in sev_order if idn["severities"].get(s))
+    cats, groups, idt = idn["cats"], idn["groups"], tr["idcat"]
+
+    def change_cell(t: Optional[dict]) -> str:
+        if t is None:
+            return f'<span style="color:{FAINT}">&ndash;</span>'
+        return f'{_change(t["from"], t["to"])} <span style="color:{MUTED}">since {t["since"].strftime("%d %b")}</span>'
+
+    def cat_table(group: str) -> str:
+        rows = "".join(
+            f'<tr><td><b>{html.escape(c.label)}</b><div class="tile-sub">{html.escape(c.action)}</div></td>'
+            f'<td class="num">{cats[c.key]:,}</td><td class="num">{change_cell(idt.get(c.key))}</td></tr>'
+            for c in ic.CATEGORIES if c.group == group)
+        return (f'<h2>{html.escape(ic.GROUPS[group])}</h2><table><tr><th>Category</th><th class="num">Accounts</th>'
+                f'<th class="num">Change</th></tr>{rows}</table>')
     by = "day" if a["bucket"] == "day" else "week"
     scope_note = "Org-wide figures across all sites" if site is None else f"Figures for {html.escape(site)} only"
 
     return f"""<div class="page">
-{header(p, scope, "4 of 4 &mdash; Alerts &amp; Identity")}
+{header(p, scope, "5 of 5 &mdash; Alerts &amp; Identity")}
 
 <h2>Headline</h2>
 <div class="tiles tiles-3">
@@ -949,11 +1221,17 @@ def build_page2(p: Period, scope: str, site: Optional[str], a: dict, idn: dict, 
         INK, f"{closed_with_verdict} alerts closed with a verdict")}
   {tile("Open alerts now", a["open_total"], SEVERITY_COLOR["high"] if a["open_crit_high"] else INK,
         f"{a['open_crit_high']} crit/high", trend_line(tr["open_alerts"]))}
-  {tile("Stale accounts", stale, SEVERITY_COLOR["medium"] if stale else GOOD, trend=trend_line(tr["stale"]))}
-  {tile("Weak / compromised passwords", weak_pw, SEVERITY_COLOR["high"] if weak_pw else GOOD,
-        trend=trend_line(tr["weak_pw"]))}
-  {tile("High-risk identities (current)", high_risk_ids, SEVERITY_COLOR["high"] if high_risk_ids else GOOD,
-        trend=trend_line(tr["high_risk_ids"]))}
+  {tile("Accounts showing signs of compromise", f"{groups['compromise']:,}",
+        SEVERITY_COLOR["critical"] if groups["compromise"] else GOOD,
+        "stolen credentials, password attacks, suspicious sign-ins, attacker techniques",
+        trend_line(idt.get("group:compromise")))}
+  {tile("Stale accounts still enabled", f"{cats['stale_accounts']:,}",
+        SEVERITY_COLOR["medium"] if cats["stale_accounts"] else GOOD,
+        f"incl. {idn['stale_access']:,} unused VPN / remote-app accounts in the shared domain"
+        if idn["stale_access"] else "", trend_line(idt.get("stale_accounts")))}
+  {tile("Reused passwords", f"{cats['reused_passwords']:,}",
+        SEVERITY_COLOR["high"] if cats["reused_passwords"] else GOOD, "accounts sharing a password with another",
+        trend_line(idt.get("reused_passwords")))}
 </div>
 
 <h2>Alerts &mdash; volume by {by}</h2>
@@ -962,19 +1240,20 @@ def build_page2(p: Period, scope: str, site: Optional[str], a: dict, idn: dict, 
 <h2>Alert disposition (closed this period)</h2>
 {svg_stacked_bar(disp_parts) if disp_parts else '<p class="empty">No alerts closed this period.</p>'}
 
-<h2>Identity risk (current)</h2>
-<p class="legend-row">{sev_summary or "No entities with a risk severity recorded."}</p>
-<table><tr><th>Risk factor</th><th class="num">Accounts</th></tr>
-{factor_rows or '<tr><td colspan="2" class="empty">No identity risk factors recorded.</td></tr>'}</table>
+{cat_table("compromise")}
+{cat_table("exposure")}
 
-<footer>Page 4 of 4 &mdash; secops-dashboard. {scope_note}; alert counts and the bar chart cover the report
-period only and exclude informational-severity alerts; identity risk is current as of generation time.
+<footer>Page 5 of 5 &mdash; secops-dashboard. {scope_note}; alert counts and the bar chart cover the report
+period only and exclude informational-severity alerts. Identity risk (Falcon Identity Protection) is current as of
+generation time and counts enabled accounts (or unknown status), grouped into actionable categories; the full
+risk-factor list is on the SecOps dashboards and in the site action packs.
 {TREND_NOTE.format(prev_word=html.escape(tr["prev_word"]))}</footer>
 </div>"""
 
 
 def build_html(p: Period, scope: str, site: Optional[str], v: dict, a: dict, idn: dict,
-               em: dict, products: List[Tuple], sites: List[Tuple], x: dict, tr: dict) -> str:
+               em: dict, products: List[Tuple], sites: List[Tuple], x: dict, flow: Dict[str, int], es: dict,
+               tr: dict) -> str:
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <title>Security Posture Report -- {html.escape(scope)} -- {html.escape(p.label)}</title>
@@ -1013,17 +1292,33 @@ def build_html(p: Period, scope: str, site: Optional[str], v: dict, a: dict, idn
   @media screen {{
     .page {{ box-shadow: 0 1px 4px rgba(15,23,42,.08); border-radius: 4px; }}
   }}
+  @page {{ size: A4; margin: 12mm 12mm 14mm; }}
   @media print {{
+    * {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}   /* keep severity colours */
     body {{ background: #fff; }}
     .page {{ padding: 0; max-width: none; margin: 0; box-shadow: none; break-after: page; }}
+    .page:last-child {{ break-after: auto; }}
+    /* Tighter than on screen so each section fits one A4 page: scale the whole
+       page a little and trim the spacing that's generous on a monitor. */
+    html {{ zoom: 0.84; }}
+    header {{ margin-bottom: 12px; padding-bottom: 8px; }}
+    h2 {{ margin: 14px 0 8px; padding-bottom: 4px; }}
+    .tiles {{ gap: 8px; }}
+    .tile {{ padding: 8px 12px; }}
+    .tile-value {{ font-size: 22px; }}
+    table {{ font-size: 11px; }}
+    th {{ padding: 3px 6px; }}
+    td {{ padding: 2px 6px; }}
+    footer {{ margin-top: 14px; padding-top: 6px; font-size: 9px; }}
     h2 {{ break-after: avoid; }}
-    .row, .tiles {{ break-inside: avoid; }}
+    .row, .tiles, tr, svg {{ break-inside: avoid; }}
   }}
 </style></head>
 <body>
+{build_page_estate(p, scope, site, es, tr)}
 {build_page1(p, scope, site, v, products, sites, tr)}
 {build_page_external(p, scope, site, x, tr)}
-{build_page_email(p, scope, site, em, tr)}
+{build_page_email(p, scope, site, em, flow, tr)}
 {build_page2(p, scope, site, a, idn, tr)}
 </body></html>
 """
@@ -1038,7 +1333,8 @@ def render(cur, p: Period, site: Optional[str], hist: Dict[str, Optional[dt.date
     top = max(products, key=lambda r: r[1] + r[2], default=None)
     return build_html(p, scope, site, fetch_vulns(cur, p, site, days_last_seen), fetch_alerts(cur, p, site),
                       fetch_identity(cur, site), fetch_email(cur, p, site), products,
-                      sites, fetch_external(cur, p, site), fetch_trends(cur, p, site, hist, top and top[0]))
+                      sites, fetch_external(cur, p, site), fetch_email_flow(cur, p, site), fetch_estate(cur, site),
+                      fetch_trends(cur, p, site, hist, top and top[0]))
 
 
 def site_labels(cfg: Dict[str, Any]) -> List[str]:
@@ -1049,6 +1345,32 @@ def site_labels(cfg: Dict[str, Any]) -> List[str]:
 
 def safe_name(s: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", s)
+
+
+CHROMIUM_NAMES = ("chromium-browser", "chromium", "google-chrome", "google-chrome-stable", "headless_shell")
+
+
+def find_chromium(configured: Optional[str] = None) -> Optional[str]:
+    if configured:
+        return configured if os.path.exists(configured) else shutil.which(configured)
+    return next((p for p in (shutil.which(n) for n in CHROMIUM_NAMES) if p), None)
+
+
+def html_to_pdf(chromium: str, html_path: str, pdf_path: str) -> None:
+    """Print the report to PDF with headless Chromium (faithful for the inline
+    SVG and the CSS layout; the page's @page/@media print rules set A4 and
+    the page breaks). A throwaway profile per call so parallel runs don't
+    fight over one. Writes via a temp name so publish.py never sees half a file."""
+    tmp = pdf_path + ".partial"
+    with tempfile.TemporaryDirectory(prefix="secops-chromium-") as profile:
+        r = subprocess.run(
+            [chromium, "--headless=new", "--disable-gpu", "--no-first-run", f"--user-data-dir={profile}",
+             "--no-pdf-header-footer", "--print-to-pdf-no-header", f"--print-to-pdf={tmp}",
+             "file://" + os.path.abspath(html_path)],
+            capture_output=True, text=True, timeout=180)
+    if r.returncode != 0 or not os.path.exists(tmp) or os.path.getsize(tmp) == 0:
+        raise RuntimeError(f"chromium exited {r.returncode}: {(r.stderr or r.stdout)[-400:]}")
+    os.replace(tmp, pdf_path)
 
 
 def write(path: str, content: str) -> None:
@@ -1071,6 +1393,8 @@ def main() -> None:
                        help="whole-of-region report plus one per site, into reports/<period>/ (or --out-dir)")
     ap.add_argument("--out", help="output HTML path for a single report")
     ap.add_argument("--out-dir", help="--all-sites output folder (default: reports/<period>)")
+    ap.add_argument("--pdf", action=argparse.BooleanOptionalAction, default=None,
+                    help="also write a PDF next to each HTML (default: reporting.pdf in config, else on)")
     args = ap.parse_args()
 
     today = dt.date.today()
@@ -1080,11 +1404,20 @@ def main() -> None:
         p = {"week": week_period, "month": month_period, "quarter": quarter_period}[args.period](today)
 
     cfg = config_mod.load_config(args.config)
+    OS_EOS.clear()
+    OS_EOS.update(os_lifecycle.table(cfg.get("reporting", {}).get("os_end_of_support")))
     BULK_DATES[:] = sorted(dt.date.fromisoformat(str(d))
                            for d in cfg.get("reporting", {}).get("vuln_bulk_load_dates") or [])
     labels = site_labels(cfg)
     if args.site and args.site not in labels:
         ap.error(f"unknown site {args.site!r}; configured: {', '.join(labels)}")
+
+    make_pdf = args.pdf if args.pdf is not None else bool(cfg.get("reporting", {}).get("pdf", True))
+    chromium = find_chromium(cfg.get("reporting", {}).get("chromium_path")) if make_pdf else None
+    if make_pdf and not chromium:
+        print("[exec_report] WARNING: no Chromium found (dnf install chromium, or set reporting.chromium_path) "
+              "-- writing HTML only")
+        make_pdf = False
 
     conn = pg_connect(cfg)
     cur = conn.cursor()
@@ -1101,6 +1434,13 @@ def main() -> None:
     for site, path in jobs:
         write(path, render(cur, p, site, hist, int(cfg.get("reporting", {}).get("days_last_seen", 30))))
         print(f"[exec_report] wrote {path} ({p.since} to {p.until}, {site or 'whole of region'})")
+        if make_pdf:
+            pdf = os.path.splitext(path)[0] + ".pdf"
+            try:
+                html_to_pdf(chromium, path, pdf)
+                print(f"[exec_report] wrote {pdf}")
+            except Exception as e:   # the HTML is still good; don't lose the rest of the run
+                print(f"[exec_report] PDF failed for {path}: {e}")
     conn.close()
 
 

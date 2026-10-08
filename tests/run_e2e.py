@@ -52,7 +52,7 @@ collectors:
   falcon_hosts: {{enabled: true, out_of_scope_ous: {{"Departed Service": "left the alliance"}}}}
   falcon_spotlight: {{enabled: true, page_size: 2}}
   falcon_alerts: {{enabled: true}}
-  falcon_identity: {{enabled: true}}
+  falcon_identity: {{enabled: true, access_domain: {{domain: "shared.local", native_sites: ["Lakeside Health"]}}}}
   hadrian:
     enabled: true
     base_url: "{M}/hadrian"
@@ -71,6 +71,7 @@ collectors:
                      visibility: riskVisibility, risk_type: riskType, category: primaryCategory.id,
                      first_seen: created, last_seen: lastSeen, resolved_at: resolvedOn}}}}
   checkpoint_hec: {{enabled: true, gateway: "{M}/hec"}}
+  checkpoint_hec_flow: {{enabled: true, lookback_days: 1}}
   entra:
     enabled: true
     tenants: [{{name: main, tenant_id: t1, login_base: "{M}/login", graph_base: "{M}/graph",
@@ -154,7 +155,7 @@ def main() -> int:
     rows = q(cur, "SELECT collector, status, error FROM collector_freshness ORDER BY 1")
     for r in rows:
         check(r[1] == "ok", f"collector {r[0]} status ok ({r[2] or ''})")
-    check(len(rows) == 9, f"9 collectors ran (got {len(rows)})")
+    check(len(rows) == 10, f"10 collectors ran (got {len(rows)})")
 
     print("== site resolution")
     sites = dict(q(cur, "SELECT source_asset_id, site_label || '/' || site_matched_by FROM assets"))
@@ -213,7 +214,12 @@ def main() -> int:
     check(al2d == ("closed", "false_positive"),
           f"disposition preserved under collapsed status: {al2d}")
     ids = dict(q(cur, "SELECT entity_id, site_label FROM identity_entities"))
-    check(ids == {"e1": "Riverside Health", "e2": "Lakeside Health", "e3": "Ungrouped"}, f"identity sites {ids}")
+    check(ids == {"e1": "Riverside Health", "e2": "Lakeside Health", "e3": "Ungrouped", "e4": "Riverside Health"},
+          f"identity sites {ids}")
+    acc = dict(q(cur, "SELECT entity_id, access_account FROM identity_entities WHERE access_account IS NOT NULL"))
+    check(acc == {"e4": "vpn"}, f"shared-domain VPN-only account tagged: {acc}")
+    kinds = dict(q(cur, "SELECT entity_id, account_kind FROM identity_entities"))
+    check(kinds.get("e1") == "service" and kinds.get("e2") == "human", f"account kinds (svc_ name -> service): {kinds}")
     check(q(cur, "SELECT count(*) FROM identity_risk_factors")[0][0] == 3, "3 identity risk factors (not doubled on rerun)")
     hec = dict(q(cur, "SELECT event_id, site_label FROM email_events"))
     check(hec == {"h1": "Riverside Health", "h2": "Lakeside Health", "h3": "Ungrouped"}, f"HEC recipient sites {hec}")
@@ -226,6 +232,17 @@ def main() -> int:
     dm = q(cur, "SELECT sum(messages), sum(dmarc_pass), count(DISTINCT site_label) FROM dmarc_daily")[0]
     check(tuple(map(int, dm)) == (1537, 1500, 2), f"DMARC aggregates across scroll pages: {dm}")
 
+    print("== mail-flow funnel")
+    fl = {(r[0], r[1]): int(r[2]) for r in q(cur, "SELECT site_label, metric, sum(value) FROM daily_email_flow_metrics "
+                                                 "GROUP BY 1, 2")}
+    check((fl.get(("Riverside Health", "incoming")), fl.get(("Lakeside Health", "incoming")),
+           fl.get(("Ungrouped", "incoming"))) == (4, 1, 1), f"incoming per site by recipient domain, rest Ungrouped: {fl}")
+    check(fl.get(("Lakeside Health", "internal_incoming")) == 1 and fl.get(("Lakeside Health", "incoming")) == 1,
+          "internal mail counted separately from incoming")
+    check((fl.get(("Riverside Health", "ms_junk")), fl.get(("Riverside Health", "ms_quarantine")),
+           fl.get(("Riverside Health", "cp_quarantined")), fl.get(("Riverside Health", "restored"))) == (1, 1, 3, 1),
+          "Microsoft junk/quarantine, Check Point quarantine and restores counted")
+
     print("== rollups")
     am = dict(q(cur, "SELECT site_label, stale_sensors FROM daily_asset_metrics WHERE snapshot_date=CURRENT_DATE"))
     check(am.get("Riverside Health") == 1, f"stale sensor counted (aid3): {am}")
@@ -233,6 +250,9 @@ def main() -> int:
     check(src == 2, "daily_source_metrics splits spotlight vs hadrian")
     idm = dict(q(cur, "SELECT metric, value FROM daily_identity_metrics WHERE site_label='Riverside Health'"))
     check(idm.get("factor:WEAK_PASSWORD") == 1 and idm.get("mfa_registered") == 1, f"identity metrics {idm}")
+    check((idm.get("cat:stale_accounts"), idm.get("cat:weak_passwords"), idm.get("cat:access_accounts"),
+           idm.get("catgroup:exposure")) == (1, 1, 1, 2),
+          "identity categories count distinct enabled accounts (stale + weak on one account = 1 in the group)")
 
     print("== reports")
     out = os.path.join(tmp, "out")
@@ -243,9 +263,19 @@ def main() -> int:
               "--site", "Riverside Health", "--out", os.path.join(out, "exec-site.html")) == 0,
           "exec_report.py single site exited 0")
     html_ = open(os.path.join(out, "exec-region.html")).read() if os.path.exists(os.path.join(out, "exec-region.html")) else ""
-    check(html_.count('class="page"') == 4, "exec report has 4 pages")
-    check("someone@riversidehealth.test" not in html_ and "s*****@riversidehealth.test" in html_,
-          "exec report masks the infostealer account")
+    check(html_.count('class="page"') == 5, "exec report has 5 pages")
+    import exec_report
+    if exec_report.find_chromium():
+        pdf = os.path.join(out, "exec-region.pdf")
+        check(os.path.exists(pdf) and open(pdf, "rb").read(5) == b"%PDF-", "exec report also rendered to PDF")
+    else:
+        print("  SKIP PDF check -- no Chromium on this machine")
+    check("What we're protecting" in html_ and "Operating systems" in html_, "exec report has the estate page")
+    check("someone@riversidehealth.test" not in html_ and "Infostealer" not in html_,
+          "low-severity infostealer risk left out of the external table, account never shown unmasked")
+    check("Inbound + internal emails" in html_ and "Delivered to users" in html_, "exec report has the mail-flow funnel")
+    check("Signs of compromise or attack" in html_ and "Reused passwords" in html_ and "WATCHED" not in html_,
+          "exec report shows the identity categories, not raw factors")
     check(run("action_pack.py", "--out-dir", out) == 0, "action_pack.py exited 0")
     packs = sorted(os.listdir(out)) if os.path.isdir(out) else []
     check(sum(f.endswith(".xlsx") for f in packs) == 4, f"action pack per site + region: {packs}")

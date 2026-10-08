@@ -8,6 +8,11 @@ crowdstrike:
   # client_id / client_secret -> secrets.yaml
 
 reporting:
+  # exec_report.py also prints each report to PDF with headless Chromium
+  # (dnf install chromium); set false for HTML only, or chromium_path if it
+  # isn't on PATH.
+  pdf: true
+  # chromium_path: "/usr/bin/chromium-browser"
   # Days a vuln source mass-stamped findings as "first found" because
   # collection started or coverage expanded (not new vulns). The exec report
   # leaves them out of "opened" and won't compare snapshots across them.
@@ -101,6 +106,29 @@ collectors:
     enabled: true
     entity_types: ["USER"]
     page_size: 1000
+    # A shared domain other sites' staff also get accounts in just for VPN or
+    # remote apps: those accounts are tagged vpn / rds / vpn+rds / legacy.
+    # access_domain:
+    #   domain: "shared.example.local"
+    #   native_sites: ["SITE-C"]
+    # OU segments of services that have left: their identities are kept but
+    # marked out_of_scope, off the report categories and action packs.
+    # out_of_scope_ous: ["SITE-C"]
+    # What kind of account each identity is -- human / service / mailbox /
+    # generic -- so e.g. "no MFA" can leave out service accounts and mailboxes,
+    # and generic logons get their own list. Regexes, case-insensitive: `ou`
+    # and `group` must match a WHOLE OU segment / AD group name ("Corporate
+    # Services" is a department, "SITE-A Service Accounts" isn't); `name` is
+    # searched within the account name. These override the defaults in
+    # identity_categories.py (shown here); anything unmatched falls back to
+    # Falcon's own MailboxRole / ProgrammaticUserAccountRole, else "human".
+    # An Entra-only group (e.g. a cloud "generic accounts" group) needs the
+    # entra collector; AD groups synced to Entra are seen here already.
+    # account_kinds:
+    #   mailbox: {ou: [".*shared mailboxes", "exchange resources", ".*meeting rooms", "resource bookings",
+    #                  "generic mail accounts"]}
+    #   service: {ou: [".*service accounts"], name: ["svc"]}
+    #   generic: {ou: ["generic (users|accounts|logons)"], group: [".*generic.*"]}
     # query_file: "collectors/queries/identity_entities.graphql"
 
   # Hadrian Atlas (external attack surface). Schema confirmed against the
@@ -159,6 +187,17 @@ collectors:
     lookback_days: 14
     # event_types: ["phishing", "suspicious_phishing", "malware", "suspicious_malware", "dlp", "anomaly"]
     # client_id / access_key -> secrets.yaml
+
+  # Check Point HEC mail-flow funnel (collectors/checkpoint_hec_flow.py):
+  # daily counts of inbound mail through Microsoft (inbox/junk/quarantine) and
+  # Check Point (clean/graymail/spam/phishing/malware, quarantined), per site
+  # by recipient domain. Uses checkpoint_hec's credentials. Counts only -- no
+  # email content is pulled.
+  checkpoint_hec_flow:
+    enabled: false
+    lookback_days: 3      # days recomputed each run (verdicts/restores change after delivery)
+    backfill_days: 14     # with collect.py --full
+    workers: 4            # parallel count queries
 
   # Entra ID via Microsoft Graph. One app registration per tenant.
   entra:
@@ -226,6 +265,24 @@ collectors:
     lookback_days: 10
     # ca_file: "/etc/pki/tls/certs/opensearch-ca.pem"    # or verify_tls: false for a self-signed lab box
     # username / password -> secrets.yaml
+
+# Copy finished reports (weekly/quarterly exec reports, monthly action packs)
+# to a file share, laid out <base>/<Site>/<Weekly|Quarterly|Monthly>/ -- e.g. a
+# NAS that syncs into SharePoint. publish.py, run from cron after the reports.
+# Credentials: publish.smb.username / password in secrets.yaml, or the
+# SECOPS_SMB_USERNAME / SECOPS_SMB_PASSWORD environment variables.
+publish:
+  enabled: false
+  method: smb                 # smb | local
+  formats: ["pdf", "xlsx"]    # exec reports as PDF, action packs as Excel ("html" to also send the HTML)
+  smb:
+    server: "nas.example.local"
+    share: "SecurityReports"
+    base_path: ""             # folder inside the share; "" = share root
+    # domain: "EXAMPLE"       # prefixed to the username if it has no domain part
+    encrypt: true             # SMB3 encryption; set false only if the NAS can't
+  # local:
+  #   path: "/mnt/security-reports"
 
 database:
   engine: "postgres"

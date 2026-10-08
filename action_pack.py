@@ -10,7 +10,10 @@ Tabs:
   Stale accounts       Falcon Identity STALE_ACCOUNT
   Weak-compromised pw  WEAK_PASSWORD / CREDENTIAL_THEFT (same pair as the exec report tile)
   Duplicate passwords  DUPLICATE_PASSWORD
-  No MFA               ACCOUNT_WITHOUT_MFA_CONFIGURED
+  No MFA - people      ACCOUNT_WITHOUT_MFA_CONFIGURED, people and generic logons
+  No MFA - svc&mailbox the same for service accounts / mailboxes (usually a cloud-sync scope fix)
+  Generic accounts     accounts classified generic (identity_categories.classify_account)
+  VPN & remote-app     extra shared-domain accounts for VPN / MANAD over RDS (identity_categories.classify_access)
   Stale sensors        managed hosts silent longer than reporting.stale_sensor_days
   Missing sensors      machines with no Falcon sensor: in-use AD computer accounts (servers,
                        DCs, workstations) first, then devices only seen on the network
@@ -43,6 +46,7 @@ from openpyxl.utils import get_column_letter
 
 import config as config_mod
 import discovery_classes as dc
+import identity_categories as ic
 from db import pg_connect
 
 SITE = "(%(site)s::text IS NULL OR {col} = %(site)s::text)"
@@ -50,11 +54,16 @@ HEADER_FILL = PatternFill("solid", fgColor="0F172A")
 HEADER_FONT = Font(bold=True, color="FFFFFF")
 TITLE_FONT = Font(bold=True, size=14)
 
-IDENTITY_COLS = ["Display name", "UPN", "Account (SAM)", "Domain", "OU", "Enabled", "Identity risk",
-                 "Password last changed", "Created", "Other risk factors"]
+IDENTITY_COLS = ["Display name", "UPN", "Account (SAM)", "Account type", "Shared-domain access", "Domain", "OU",
+                 "Enabled", "Identity risk", "Password last changed", "Created", "Other risk factors"]
+ACCESS_LABEL = ("CASE e.access_account " + " ".join(f"WHEN '{k}' THEN '{v}'" for k, v in ic.ACCESS_LABEL.items())
+                + " ELSE '' END")
+KIND_LABEL = ("CASE COALESCE(e.account_kind, 'human') WHEN 'human' THEN 'Person' WHEN 'service' THEN 'Service' "
+              "WHEN 'mailbox' THEN 'Mailbox/resource' WHEN 'generic' THEN 'Generic' ELSE e.account_kind END"
+              " || CASE WHEN e.is_privileged THEN ' (admin)' ELSE '' END")
 
 
-def identity_sql(factors: Sequence[str], with_issue: bool = False) -> str:
+def identity_sql(factors: Sequence[str], with_issue: bool = False, kinds: Optional[Sequence[str]] = None) -> str:
     """Accounts carrying any of `factors`, enabled first, then by identity
     risk. "Other risk factors" lists everything else flagged on the account,
     so a service can see e.g. a stale account that also has no MFA."""
@@ -62,7 +71,8 @@ def identity_sql(factors: Sequence[str], with_issue: bool = False) -> str:
     issue = (f"string_agg(DISTINCT f.factor_type, ', ') FILTER (WHERE f.factor_type IN ({flist})) AS issue, "
              if with_issue else "")
     return f"""
-        SELECT e.site_label, {issue}e.display_name, e.upn, e.sam_account_name, e.domain, e.ou,
+        SELECT e.site_label, {issue}e.display_name, e.upn, e.sam_account_name, {KIND_LABEL}, {ACCESS_LABEL},
+               e.domain, e.ou,
                CASE WHEN e.enabled THEN 'Yes' WHEN e.enabled IS FALSE THEN 'No' ELSE '?' END,
                initcap(e.risk_severity), e.password_last_change::date, e.account_created::date,
                (SELECT string_agg(o.factor_type, ', ' ORDER BY o.factor_type) FROM identity_risk_factors o
@@ -70,6 +80,8 @@ def identity_sql(factors: Sequence[str], with_issue: bool = False) -> str:
         FROM identity_entities e
         JOIN identity_risk_factors f ON f.source = e.source AND f.entity_id = e.entity_id
         WHERE NOT e.retired AND f.factor_type IN ({flist}) AND {SITE.format(col="e.site_label")}
+          AND COALESCE(e.account_kind, 'human') <> 'out_of_scope'
+          {f"AND COALESCE(e.account_kind, 'human') IN {ic.sql_in(kinds)}" if kinds else ""}
         GROUP BY e.source, e.entity_id
         ORDER BY e.enabled IS NOT TRUE,
                  CASE e.risk_severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END,
@@ -85,8 +97,43 @@ TABS: List[Tuple[str, str, List[str], str]] = [
      "Weak or stolen passwords. Force a reset; for CREDENTIAL_THEFT also review recent sign-ins."),
     ("Duplicate passwords", identity_sql(["DUPLICATE_PASSWORD"]), IDENTITY_COLS,
      "Accounts sharing a password with another account. Reset to unique passwords."),
-    ("No MFA", identity_sql(["ACCOUNT_WITHOUT_MFA_CONFIGURED"]), IDENTITY_COLS,
-     "Accounts with no MFA method registered. Enrol, or disable if unused."),
+    ("No MFA - people", identity_sql(["ACCOUNT_WITHOUT_MFA_CONFIGURED"], kinds=("human", "generic")), IDENTITY_COLS,
+     "People (and generic logons) with no MFA method registered. Enrol, or disable if unused."),
+    ("No MFA - svc & mailbox", identity_sql(["ACCOUNT_WITHOUT_MFA_CONFIGURED"], kinds=("service", "mailbox")),
+     IDENTITY_COLS,
+     "Service accounts and mailboxes flagged for no MFA. Usually they shouldn't be cloud-synced at all: move them to "
+     "an OU outside the sync scope, or exclude them from the MFA policy deliberately."),
+    ("Generic accounts", f"""
+        SELECT e.site_label, e.display_name, e.upn, e.sam_account_name, {KIND_LABEL}, e.domain, e.ou,
+               CASE WHEN e.enabled THEN 'Yes' WHEN e.enabled IS FALSE THEN 'No' ELSE '?' END,
+               array_to_string(e.ad_groups, ', '), e.account_created::date,
+               (SELECT string_agg(o.factor_type, ', ' ORDER BY o.factor_type) FROM identity_risk_factors o
+                 WHERE o.source = e.source AND o.entity_id = e.entity_id)
+        FROM identity_entities e
+        WHERE NOT e.retired AND e.account_kind = 'generic' AND {SITE.format(col="e.site_label")}
+        ORDER BY e.enabled IS NOT TRUE, e.display_name""",
+     ["Display name", "UPN", "Account (SAM)", "Account type", "Domain", "OU", "Enabled", "AD groups", "Created",
+      "Risk factors"],
+     "Shared logons nobody is accountable for (from the generic-accounts groups/OUs). Replace with named accounts "
+     "or disable -- enabled ones first."),
+    ("VPN & remote-app accts", f"""
+        SELECT e.site_label, e.display_name, e.upn, e.sam_account_name, {ACCESS_LABEL},
+               CASE WHEN e.enabled THEN 'Yes' WHEN e.enabled IS FALSE THEN 'No' ELSE '?' END,
+               CASE WHEN EXISTS (SELECT 1 FROM identity_risk_factors o WHERE o.source = e.source
+                                 AND o.entity_id = e.entity_id AND o.factor_type = 'STALE_ACCOUNT') THEN 'Yes' ELSE '' END,
+               e.ou, array_to_string(ARRAY(SELECT g FROM unnest(e.ad_groups) g
+                                           WHERE g ~* '(vpn|manad|remote|terminal|rds|rdp)'), ', '),
+               (SELECT string_agg(o.factor_type, ', ' ORDER BY o.factor_type) FROM identity_risk_factors o
+                 WHERE o.source = e.source AND o.entity_id = e.entity_id AND o.factor_type <> 'STALE_ACCOUNT')
+        FROM identity_entities e
+        WHERE NOT e.retired AND e.access_account IS NOT NULL AND {SITE.format(col="e.site_label")}
+        ORDER BY e.enabled IS NOT TRUE,
+                 NOT EXISTS (SELECT 1 FROM identity_risk_factors o WHERE o.source = e.source
+                             AND o.entity_id = e.entity_id AND o.factor_type = 'STALE_ACCOUNT'),
+                 e.access_account, e.display_name""",
+     ["Display name", "UPN", "Account (SAM)", "Used for", "Enabled", "Stale", "OU", "Access groups", "Other risk factors"],
+     "Second accounts in the shared domain that exist only for VPN or remote apps (MANAD). Enabled + stale ones are "
+     "listed first: disable them now. Legacy = in neither a VPN nor a remote-app group; confirm and remove."),
     ("Stale sensors", f"""
         SELECT site_label, hostname, product_type, os_version, last_seen::date,
                (now()::date - last_seen::date) AS days_silent, sensor_version,
@@ -117,6 +164,7 @@ TABS: List[Tuple[str, str, List[str], str]] = [
         WHERE vf.source = 'hadrian' AND vf.state IN ('OPEN','REOPENED')
           AND (vf.risk_type IN ('Verified','UnpatchedTechnology','InfectedDevice')
                OR vf.vendor_priority IN ('Critical','High'))
+          AND (vf.risk_type <> 'InfectedDevice' OR {ic.ACTIVE_LEAK_SQL})
           AND {SITE.format(col="vf.site_label")}
         ORDER BY CASE WHEN vf.vendor_priority IN ('Critical','High') THEN 1
                       WHEN vf.risk_type = 'InfectedDevice' THEN 2 ELSE 3 END,
@@ -125,7 +173,8 @@ TABS: List[Tuple[str, str, List[str], str]] = [
                  vf.first_found""",
      ["Severity", "Type", "Category", "Risk", "Asset", "First seen", "State", "Remediation"],
      "Internet-facing risks found by Hadrian: confirmed ones plus anything critical/high. "
-     "Infostealer infections name the compromised accounts -- reset them and check the device."),
+     "Infostealer leaks are only listed when they name one of our accounts that's still enabled -- reset it and "
+     "find the device."),
 ]
 
 

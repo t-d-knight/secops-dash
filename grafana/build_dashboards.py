@@ -849,6 +849,40 @@ def worklist():
             description="A site with far fewer identities than staff is a sign its accounts are landing in "
                         "Ungrouped (or another site).")
 
+    b.row("Shared-domain access accounts (VPN / remote apps)")
+    b.text("Second accounts other sites' staff have in the shared domain only for **VPN** (SSL-VPN groups) or "
+           "**remote apps** (MANAD over RDS). **Legacy** = in neither kind of group: older provisioning to confirm "
+           "and remove. Enabled + stale = unused: disable now. The rest go when VPN moves to Azure authentication. "
+           "Rules: collectors.falcon_identity.access_domain.", h=3)
+    ACC = "access_account IS NOT NULL AND NOT retired AND site_label IN ($site)"
+    STALE = ("EXISTS (SELECT 1 FROM identity_risk_factors f WHERE f.source = e.source AND f.entity_id = e.entity_id "
+             "AND f.factor_type = 'STALE_ACCOUNT')")
+    b.stat("Extra access accounts (enabled)", f"SELECT count(*) FROM identity_entities e WHERE {ACC} AND enabled IS NOT FALSE",
+           thresholds=BAD_UP)
+    b.stat("Enabled but unused (stale)", f"SELECT count(*) FROM identity_entities e WHERE {ACC} AND enabled IS NOT FALSE "
+           f"AND {STALE}", thresholds=BAD_UP, description="Quick win: nobody is using these -- disable.")
+    b.stat("Legacy (no VPN or remote-app group)", f"SELECT count(*) FROM identity_entities e WHERE {ACC} "
+           "AND enabled IS NOT FALSE AND access_account = 'legacy'", thresholds=BAD_UP)
+    b.newline()
+    b.table("By site", f"""
+        SELECT site_label AS "Site",
+               count(*) FILTER (WHERE access_account = 'vpn') AS "VPN",
+               count(*) FILTER (WHERE access_account = 'rds') AS "Remote apps",
+               count(*) FILTER (WHERE access_account = 'vpn+rds') AS "VPN + remote apps",
+               count(*) FILTER (WHERE access_account = 'legacy') AS "Legacy",
+               count(*) FILTER (WHERE enabled IS NOT FALSE) AS "Enabled",
+               count(*) FILTER (WHERE enabled IS NOT FALSE AND {STALE}) AS "Enabled + stale"
+        FROM identity_entities e WHERE {ACC}
+        GROUP BY 1 ORDER BY "Enabled" DESC""", w=10, h=10, overrides=[bg("Enabled + stale", "continuous-YlRd")])
+    b.table("Accounts", f"""
+        SELECT display_name AS "Name", sam_account_name AS "Account", site_label AS "Site",
+               access_account AS "Used for", CASE WHEN enabled IS FALSE THEN 'No' ELSE 'Yes' END AS "Enabled",
+               CASE WHEN {STALE} THEN 'Yes' ELSE '' END AS "Stale",
+               array_to_string(ARRAY(SELECT g FROM unnest(ad_groups) g
+                                     WHERE g ~* '(vpn|manad|remote|terminal|rds|rdp)'), ', ') AS "Access groups"
+        FROM identity_entities e WHERE {ACC}
+        ORDER BY enabled IS FALSE, NOT {STALE}, site_label, display_name""", w=14, h=10)
+
     b.row("DMARC (parsedmarc)", collapsed=True)
     b.text("Populates once the **dmarc** collector is enabled and can reach the parsedmarc OpenSearch "
            "(`collectors.dmarc.opensearch_url` in config.yaml). Until then these panels are empty -- check "

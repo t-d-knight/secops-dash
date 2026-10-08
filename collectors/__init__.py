@@ -6,6 +6,7 @@ collectors because they reuse its per-host site resolution.
 from collectors import (
     azure_log_analytics,
     checkpoint_hec,
+    checkpoint_hec_flow,
     dmarc,
     entra,
     falcon_alerts,
@@ -22,6 +23,7 @@ REGISTRY = {m.NAME: m for m in (
     falcon_identity,
     hadrian,
     checkpoint_hec,
+    checkpoint_hec_flow,
     entra,
     azure_log_analytics,
     dmarc,

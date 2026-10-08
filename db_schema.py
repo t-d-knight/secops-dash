@@ -310,6 +310,16 @@ DDL_STATEMENTS = [
         PRIMARY KEY (source, entity_id)
     );
     """,
+    # Account kind (identity_categories.classify_account): human / service /
+    # mailbox / generic, plus Falcon's roles and the account's AD groups that
+    # it was classified from.
+    "ALTER TABLE identity_entities ADD COLUMN IF NOT EXISTS account_kind TEXT;",
+    "ALTER TABLE identity_entities ADD COLUMN IF NOT EXISTS is_privileged BOOLEAN;",
+    "ALTER TABLE identity_entities ADD COLUMN IF NOT EXISTS roles TEXT[];",
+    "ALTER TABLE identity_entities ADD COLUMN IF NOT EXISTS ad_groups TEXT[];",
+    # VPN / remote-app second accounts in the shared domain
+    # (identity_categories.classify_access): vpn | rds | vpn+rds | legacy | NULL
+    "ALTER TABLE identity_entities ADD COLUMN IF NOT EXISTS access_account TEXT;",
     """
     CREATE TABLE IF NOT EXISTS identity_risk_factors (
         source           TEXT NOT NULL,
@@ -462,6 +472,15 @@ DDL_STATEMENTS = [
         PRIMARY KEY (snapshot_date, site_label)
     );
     """,
+    # Estate page (exec_report.py): device mix, OS support status and
+    # internet-facing assets per site per day, for trends.
+    "ALTER TABLE daily_asset_metrics ADD COLUMN IF NOT EXISTS workstations INTEGER;",
+    "ALTER TABLE daily_asset_metrics ADD COLUMN IF NOT EXISTS servers INTEGER;",
+    "ALTER TABLE daily_asset_metrics ADD COLUMN IF NOT EXISTS domain_controllers INTEGER;",
+    "ALTER TABLE daily_asset_metrics ADD COLUMN IF NOT EXISTS unsupported_os INTEGER;",
+    "ALTER TABLE daily_asset_metrics ADD COLUMN IF NOT EXISTS os_ending_soon INTEGER;",
+    "ALTER TABLE daily_asset_metrics ADD COLUMN IF NOT EXISTS external_domains INTEGER;",
+    "ALTER TABLE daily_asset_metrics ADD COLUMN IF NOT EXISTS external_ips INTEGER;",
     """
     CREATE TABLE IF NOT EXISTS daily_alert_metrics (
         snapshot_date    DATE NOT NULL,
@@ -498,6 +517,21 @@ DDL_STATEMENTS = [
         opened          INTEGER NOT NULL DEFAULT 0,
         fixed           INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (snapshot_date, site_label, severity)
+    );
+    """,
+    # Mail-flow funnel per local day (collectors/checkpoint_hec_flow.py):
+    # long format like daily_identity_metrics. Metrics: incoming, ms_junk,
+    # ms_quarantine, ms_quarantine_not_cp, not_cp_quarantined, cp_clean,
+    # cp_graymail, cp_spam, cp_phishing, cp_suspicious_phishing, cp_malware,
+    # cp_quarantined, restore_requested, restored, restore_declined,
+    # monitor_mode. Counts emails (Check Point entities), not events.
+    """
+    CREATE TABLE IF NOT EXISTS daily_email_flow_metrics (
+        snapshot_date  DATE NOT NULL,
+        site_label     TEXT NOT NULL,
+        metric         TEXT NOT NULL,
+        value          INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (snapshot_date, site_label, metric)
     );
     """,
     """

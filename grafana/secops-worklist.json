@@ -1563,22 +1563,317 @@
     {
       "id": 37,
       "type": "row",
-      "title": "DMARC (parsedmarc)",
-      "collapsed": true,
+      "title": "Shared-domain access accounts (VPN / remote apps)",
+      "collapsed": false,
       "gridPos": {
         "x": 0,
         "y": 110,
         "w": 24,
         "h": 1
       },
+      "panels": []
+    },
+    {
+      "id": 38,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 111,
+        "w": 24,
+        "h": 3
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Second accounts other sites' staff have in the shared domain only for **VPN** (SSL-VPN groups) or **remote apps** (MANAD over RDS). **Legacy** = in neither kind of group: older provisioning to confirm and remove. Enabled + stale = unused: disable now. The rest go when VPN moves to Azure authentication. Rules: collectors.falcon_identity.access_domain."
+      }
+    },
+    {
+      "id": 39,
+      "type": "stat",
+      "title": "Extra access accounts (enabled)",
+      "gridPos": {
+        "x": 0,
+        "y": 114,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM identity_entities e WHERE access_account IS NOT NULL AND NOT retired AND site_label IN ($site) AND enabled IS NOT FALSE"
+        }
+      ]
+    },
+    {
+      "id": 40,
+      "type": "stat",
+      "title": "Enabled but unused (stale)",
+      "gridPos": {
+        "x": 4,
+        "y": 114,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM identity_entities e WHERE access_account IS NOT NULL AND NOT retired AND site_label IN ($site) AND enabled IS NOT FALSE AND EXISTS (SELECT 1 FROM identity_risk_factors f WHERE f.source = e.source AND f.entity_id = e.entity_id AND f.factor_type = 'STALE_ACCOUNT')"
+        }
+      ],
+      "description": "Quick win: nobody is using these -- disable."
+    },
+    {
+      "id": 41,
+      "type": "stat",
+      "title": "Legacy (no VPN or remote-app group)",
+      "gridPos": {
+        "x": 8,
+        "y": 114,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM identity_entities e WHERE access_account IS NOT NULL AND NOT retired AND site_label IN ($site) AND enabled IS NOT FALSE AND access_account = 'legacy'"
+        }
+      ]
+    },
+    {
+      "id": 42,
+      "type": "table",
+      "title": "By site",
+      "gridPos": {
+        "x": 0,
+        "y": 118,
+        "w": 10,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Enabled + stale"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-YlRd"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT site_label AS \"Site\", count(*) FILTER (WHERE access_account = 'vpn') AS \"VPN\", count(*) FILTER (WHERE access_account = 'rds') AS \"Remote apps\", count(*) FILTER (WHERE access_account = 'vpn+rds') AS \"VPN + remote apps\", count(*) FILTER (WHERE access_account = 'legacy') AS \"Legacy\", count(*) FILTER (WHERE enabled IS NOT FALSE) AS \"Enabled\", count(*) FILTER (WHERE enabled IS NOT FALSE AND EXISTS (SELECT 1 FROM identity_risk_factors f WHERE f.source = e.source AND f.entity_id = e.entity_id AND f.factor_type = 'STALE_ACCOUNT')) AS \"Enabled + stale\" FROM identity_entities e WHERE access_account IS NOT NULL AND NOT retired AND site_label IN ($site) GROUP BY 1 ORDER BY \"Enabled\" DESC"
+        }
+      ]
+    },
+    {
+      "id": 43,
+      "type": "table",
+      "title": "Accounts",
+      "gridPos": {
+        "x": 10,
+        "y": 118,
+        "w": 14,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT display_name AS \"Name\", sam_account_name AS \"Account\", site_label AS \"Site\", access_account AS \"Used for\", CASE WHEN enabled IS FALSE THEN 'No' ELSE 'Yes' END AS \"Enabled\", CASE WHEN EXISTS (SELECT 1 FROM identity_risk_factors f WHERE f.source = e.source AND f.entity_id = e.entity_id AND f.factor_type = 'STALE_ACCOUNT') THEN 'Yes' ELSE '' END AS \"Stale\", array_to_string(ARRAY(SELECT g FROM unnest(ad_groups) g WHERE g ~* '(vpn|manad|remote|terminal|rds|rdp)'), ', ') AS \"Access groups\" FROM identity_entities e WHERE access_account IS NOT NULL AND NOT retired AND site_label IN ($site) ORDER BY enabled IS FALSE, NOT EXISTS (SELECT 1 FROM identity_risk_factors f WHERE f.source = e.source AND f.entity_id = e.entity_id AND f.factor_type = 'STALE_ACCOUNT'), site_label, display_name"
+        }
+      ]
+    },
+    {
+      "id": 44,
+      "type": "row",
+      "title": "DMARC (parsedmarc)",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 128,
+        "w": 24,
+        "h": 1
+      },
       "panels": [
         {
-          "id": 38,
+          "id": 45,
           "type": "text",
           "title": "",
           "gridPos": {
             "x": 0,
-            "y": 111,
+            "y": 129,
             "w": 24,
             "h": 3
           },
@@ -1588,12 +1883,12 @@
           }
         },
         {
-          "id": 39,
+          "id": 46,
           "type": "table",
           "title": "DMARC pass rate by sending domain (range)",
           "gridPos": {
             "x": 0,
-            "y": 114,
+            "y": 132,
             "w": 12,
             "h": 9
           },
@@ -1663,12 +1958,12 @@
           ]
         },
         {
-          "id": 40,
+          "id": 47,
           "type": "table",
           "title": "Top failing sources (range)",
           "gridPos": {
             "x": 12,
-            "y": 114,
+            "y": 132,
             "w": 12,
             "h": 9
           },

@@ -142,6 +142,52 @@ def check_grafana_reachable(cfg) -> bool:
         return False
 
 
+def check_report_output(cfg) -> int:
+    """PDF rendering (exec_report.py) and the publish destination (publish.py).
+    Returns the number of fatal issues: missing Chromium is only fatal when
+    PDFs are what gets published."""
+    import tempfile
+    import exec_report
+    rep, pub = cfg.get("reporting") or {}, cfg.get("publish") or {}
+    fatal = 0
+    pdf_on = bool(rep.get("pdf", True))
+    publishing_pdf = bool(pub.get("enabled")) and "pdf" in [f.lower() for f in pub.get("formats") or ["pdf", "xlsx"]]
+    chromium = exec_report.find_chromium(rep.get("chromium_path"))
+    if not pdf_on:
+        print("[PASS] PDF output disabled (reporting.pdf: false) -- HTML only.")
+    elif not chromium:
+        level = "FAIL" if publishing_pdf else "WARN"
+        print(f"[{level}] No Chromium found for PDF output: dnf install chromium (or set reporting.chromium_path)."
+              + (" publish.formats includes pdf, so nothing would be published for the exec reports." if publishing_pdf else ""))
+        fatal += publishing_pdf
+    else:
+        with tempfile.TemporaryDirectory() as d:   # a real render, not just "the binary exists"
+            src, out = os.path.join(d, "t.html"), os.path.join(d, "t.pdf")
+            with open(src, "w") as fh:
+                fh.write("<html><body><h1>preflight</h1><svg width='50' height='20'><rect width='50' height='20'/></svg>")
+            try:
+                exec_report.html_to_pdf(chromium, src, out)
+                print(f"[PASS] Chromium renders PDFs ({chromium}).")
+            except Exception as e:
+                print(f"[FAIL] Chromium found ({chromium}) but a test PDF failed: {str(e)[:300]}")
+                fatal += 1
+    if not pub.get("enabled"):
+        print("[PASS] Publishing disabled (publish.enabled: false).")
+        return fatal
+    import publish
+    try:
+        t = publish.target(pub)
+        t.check()
+        print(f"[PASS] Publish destination writable: {t.describe()}")
+    except SystemExit as e:          # missing credentials / package: publish.py's own message
+        print(f"[FAIL] Publishing: {e}")
+        fatal += 1
+    except Exception as e:
+        print(f"[FAIL] Publish destination not writable: {type(e).__name__}: {str(e)[:300]}")
+        fatal += 1
+    return fatal
+
+
 def main():
     parser = argparse.ArgumentParser(description="Preflight check before importing the dashboards into Grafana")
     parser.add_argument("--config", default="config.yaml")
@@ -208,6 +254,9 @@ def main():
                   f"Check their match rules; the overview's 'Site mapping gaps' panel shows what fell through.")
         else:
             print(f"[PASS] All {len(configured_sites)} configured sites have data mapped to them.")
+
+    print("\n=== Report output ===")
+    fatal_failures += check_report_output(cfg)
 
     print("\n=== Grafana ===")
     check_grafana_service_local()

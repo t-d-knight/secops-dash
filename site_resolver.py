@@ -114,7 +114,7 @@ class SiteResolver:
         tags = set(_norm_list(ctx.falcon_tags))
         if site["falcon_tags"] & tags:
             return True
-        # also accept the tag's value part, e.g. "SensorGroupingTags/BH" == "bh"
+        # also accept the tag's value part, e.g. "SensorGroupingTags/SITE-A" == "site-a"
         short = {t.rsplit("/", 1)[-1] for t in tags}
         return bool(site["falcon_tags"] & short)
 
