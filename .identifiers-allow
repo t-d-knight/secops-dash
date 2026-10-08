@@ -1,0 +1,4 @@
+# Lines matching any of these regexes are exempt from tools/check_identifiers.py.
+# Committed, so keep entries generic -- describe the false positive, never the real value.
+# Date/time format strings (a short site code can collide with the hour token in these)
+HH:mm

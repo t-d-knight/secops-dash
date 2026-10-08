@@ -5,6 +5,8 @@
 
 # Other dev files
 bld.txt
+# Extra identifier denylist for tools/check_identifiers.py (real values)
+/.identifiers.local
 
 # Generated exec reports -- real site names and counts, not for git
 /reports/*
