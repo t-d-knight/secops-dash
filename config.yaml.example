@@ -8,6 +8,10 @@ crowdstrike:
   # client_id / client_secret -> secrets.yaml
 
 reporting:
+  # Days a vuln source mass-stamped findings as "first found" because
+  # collection started or coverage expanded (not new vulns). The exec report
+  # leaves them out of "opened" and won't compare snapshots across them.
+  # vuln_bulk_load_dates: ["2026-01-15"]
   days_last_seen: 30
   # true  = only flag remote/no-auth vulns that also have a known exploit (lower noise, recommended)
   # false = flag every network-reachable, no-auth vuln

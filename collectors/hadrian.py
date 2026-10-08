@@ -408,6 +408,7 @@ def run(ctx: RunContext) -> Dict[str, Any]:
         n += 1
     w.flush()
     stats["risks"] = n
+    stats["risks_changed"] = w.changed
     stats["risks_archived_skipped"] = skipped
     if n and rcfg.get("full_pull", True):
         stats["expired"] = expire_unseen(ctx.conn, SOURCE, ctx.run_started)

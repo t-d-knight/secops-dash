@@ -191,6 +191,13 @@ def main() -> int:
     check(v2r is False, "no vector -> not remote/no-auth (old cvss bug fixed)")
     lf = q(cur, "SELECT last_found > now() - interval '1 day' FROM vuln_findings WHERE source_rule_id='v1'")[0][0]
     check(lf, "last_found taken from host last_seen")
+    runs = q(cur, "SELECT stats->>'rows', stats->>'changed' FROM collector_runs WHERE collector = 'falcon_spotlight' "
+                  "ORDER BY started_at")
+    check(len(runs) == 2 and runs[1][1] == "0" and runs[1][0] != "0",
+          f"second identical pull rewrites no findings (rows, changed per run: {runs})")
+    desc = q(cur, "SELECT count(*) FROM cve_descriptions")[0][0]
+    syn = q(cur, "SELECT count(*) FROM vuln_findings WHERE source = 'falcon_spotlight' AND synopsis IS NOT NULL")[0][0]
+    check(desc >= 4 and syn == 0, f"CVE descriptions stored once per CVE ({desc}), not per finding ({syn})")
     kev = q(cur, "SELECT count(*) FROM fact_vuln_findings_current WHERE has_kev")[0][0]
     check(kev == 1, f"KEV joins Spotlight log4j; Hadrian risks carry no CVEs (got {kev})")
     patch = q(cur, "SELECT title, open_findings, affected_assets FROM patch_impact_summary WHERE fix_key='R1'")

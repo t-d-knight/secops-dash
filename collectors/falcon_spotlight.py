@@ -125,7 +125,7 @@ def to_finding(rec: Dict[str, Any], hosts, fc: FalconClient, resolver, require_e
         cvss_vector=vector,
         title=" ".join(x for x in (cve_id, app.get("product_name_version")) if x),
         plugin_family=", ".join(as_list(cve.get("types"))) or None,
-        synopsis=(cve.get("description") or "")[:2000] or None,
+        cve_description=(cve.get("description") or "")[:2000] or None,   # -> cve_descriptions, once per CVE
         solution=fix.get("action") or fix.get("title"),
         is_remote_no_auth=cvss.is_remote_no_auth(vector, exploit_available=exploit_available,
                                                  require_exploit=require_exploit),
@@ -182,9 +182,9 @@ def run(ctx: RunContext) -> Dict[str, Any]:
         WHERE vf.source = %s AND a.source = 'falcon'
           AND a.source_asset_id = vf.source_asset_id
           AND vf.state IN ('OPEN','REOPENED','SUPPRESSED')
-          AND a.last_seen IS NOT NULL AND a.last_seen > vf.last_found
+          AND a.last_seen IS NOT NULL AND a.last_seen > vf.last_found + interval '7 days'
         """,
         (SOURCE,),
     )
     ctx.conn.commit()
-    return {"open": open_n, "closed": closed_n, "expired": expired, "rows": w.written}
+    return {"open": open_n, "closed": closed_n, "expired": expired, "rows": w.written, "changed": w.changed}

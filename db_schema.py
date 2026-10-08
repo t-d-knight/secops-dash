@@ -150,6 +150,16 @@ DDL_STATEMENTS = [
     "ALTER TABLE vuln_findings ADD COLUMN IF NOT EXISTS fix_id TEXT;",
     "ALTER TABLE vuln_findings ADD COLUMN IF NOT EXISTS fix_title TEXT;",
     "ALTER TABLE vuln_findings ADD COLUMN IF NOT EXISTS vendor_priority TEXT;",
+    # One description per CVE (findings_store.FindingsWriter fills it from
+    # NormalizedFinding.cve_description). Spotlight used to repeat the ~1.9 KB
+    # text on every finding -- most of vuln_findings' size at 4.5M rows.
+    """
+    CREATE TABLE IF NOT EXISTS cve_descriptions (
+        cve_id       TEXT PRIMARY KEY,
+        description  TEXT,
+        updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    """,
     # Hadrian riskType (Potential | Verified | UnpatchedTechnology |
     # InfectedDevice): separates confirmed external risks from unverified
     # "potential" ones. NULL for sources without the concept.
@@ -535,6 +545,16 @@ DDL_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_vuln_findings_product_family ON vuln_findings (product_family);",
     "CREATE INDEX IF NOT EXISTS idx_vuln_findings_first_found ON vuln_findings (first_found);",
     "CREATE INDEX IF NOT EXISTS idx_vuln_findings_last_fixed ON vuln_findings (last_fixed);",
+    # Open endpoint findings only, covering what exec_report / action_pack
+    # count per site: lets those answer from the index instead of scanning
+    # the whole table (20 GB at ~4.7M rows once Spotlight covered the estate;
+    # without it a region report took 15 min). Created CONCURRENTLY by hand
+    # on the live DB first; IF NOT EXISTS makes this a no-op there.
+    """
+    CREATE INDEX IF NOT EXISTS idx_vuln_findings_open_endpoint ON vuln_findings
+        (site_label, severity) INCLUDE (product_family, first_found, last_found, is_remote_no_auth, source)
+        WHERE state IN ('OPEN','REOPENED') AND source <> 'hadrian';
+    """,
     "CREATE INDEX IF NOT EXISTS idx_vuln_findings_source_asset ON vuln_findings (source_asset_id);",
     """
     CREATE INDEX IF NOT EXISTS idx_vuln_findings_open

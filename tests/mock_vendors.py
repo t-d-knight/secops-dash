@@ -56,7 +56,7 @@ def _vuln(vid, aid, cve, sev, score, status, *, vector=None, exploit=0, app=("go
 
 OPEN_VULNS = [
     _vuln("v1", "aid1", "CVE-2024-0001", "CRITICAL", 9.8, "open", vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
-          exploit=90, rem=("R1", "Update Google Chrome to 131")),
+          exploit=90, rem=("R1", "Update Google Chrome to 131"), updated=10),
     _vuln("v2", "aid1", "CVE-2024-0002", "HIGH", 8.1, "reopen", rem=("R1", "Update Google Chrome to 131")),
     _vuln("v3", "aid2", "CVE-2023-9999", "MEDIUM", 5.0, "open", suppressed=True),
     _vuln("v4", "aid4", "CVE-2021-44228", "CRITICAL", 10.0, "open", vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",

@@ -672,6 +672,16 @@ def main():
     flow_start = snapshot_date - dt.timedelta(days=args.backfill_days or args.flow_lookback_days)
 
     conn = pg_connect(cfg)
+    if not args.dry_run:
+        # Collectors rewrite every open finding each run, which clears the
+        # visibility map -- so until vacuumed, the covering indexes the
+        # rollups/reports rely on can't do index-only scans. Vacuum here
+        # rather than waiting for autovacuum to get round to a ~20 GB table.
+        conn.autocommit = True
+        t0 = dt.datetime.now()
+        conn.cursor().execute("VACUUM (ANALYZE) vuln_findings")
+        print(f"[rollup] vacuum analyze vuln_findings: {(dt.datetime.now() - t0).seconds}s")
+        conn.autocommit = False
     cur = conn.cursor()
 
     site_data = rollup_site_metrics(cur, cfg, snapshot_date, days_last_seen)

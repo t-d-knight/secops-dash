@@ -143,6 +143,18 @@ SITE = "(%(site)s::text IS NULL OR site_label = %(site)s::text)"
 # their own page: ~360 low-severity web/TLS/DNS hygiene items would otherwise
 # read as "new vulnerabilities" next to Spotlight's.
 ENDPOINT = "source <> 'hadrian'"
+# reporting.vuln_bulk_load_dates (set in main): days a vulnerability source
+# stamped a mass of findings as "first found" because collection started or
+# coverage expanded, not because they were new -- e.g. Spotlight's initial
+# load and the day assessment was switched on for the rest of the estate.
+# Excluded from "opened", and no snapshot/period comparison crosses one.
+BULK_DATES: List[dt.date] = []
+NOT_BULK = "snapshot_date <> ALL(%(bulk)s::date[])"
+
+
+def after_bulk() -> str:
+    """Snapshot filter: only snapshots taken after the latest bulk load."""
+    return f"snapshot_date::date > '{max(BULK_DATES).isoformat()}'" if BULK_DATES else "TRUE"
 EXTERNAL = "source = 'hadrian'"
 
 
@@ -156,27 +168,34 @@ def qall(cur, sql: str, **params) -> List[Tuple]:
     return cur.fetchall()
 
 
-def fetch_vulns(cur, p: Period, site: Optional[str], days_last_seen: int = 30) -> dict:
-    open_now = dict(qall(cur, f"""
-        SELECT severity, COUNT(*) FROM vuln_findings WHERE state IN ('OPEN','REOPENED') AND {SITE} AND {ENDPOINT}
-        GROUP BY severity""", site=site))
+def fetch_vulns(cur, p: Period, site: Optional[str], days_last_seen: int = 30, flows_only: bool = False) -> dict:
+    """flows_only: just the opened/fixed movement (what a previous-period
+    comparison needs) -- skips the point-in-time queries over every open
+    finding, which are the expensive part at millions of rows."""
     # daily_vuln_flow_metrics is per event day, so summing over the period
     # is right (daily_product_metrics.new_*/fixed_* are rolling windows and
     # must not be summed -- see rollup_daily_metrics.py).
     movement = q1(cur, f"""
-        SELECT COALESCE(SUM(opened),0), COALESCE(SUM(fixed),0),
-               COALESCE(SUM(opened) FILTER (WHERE severity='critical'),0),
-               COALESCE(SUM(opened) FILTER (WHERE severity='high'),0),
+        SELECT COALESCE(SUM(opened) FILTER (WHERE {NOT_BULK}),0), COALESCE(SUM(fixed),0),
+               COALESCE(SUM(opened) FILTER (WHERE severity='critical' AND {NOT_BULK}),0),
+               COALESCE(SUM(opened) FILTER (WHERE severity='high' AND {NOT_BULK}),0),
                COALESCE(SUM(fixed) FILTER (WHERE severity='critical'),0),
-               COALESCE(SUM(fixed) FILTER (WHERE severity='high'),0)
+               COALESCE(SUM(fixed) FILTER (WHERE severity='high'),0),
+               COALESCE(SUM(opened) FILTER (WHERE NOT {NOT_BULK}),0)
         FROM daily_vuln_flow_metrics WHERE snapshot_date BETWEEN %(since)s AND %(until)s AND {SITE} AND {ENDPOINT}
-    """, since=p.since, until=p.until, site=site)
+    """, since=p.since, until=p.until, site=site, bulk=BULK_DATES)
     bucket = "day" if p.kind == "week" else "week"
     buckets = qall(cur, f"""
-        SELECT GREATEST(date_trunc('{bucket}', snapshot_date)::date, %(since)s::date) AS b, COALESCE(SUM(opened),0), COALESCE(SUM(fixed),0)
+        SELECT GREATEST(date_trunc('{bucket}', snapshot_date)::date, %(since)s::date) AS b,
+               COALESCE(SUM(opened) FILTER (WHERE {NOT_BULK}),0), COALESCE(SUM(fixed),0)
         FROM daily_vuln_flow_metrics WHERE snapshot_date BETWEEN %(since)s AND %(until)s AND {SITE} AND {ENDPOINT}
         GROUP BY 1 ORDER BY 1
-    """, since=p.since, until=p.until, site=site)
+    """, since=p.since, until=p.until, site=site, bulk=BULK_DATES)
+    if flows_only:
+        return {"opened": movement[0], "fixed": movement[1], "bulk_opened": movement[6]}
+    open_now = dict(qall(cur, f"""
+        SELECT severity, COUNT(*) FROM vuln_findings WHERE state IN ('OPEN','REOPENED') AND {SITE} AND {ENDPOINT}
+        GROUP BY severity""", site=site))
     kev = q1(cur, f"""
         SELECT COALESCE(SUM(kev_open_total),0), COALESCE(SUM(kev_open_crit),0),
                COALESCE(SUM(kev_open_high),0), COALESCE(SUM(kev_ransomware_total),0),
@@ -201,7 +220,8 @@ def fetch_vulns(cur, p: Period, site: Optional[str], days_last_seen: int = 30) -
                COUNT(*) FILTER (WHERE age > COALESCE(sp.threshold_days, 60) AND vf.severity = 'high'),
                COUNT(*) FILTER (WHERE vf.is_remote_no_auth AND vf.severity IN ('critical','high')),
                COUNT(*) FILTER (WHERE vf.severity IN ('critical','high'))
-        FROM (SELECT *, EXTRACT(EPOCH FROM now() - first_found) / 86400.0 AS age FROM vuln_findings) vf
+        FROM (SELECT severity, site_label, source, state, last_found, is_remote_no_auth,
+                     EXTRACT(EPOCH FROM now() - first_found) / 86400.0 AS age FROM vuln_findings) vf
         LEFT JOIN sla_policy sp ON sp.severity = vf.severity
         WHERE vf.state IN ('OPEN','REOPENED') AND vf.last_found >= now() - (%(days)s || ' days')::interval
           AND {SITE.replace("site_label", "vf.site_label")} AND vf.{ENDPOINT}
@@ -219,7 +239,7 @@ def fetch_vulns(cur, p: Period, site: Optional[str], days_last_seen: int = 30) -
         "managed_hosts": sensors[0], "stale_sensors": sensors[1],
         "opened": movement[0], "fixed": movement[1],
         "opened_crit": movement[2], "opened_high": movement[3],
-        "fixed_crit": movement[4], "fixed_high": movement[5],
+        "fixed_crit": movement[4], "fixed_high": movement[5], "bulk_opened": movement[6],
         "buckets": buckets, "bucket": bucket,
         "kev_open": kev[0], "kev_crit": kev[1], "kev_high": kev[2],
         "kev_ransomware": kev[3], "kev_past_due": kev[4],
@@ -450,7 +470,9 @@ def history_start(cur) -> Dict[str, Optional[dt.date]]:
     stamped first_found within 30 minutes of the first collection -- so a
     previous period only counts as covered if it starts strictly after it."""
     return {
-        "vulns": q1(cur, f"SELECT MIN(snapshot_date) FROM daily_vuln_flow_metrics WHERE {ENDPOINT}")[0],
+        # a bulk load restarts endpoint history: no previous period may reach back past one
+        "vulns": max([d for d in [q1(cur, f"SELECT MIN(snapshot_date) FROM daily_vuln_flow_metrics "
+                                           f"WHERE {ENDPOINT}")[0]] + BULK_DATES if d], default=None),
         "external": q1(cur, f"SELECT MIN(snapshot_date) FROM daily_vuln_flow_metrics WHERE {EXTERNAL}")[0],
         # first daily snapshot taken after Hadrian was first collected: earlier
         # snapshots hold 0 external assets/risks because there was no data yet,
@@ -468,14 +490,14 @@ def fetch_trends(cur, p: Period, site: Optional[str], hist: Dict[str, Optional[d
     def covered(source: str) -> bool:
         return hist[source] is not None and hist[source] < p.prev_since
 
-    pv = fetch_vulns(cur, prev, site) if covered("vulns") else None
+    pv = fetch_vulns(cur, prev, site, flows_only=True) if covered("vulns") else None
     pa = fetch_alerts(cur, prev, site) if covered("alerts") else None
     pe = fetch_email(cur, prev, site) if covered("email") else None
     px = fetch_external(cur, prev, site) if covered("external") else None
     ext_since = hist["external_snap"] and f"snapshot_date >= '{hist['external_snap'].isoformat()}'"
     return {
-        "open_vulns": snapshot_trend(cur, "daily_source_metrics", "total", p, site, ENDPOINT),
-        "kev_open": snapshot_trend(cur, "daily_kev_metrics", "kev_open_total", p, site),
+        "open_vulns": snapshot_trend(cur, "daily_source_metrics", "total", p, site, f"{ENDPOINT} AND {after_bulk()}"),
+        "kev_open": snapshot_trend(cur, "daily_kev_metrics", "kev_open_total", p, site, after_bulk()),
         "open_alerts": snapshot_trend(cur, "daily_alert_metrics", "open_total", p, site,
                                       "open_total IS NOT NULL"),
         "stale": snapshot_trend(cur, "daily_identity_metrics", "value", p, site,
@@ -492,8 +514,8 @@ def fetch_trends(cur, p: Period, site: Optional[str], hist: Dict[str, Optional[d
         "prev_outbound": pe and pe["totals"].get("outbound", [0, 0])[0],
         "top_family": top_family and snapshot_trend(
             cur, "daily_product_metrics", "open_crit + open_high", p, site,
-            "product_family = '%s'" % top_family.replace("'", "''")),
-        "remote_ch": snapshot_trend(cur, "daily_site_metrics", "remote_crit + remote_high", p, site),
+            "product_family = '%s' AND %s" % (top_family.replace("'", "''"), after_bulk())),
+        "remote_ch": snapshot_trend(cur, "daily_site_metrics", "remote_crit + remote_high", p, site, after_bulk()),
         "stale_sensors": snapshot_trend(cur, "daily_asset_metrics", "stale_sensors", p, site),
         "ext_assets": snapshot_trend(cur, "daily_asset_metrics", "external_assets", p, site, ext_since)
                       if ext_since else None,
@@ -709,6 +731,10 @@ def build_page1(p: Period, scope: str, site: Optional[str], v: dict, products: L
     by = "day" if v["bucket"] == "day" else "week"
     scope_note = "Org-wide figures across all sites" if site is None else f"Figures for {html.escape(site)} only"
     history_note = f" ({tr['vuln_history_start']:%d %b %Y})" if tr.get("vuln_history_start") else ""
+    bulk_note = (f'<p class="legend-row">"Opened" excludes {v["bulk_opened"]:,} findings first detected in a bulk '
+                 f'load ({", ".join(d.strftime("%d %b") for d in BULK_DATES if p.since <= d <= p.until)}) '
+                 f'-- coverage starting or expanding, '
+                 f'not new vulnerabilities.</p>' if v.get("bulk_opened") else "")
     site_section = "" if site is not None else f"""
 <h2>Open critical+high, by site</h2>
 {_sev_table(sites, "Site")}"""
@@ -733,6 +759,7 @@ def build_page1(p: Period, scope: str, site: Optional[str], v: dict, products: L
 
 <h2>Endpoint vulnerabilities &mdash; opened vs fixed by {by}</h2>
 {svg_bars(v["buckets"], v["bucket"])}
+{bulk_note}
 
 <div class="row">
   <div class="col">
@@ -1053,6 +1080,8 @@ def main() -> None:
         p = {"week": week_period, "month": month_period, "quarter": quarter_period}[args.period](today)
 
     cfg = config_mod.load_config(args.config)
+    BULK_DATES[:] = sorted(dt.date.fromisoformat(str(d))
+                           for d in cfg.get("reporting", {}).get("vuln_bulk_load_dates") or [])
     labels = site_labels(cfg)
     if args.site and args.site not in labels:
         ap.error(f"unknown site {args.site!r}; configured: {', '.join(labels)}")
