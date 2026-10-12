@@ -8,6 +8,7 @@ Pulls security data from the tools we actually run, maps every record to a **sit
 | Falcon Exposure Management / Spotlight vulnerabilities | `falcon_spotlight` | Endpoint vulns → SLA, KEV, EPSS, MTTR, worst devices, top fixes |
 | Falcon alerts (endpoint, identity, …) | `falcon_alerts` | Detections, open/unassigned, time to close |
 | Falcon Identity Protection | `falcon_identity` | High-risk / stale / weak-password accounts, remediation list |
+| Falcon removable media (NG-SIEM search + on-demand scans) | `falcon_usb` | Files written to USB per person/PC/drive by category, USB-insertion scans and the malware they find |
 | Hadrian Atlas | `hadrian` | External attack surface: internet assets + external risks (same SLA/KEV treatment as endpoint vulns) |
 | Check Point Harmony Email & Collaboration | `checkpoint_hec` | Phishing / malware / DLP events per recipient site |
 | Microsoft Entra ID (Graph) | `entra` | Risky users, risk detections, MFA registration |
@@ -105,8 +106,13 @@ One API client (Falcon console → Support and resources → API clients and key
 | Alerts | Read | `falcon_alerts` |
 | Identity Protection Entities | Read | `falcon_identity` |
 | Identity Protection GraphQL | **Write** | `falcon_identity` (CrowdStrike's scope name for running GraphQL queries; the collector only reads) |
+| NGSIEM | Read + **Write** | `falcon_usb` file writes (starting a search counts as a write; the collector only reads) |
+| NGSIEM Lookup Files | Read | `falcon_usb` (names, titles, departments from `falconUserIdentityContext.csv`) |
+| On-demand scans (ODS) | Read | `falcon_usb` USB-insertion scans |
 
 The Identity Protection query lives in `collectors/queries/identity_entities.graphql`. Add fields from the GraphQL explorer in the Falcon console without touching Python.
+
+Removable media (`falcon_usb`): there is no REST endpoint for the console's "Files written to USB" view; it's a search over the sensor's file-write events, so the collector runs the same search through the NG-SIEM API (`collectors/queries/usb_file_writes.cql`; paste it into Advanced Event Search to check it). Writes are rolled up per day, PC, person, drive, top folder and file category (`usb_categories.py`), with Office temp files dropped, so copying a whole program onto a stick is one row rather than hundreds. If the API client can't search yet, `mode: csv` loads console CSV exports of the query instead. USB-insertion scans come from the ODS API (`initiated_from: auto_usb`), and their detections are ordinary Falcon alerts linked by `scan_id`.
 
 Suppressed Spotlight vulns (accepted risk, compensating control, false positive) are kept as `SUPPRESSED`: visible, but out of open counts and SLA. Vulns that disappear from the open pull without closing (host aged out) become `EXPIRED`, never `FIXED`, so they can't flatter MTTR.
 
@@ -216,7 +222,7 @@ Generated on the server by cron (`crontab.example`, see Running) into `reports/`
 
 | Script | Schedule | Output |
 |---|---|---|
-| `exec_report.py --period week --all-sites` | Mondays 03:30 | `reports/week-YYYY-Www/`: five-page exec report (HTML + A4 PDF) for the region and every site (endpoint vulns, external attack surface, email, alerts & identity), with trend lines |
+| `exec_report.py --period week --all-sites` | Mondays 03:30 | `reports/week-YYYY-Www/`: six-page exec report (HTML + A4 PDF) for the region and every site (endpoint vulns, external attack surface, email, alerts & identity, removable media), with trend lines |
 | `exec_report.py --period quarter --all-sites` | 1 Jan/Apr/Jul/Oct 03:30 | `reports/quarter-YYYY-Qn/`: same, for the last calendar quarter |
 | `action_pack.py` | 1st of the month 04:00 | `reports/monthly-YYYY-MM/`: Excel action lists per site (stale accounts, weak/compromised and duplicate passwords, no MFA, stale sensors, external risks) |
 | `publish.py` | Daily 07:30 (after the reports) | Copies new weekly/quarterly/monthly sets to a file share as `<Site>/<Weekly|Quarterly|Monthly>/<period> <Site> <Security Report|Action Pack>.<pdf|xlsx>` -- e.g. a NAS that syncs into SharePoint |

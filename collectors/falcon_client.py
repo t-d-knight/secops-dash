@@ -13,6 +13,9 @@ Scopes (API client, READ unless noted):
   Identity Protection Entities,
   Identity Protection GraphQL (WRITE -- CrowdStrike's naming; it's read-only use)
                                   -> falcon_identity
+  NGSIEM (READ + WRITE -- starting a search counts as a write; read-only use),
+  NGSIEM Lookup Files, On-demand scans (ODS)
+                                  -> falcon_usb
 """
 from typing import Any, Dict, Iterator, List, Optional
 
@@ -57,6 +60,17 @@ class FalconClient:
             r = self.s.post(f"{self.base}{path}", headers=self._h(), json=body, params=params)
         raise_for_status(r, "Falcon")
         return r.json()
+
+    def download(self, path: str) -> str:
+        """A file endpoint (e.g. an NG-SIEM lookup file), as text."""
+        h = dict(self._h(), Accept="application/octet-stream")
+        r = self.s.get(f"{self.base}{path}", headers=h)
+        if r.status_code == 401:
+            self._tok.invalidate()
+            r = self.s.get(f"{self.base}{path}", headers=dict(self._h(), Accept="application/octet-stream"))
+        raise_for_status(r, "Falcon")
+        r.encoding = r.encoding or "utf-8"
+        return r.text
 
     # ---- pagination helpers ---------------------------------------------
     def iter_offset_ids(self, path: str, params: Dict[str, Any], limit: int = 500) -> Iterator[str]:

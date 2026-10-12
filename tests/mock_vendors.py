@@ -217,6 +217,50 @@ DMARC_HITS = [
      "disposition": "none", "org_name": "google.com"},
 ]
 
+# ---- removable media (falcon_usb): NG-SIEM search rows, user lookup, ODS scans
+def _local_ms(days_ago, hour):
+    d = (dt.datetime.now().astimezone() - dt.timedelta(days=days_ago)).replace(hour=hour, minute=0, second=0,
+                                                                                microsecond=0)
+    return str(int(d.timestamp() * 1000))
+
+
+def _usb(ts, aid, host, user, name, path, size, ftype, make="Kingston", model="DataTraveler", serial="SER1"):
+    return {"@timestamp": ts, "aid": aid, "ComputerName": host, "UserName": user, "FileName": name,
+            "FilePath": path, "Size": str(size), "writtenFileType": ftype, "ConnectionType": "USB",
+            "DeviceManufacturer": make, "DeviceProduct": model, "DeviceSerialNumber": serial,
+            "event_platform": "Win"}
+
+
+USB_EVENTS = [
+    _usb(_local_ms(1, 10), "aid1", "RVH-WS01", "RVH\\jnurse", "Patient list.xlsx",
+         "\\Device\\HarddiskVolume5\\Ward\\Exports\\", 50000, "MS Xlsx File"),
+    _usb(_local_ms(1, 10), "aid1", "RVH-WS01", "RVH\\jnurse", "~$Patient list.xlsx",
+         "\\Device\\HarddiskVolume5\\Ward\\Exports\\", 165, "Generic File"),
+    _usb(_local_ms(1, 11), "aid1", "RVH-WS01", "jnurse", "mail.pst", "\\Device\\HarddiskVolume5\\", 2147483648,
+         "Generic File"),
+    _usb(_local_ms(1, 12), "aid1", "RVH-WS01", "jnurse", "icon1.png",
+         "\\Device\\HarddiskVolume5\\App\\Portable\\res\\", 3000, "Png File"),
+    _usb(_local_ms(1, 12), "aid1", "RVH-WS01", "jnurse", "icon2.png",
+         "\\Device\\HarddiskVolume5\\App\\Portable\\res\\", 4000, "Png File"),
+    _usb(_local_ms(1, 13), "aid1", "RVH-WS01", "bsmith", "roster.docx", "\\Device\\HarddiskVolume5\\", 20000,
+         "MS Docx File"),
+    _usb(_local_ms(2, 9), "aid2", "LKH-SRV01", "--", "backup.zip", "\\Device\\HarddiskVolume3\\", 900000,
+         "Zip File", make="NA", model="NA", serial="--"),
+]
+USB_JOBS = {}
+USER_LOOKUP_CSV = ("user.active_directory.samaccountname,user.full_name,user.title,user.department,"
+                   "user.active_directory.is_enabled\n"
+                   "jnurse,Jo Nurse,Registered Nurse,Ward 3,true\n"
+                   "jnurse,Jo Nurse (old),,,false\n")
+USB_SCANS = [
+    {"id": "sc_usb1", "hosts": ["aid1"], "created_on": iso(1), "scan_completed_on": iso(1), "last_updated": iso(1),
+     "status": "completed", "initiated_from": "auto_usb", "scan_inclusions": ["D:"],
+     "filecount": {"traversed": 120, "scanned": 40, "malicious": 1, "quarantined": 1}},
+    {"id": "sc_usb2", "hosts": ["aid2"], "created_on": iso(2), "last_updated": iso(2), "status": "incomplete",
+     "initiated_from": "auto_usb", "scan_inclusions": ["E:"],
+     "filecount": {"traversed": 10, "scanned": 0, "malicious": 0, "quarantined": 0}},
+]
+
 CALLS = []
 
 
@@ -228,6 +272,14 @@ class H(BaseHTTPRequestHandler):
         b = json.dumps(obj).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(b)))
+        self.end_headers()
+        self.wfile.write(b)
+
+    def _send_text(self, text, code=200):
+        b = text.encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/octet-stream")
         self.send_header("Content-Length", str(len(b)))
         self.end_headers()
         self.wfile.write(b)
@@ -276,7 +328,22 @@ class H(BaseHTTPRequestHandler):
                 return self._send({"resources": data[:2], "meta": {"pagination": {"after": "p2" if len(data) > 2 else None}}})
             return self._send({"resources": data[2:], "meta": {"pagination": {"after": None}}})
         if p == "/falcon/alerts/queries/alerts/v2":
-            return self._send({"resources": ["al1", "al2"], "meta": {"pagination": {"total": 2}}})
+            return self._send({"resources": ["al1", "al2", "al3"], "meta": {"pagination": {"total": 3}}})
+        if p.startswith("/falcon/humio/api/v1/repositories/search-all/queryjobs/"):
+            lo, hi = USB_JOBS[p.rsplit("/", 1)[1]]
+            return self._send({"done": True, "cancelled": False, "metaData": {},
+                               "events": [e for e in USB_EVENTS if lo <= int(e["@timestamp"]) < hi]})
+        if p == "/falcon/humio/api/v1/repositories/search-all/files/falconUserIdentityContext.csv":
+            assert self.headers.get("Accept") == "application/octet-stream"
+            return self._send_text(USER_LOOKUP_CSV)
+        if p == "/falcon/ods/queries/scans/v1":
+            assert "initiated_from:'auto_usb'" in q.get("filter", [""])[0], q
+            off, lim = int(q.get("offset", ["0"])[0]), int(q.get("limit", ["100"])[0])
+            ids = [x["id"] for x in USB_SCANS]
+            return self._send({"resources": ids[off:off + lim], "meta": {"pagination": {"total": len(ids)}}})
+        if p == "/falcon/ods/entities/scans/v2":
+            want = set(q.get("ids", []))
+            return self._send({"resources": [x for x in USB_SCANS if x["id"] in want]})
         # ---- Hadrian (real contract: /organizations/{id}/assets|risks, offset is a
         # PAGE INDEX not a row offset, wrapper is {totalCount, offset, pageSize, items})
         if "/hadrian/organizations/" in p and "/risks/" in p:
@@ -345,7 +412,17 @@ class H(BaseHTTPRequestHandler):
                 {"composite_id": "al2", "created_timestamp": iso(0, 30), "updated_timestamp": iso(0, 6),
                  "severity": 50, "severity_name": "Medium", "status": "closed", "resolution": "false_positive",
                  "name": "Credential spray", "product": "idp", "user_name": "jo@lakesidehealth.test"},
+                {"composite_id": "al3", "created_timestamp": iso(1), "updated_timestamp": iso(1),
+                 "severity": 30, "severity_name": "Low", "status": "new", "display_name": "OnDemandScanPupAdwareHash",
+                 "product": "epp", "type": "ods", "scan_id": "sc_usb1", "filename": "setup.exe",
+                 "filepath": "D:\\setup.exe", "quarantined": True,
+                 "device": {"device_id": "aid1", "hostname": "RVH-WS01"}},
             ]})
+        if p == "/falcon/humio/api/v1/repositories/search-all/queryjobs":
+            assert "IsOnRemovableDisk=1" in body["queryString"] and "//" not in body["queryString"], body
+            jid = f"job{len(USB_JOBS) + 1}"
+            USB_JOBS[jid] = (body["start"], body["end"])
+            return self._send({"id": jid})
         if p == "/falcon/identity-protection/combined/graphql/v1":
             assert "entities(" in body["query"] and "__TYPES__" not in body["query"], body
             page = 1 if (body.get("variables") or {}).get("after") == "c1" else 0

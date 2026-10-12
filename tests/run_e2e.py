@@ -53,6 +53,7 @@ collectors:
   falcon_spotlight: {{enabled: true, page_size: 2}}
   falcon_alerts: {{enabled: true}}
   falcon_identity: {{enabled: true, access_domain: {{domain: "shared.local", native_sites: ["Lakeside Health"]}}}}
+  falcon_usb: {{enabled: true, lookback_days: 5}}
   hadrian:
     enabled: true
     base_url: "{M}/hadrian"
@@ -155,7 +156,7 @@ def main() -> int:
     rows = q(cur, "SELECT collector, status, error FROM collector_freshness ORDER BY 1")
     for r in rows:
         check(r[1] == "ok", f"collector {r[0]} status ok ({r[2] or ''})")
-    check(len(rows) == 10, f"10 collectors ran (got {len(rows)})")
+    check(len(rows) == 11, f"11 collectors ran (got {len(rows)})")
 
     print("== site resolution")
     sites = dict(q(cur, "SELECT source_asset_id, site_label || '/' || site_matched_by FROM assets"))
@@ -207,7 +208,7 @@ def main() -> int:
     check(ext == ("Riverside Health", "internet"), f"Hadrian risk site/type {ext}")
 
     print("== other domains")
-    check(q(cur, "SELECT count(*) FROM security_alerts")[0][0] == 2, "2 alerts")
+    check(q(cur, "SELECT count(*) FROM security_alerts")[0][0] == 3, "3 alerts")
     al2 = q(cur, "SELECT site_label, closed_at IS NOT NULL FROM security_alerts WHERE alert_id='al2'")[0]
     check(al2 == ("Lakeside Health", True), f"user-only alert -> site via UPN, closed_at set: {al2}")
     al2d = q(cur, "SELECT status, disposition FROM security_alerts WHERE alert_id='al2'")[0]
@@ -231,6 +232,26 @@ def main() -> int:
     check(la.get("Riverside Health") == 15, f"Log Analytics values summed per site: {la}")
     dm = q(cur, "SELECT sum(messages), sum(dmarc_pass), count(DISTINCT site_label) FROM dmarc_daily")[0]
     check(tuple(map(int, dm)) == (1537, 1500, 2), f"DMARC aggregates across scroll pages: {dm}")
+
+    print("== removable media")
+    usb = {(r[0], r[1]): r[2:] for r in q(cur, """SELECT user_key, category, files, bytes, site_label, folder,
+                                                          display_name, device_serial FROM usb_file_writes_daily""")}
+    check(sum(v[0] for v in usb.values()) == 6, f"6 USB file writes kept, Office lock file dropped: {usb}")
+    check(usb.get(("jnurse", "email"), (0,))[0] == 1 and usb.get(("jnurse", "data"), (0,))[0] == 1,
+          ".pst -> email, .xlsx -> data (extension beats the sensor's Generic label)")
+    icons = usb.get(("jnurse", "images"))
+    check(icons and icons[0] == 2 and icons[3] == "App\\Portable", f"program copy rolled up to one folder row: {icons}")
+    check(usb.get(("jnurse", "data"), (0,) * 6)[2:4] == ("Riverside Health", "Ward\\Exports")
+          and usb[("jnurse", "data")][4] == "Jo Nurse", "site by aid, folder, name from the enabled lookup row")
+    nouser = usb.get(("", "archives"))
+    check(nouser and nouser[2] == "Lakeside Health" and nouser[5] == "", f"no user / unknown drive kept: {nouser}")
+    runs = q(cur, "SELECT stats->>'write_rows' FROM collector_runs WHERE collector = 'falcon_usb' ORDER BY started_at")
+    check(len(runs) == 2 and runs[0] == runs[1], f"re-pull replaces days rather than doubling: {runs}")
+    sc = dict(q(cur, "SELECT scan_id, site_label FROM usb_scans"))
+    check(sc == {"sc_usb1": "Riverside Health", "sc_usb2": "Lakeside Health"}, f"USB-insertion scans by host site: {sc}")
+    det = q(cur, """SELECT a.file_name, a.quarantined FROM security_alerts a
+                    JOIN usb_scans u ON u.scan_id = a.scan_id""")
+    check(det == [("setup.exe", True)], f"ODS detection linked to its USB scan: {det}")
 
     print("== mail-flow funnel")
     fl = {(r[0], r[1]): int(r[2]) for r in q(cur, "SELECT site_label, metric, sum(value) FROM daily_email_flow_metrics "
@@ -263,7 +284,13 @@ def main() -> int:
               "--site", "Riverside Health", "--out", os.path.join(out, "exec-site.html")) == 0,
           "exec_report.py single site exited 0")
     html_ = open(os.path.join(out, "exec-region.html")).read() if os.path.exists(os.path.join(out, "exec-region.html")) else ""
-    check(html_.count('class="page"') == 5, "exec report has 5 pages")
+    check(html_.count('class="page"') == 6, "exec report has 6 pages")
+    check("Removable Media (USB)" in html_ and "Business data written" in html_ and "medical images" in html_,
+          "exec report has the removable-media page")
+    site_html = open(os.path.join(out, "exec-site.html")).read() if os.path.exists(os.path.join(out, "exec-site.html")) else ""
+    check("jnurse" not in site_html and "j*****" in site_html and "Ward 3" in site_html,
+          "USB people masked in the site report, department shown")
+    check("Most business data written" not in html_ and "j*****" not in html_, "region report has no per-person USB table")
     import exec_report
     if exec_report.find_chromium():
         pdf = os.path.join(out, "exec-region.pdf")
@@ -276,9 +303,24 @@ def main() -> int:
     check("Inbound + internal emails" in html_ and "Delivered to users" in html_, "exec report has the mail-flow funnel")
     check("Signs of compromise or attack" in html_ and "Reused passwords" in html_ and "WATCHED" not in html_,
           "exec report shows the identity categories, not raw factors")
-    check(run("action_pack.py", "--out-dir", out) == 0, "action_pack.py exited 0")
+    check(run("action_pack.py", "--out-dir", out, "--since", since, "--until", dt.date.today().isoformat()) == 0,
+          "action_pack.py exited 0")
     packs = sorted(os.listdir(out)) if os.path.isdir(out) else []
     check(sum(f.endswith(".xlsx") for f in packs) == 4, f"action pack per site + region: {packs}")
+    region_xlsx = next((os.path.join(out, f) for f in packs if f.startswith("region-")), None)
+    if region_xlsx:
+        from openpyxl import load_workbook
+        wb = load_workbook(region_xlsx)
+        check({"USB file writes", "USB drives", "USB malware"} <= set(wb.sheetnames), f"USB tabs: {wb.sheetnames}")
+        ws = wb["USB file writes"]
+        hdr = [c.value for c in ws[1]]
+        top = dict(zip(hdr, [c.value for c in ws[2]]))
+        check(top.get("Person") == "Jo Nurse" and "Email / mailbox data" in (top.get("Flags") or "")
+              and "Large volume" in top["Flags"] and "Patient list.xlsx" in (top.get("Largest business files") or ""),
+              f"named person first, flagged, with file names: {top}")
+        drives = {r[2]: r for r in wb["USB drives"].iter_rows(min_row=2, values_only=True)}
+        check("Shared drive" in (drives.get("SER1") or ("",) * 14)[13], f"SER1 used by two people flagged shared: {drives}")
+        check(wb["USB malware"].max_row == 2, "USB malware tab lists the detection")
     # SAMPLES_DIR=reports python3 tests/run_e2e.py  -> refresh the committed synthetic samples
     if os.environ.get("SAMPLES_DIR") and not failures:
         import shutil

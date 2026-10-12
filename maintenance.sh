@@ -55,6 +55,8 @@ DELETE FROM security_alerts       WHERE status = 'closed' AND updated_at < now()
 DELETE FROM email_events          WHERE created_at  < now() - INTERVAL '${RETENTION_DAYS_EVENTS} days';
 DELETE FROM entra_risk_detections WHERE detected_at < now() - INTERVAL '${RETENTION_DAYS_EVENTS} days';
 DELETE FROM dmarc_daily           WHERE report_date < CURRENT_DATE - ${RETENTION_DAYS_EVENTS};
+DELETE FROM usb_file_writes_daily WHERE day < CURRENT_DATE - ${RETENTION_DAYS_EVENTS};
+DELETE FROM usb_scans             WHERE created_on < now() - INTERVAL '${RETENTION_DAYS_EVENTS} days';
 
 -- retired inventory (gone from the vendor for a long time)
 DELETE FROM assets            WHERE retired AND collected_at < now() - INTERVAL '${RETENTION_DAYS_FINDINGS} days';

@@ -88,6 +88,13 @@ def run(ctx: RunContext) -> Dict[str, Any]:
                 "site_tag": key,
                 "site_matched_by": by,
                 "link": a.get("falcon_host_link"),
+                # on-demand scan detections (type 'ods') carry the scan that found
+                # them -- falcon_usb's usb_scans says whether a USB insertion started it
+                "alert_type": a.get("type"),
+                "scan_id": a.get("scan_id"),
+                "file_name": a.get("filename"),
+                "file_path": a.get("filepath"),
+                "quarantined": a.get("quarantined"),
             })
     n = upsert_rows(ctx.conn, "security_alerts", rows, ["source", "alert_id"])
     # closed_at = first time we saw it closed (later comments on a closed

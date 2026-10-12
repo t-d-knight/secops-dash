@@ -69,6 +69,8 @@ def parse_ts(v: Any) -> Optional[dt.datetime]:
             x /= 1000.0
         return dt.datetime.fromtimestamp(x, tz=dt.timezone.utc)
     s = str(v).strip()
+    if s.isdigit():   # epoch as text, e.g. NG-SIEM's @timestamp in ms
+        return parse_ts(int(s))
     if s.endswith("Z"):
         s = s[:-1] + "+00:00"
     # trim sub-microsecond precision (e.g. .1234567) that fromisoformat rejects

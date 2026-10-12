@@ -23,8 +23,10 @@ reporting:
   require_exploit_for_remote_no_auth: true
   retention_days: 540            # daily_* snapshot tables
   findings_retention_days: 180   # FIXED/EXPIRED rows in vuln_findings
-  events_retention_days: 365     # security_alerts, email_events, entra_risk_detections, dmarc_daily
+  events_retention_days: 365     # security_alerts, email_events, entra_risk_detections, dmarc_daily, usb_*
   stale_sensor_days: 7           # a managed host not seen for this long counts as a stale sensor
+  usb_bulk_files: 100            # action pack: business files to one USB drive in a month that flag "Bulk copy"
+  usb_bulk_mb: 1024              # ... and total volume that flags "Large volume"
   sla_days:
     critical: 2
     high: 14
@@ -130,6 +132,25 @@ collectors:
     #   service: {ou: [".*service accounts"], name: ["svc"]}
     #   generic: {ou: ["generic (users|accounts|logons)"], group: [".*generic.*"]}
     # query_file: "collectors/queries/identity_entities.graphql"
+
+  # Removable media: files written to USB drives (NG-SIEM search over the
+  # sensor's file-write events -- collectors/queries/usb_file_writes.cql) and
+  # the scans Falcon runs when a drive is plugged in (ODS). Scopes: NGSIEM
+  # read + write (starting a search counts as a write), NGSIEM Lookup Files
+  # read, On-demand scans (ODS) read.
+  falcon_usb:
+    enabled: true
+    mode: api                     # api | csv
+    repository: "search-all"
+    lookback_days: 30             # first run / --full
+    overlap_days: 2               # whole days re-pulled every run (late events from PCs that were offline)
+    search_timeout_s: 600
+    scans: true                   # USB-insertion scans; independent of the file-write half
+    identity_lookup: "falconUserIdentityContext.csv"   # full name / title / department; null to skip
+    # mode: csv loads console exports of the query instead of searching (whole
+    # days only -- each day found in the files replaces that day):
+    # csv:
+    #   paths: ["imports/usb/*.csv"]
 
   # Hadrian Atlas (external attack surface). Schema confirmed against the
   # live API on 2026-10-06 -- see collectors/hadrian.py.

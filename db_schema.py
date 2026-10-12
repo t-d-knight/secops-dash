@@ -286,6 +286,69 @@ DDL_STATEMENTS = [
     "ALTER TABLE security_alerts ADD COLUMN IF NOT EXISTS disposition TEXT;",
     "CREATE INDEX IF NOT EXISTS idx_alerts_created ON security_alerts (created_at);",
     "CREATE INDEX IF NOT EXISTS idx_alerts_disposition ON security_alerts (source, disposition);",
+    "ALTER TABLE security_alerts ADD COLUMN IF NOT EXISTS alert_type TEXT;",    # ods, ...
+    "ALTER TABLE security_alerts ADD COLUMN IF NOT EXISTS scan_id TEXT;",       # ODS scan behind the detection
+    "ALTER TABLE security_alerts ADD COLUMN IF NOT EXISTS file_name TEXT;",
+    "ALTER TABLE security_alerts ADD COLUMN IF NOT EXISTS file_path TEXT;",
+    "ALTER TABLE security_alerts ADD COLUMN IF NOT EXISTS quarantined BOOLEAN;",
+    "CREATE INDEX IF NOT EXISTS idx_alerts_scan ON security_alerts (scan_id) WHERE scan_id IS NOT NULL;",
+    # --- removable media (falcon_usb) ------------------------------------
+    # Files written to USB/removable drives, rolled up per day x PC x user x
+    # device x top folder x category (usb_categories.py). A day is replaced
+    # whole on every pull, so the rows for a day are always one search's worth.
+    """
+    CREATE TABLE IF NOT EXISTS usb_file_writes_daily (
+        day              DATE NOT NULL,
+        aid              TEXT NOT NULL,
+        user_key         TEXT NOT NULL,       -- lower(user_name); '' = no user (system/service writes)
+        device_serial    TEXT NOT NULL,       -- '' when Falcon couldn't name the device
+        folder           TEXT NOT NULL,       -- top two folders on the drive
+        category         TEXT NOT NULL,       -- documents | data | email | clinical | archives | ...
+        user_name        TEXT,
+        display_name     TEXT,                -- from Falcon's user identity lookup
+        title            TEXT,
+        department       TEXT,
+        hostname         TEXT,
+        device_make      TEXT,
+        device_model     TEXT,
+        connection_type  TEXT,                -- USB | Storage spaces | PCIe
+        platform         TEXT,
+        files            INTEGER NOT NULL,
+        bytes            BIGINT NOT NULL,
+        first_write      TIMESTAMPTZ,
+        last_write       TIMESTAMPTZ,
+        sample_files     TEXT[],              -- largest file names in the group
+        file_types       TEXT[],              -- distinct extensions
+        site_label       TEXT NOT NULL,
+        site_tag         TEXT,
+        site_matched_by  TEXT,
+        collected_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (day, aid, user_key, device_serial, folder, category)
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_usb_writes_site_day ON usb_file_writes_daily (site_label, day);",
+    # On-demand scans Falcon runs when a USB drive is plugged in (ODS initiated_from = auto_usb)
+    """
+    CREATE TABLE IF NOT EXISTS usb_scans (
+        scan_id           TEXT PRIMARY KEY,
+        aid               TEXT,
+        hostname          TEXT,
+        created_on        TIMESTAMPTZ,
+        completed_on      TIMESTAMPTZ,
+        last_updated      TIMESTAMPTZ,
+        status            TEXT,               -- completed | incomplete (drive removed mid-scan) | running ...
+        drives            TEXT[],
+        files_traversed   INTEGER,
+        files_scanned     INTEGER,
+        files_malicious   INTEGER,
+        files_quarantined INTEGER,
+        site_label        TEXT NOT NULL,
+        site_tag          TEXT,
+        site_matched_by   TEXT,
+        collected_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_usb_scans_site_created ON usb_scans (site_label, created_on);",
     # --- identity --------------------------------------------------------
     """
     CREATE TABLE IF NOT EXISTS identity_entities (

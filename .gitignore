@@ -30,3 +30,4 @@ __pycache__/
 # Runtime logs (cron writes here; dir itself is tracked via .gitkeep)
 /logs/*
 !/logs/.gitkeep
+/imports/

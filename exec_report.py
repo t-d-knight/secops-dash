@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Five-page exec security posture report: what moved the dial this week,
+Six-page exec security posture report: what moved the dial this week,
 month or quarter, for people who will never open Grafana -- region-wide,
 or for a single site.
 
@@ -10,9 +10,11 @@ sensor and internet-facing assets. Page 2 is endpoint vulnerabilities
 exposure, sensor coverage and which product families drive it. Page 3 is
 the external attack surface (Hadrian). Page 4 is email (Check Point HEC
 mail flow and threats). Page 5 is the behaviour/people side (alert volume
-and disposition, identity risk). All five are rendered into one HTML file
+and disposition, identity risk). Page 6 is removable media: files written
+to USB drives by file category, the scans Falcon runs when a drive is plugged
+in and the malware they find. All six are rendered into one HTML file
 with print page-breaks between them, so it opens as one document but
-prints/exports as five pages.
+prints/exports as six pages.
 
 Pulls from the daily_* rollups (rollup_daily_metrics.py) wherever one
 exists -- they're already the right shape for "this period vs that one".
@@ -69,6 +71,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import config as config_mod
 import identity_categories as ic
 import os_lifecycle
+import usb_categories as uc
 from db import pg_connect
 from email_types import THREAT_EVENT_TYPES
 
@@ -540,6 +543,79 @@ def fetch_external(cur, p: Period, site: Optional[str]) -> dict:
 
 
 # ---------------------------------------------------------------- trends
+USB_BIZ = f"category IN {uc.sql_in(uc.BUSINESS)}"
+USB_SENSITIVE = "category IN ('email', 'clinical')"
+
+
+def fetch_usb(cur, p: Period, site: Optional[str], new_devices: bool = False, flows_only: bool = False) -> dict:
+    """Removable media for the period: files written (falcon_usb's daily
+    rollup), USB-insertion scans and the detections they raised.
+    new_devices: count drives first seen this period -- only meaningful once
+    history reaches back before it."""
+    rng = dict(since=p.since, until=p.until, until_excl=p.until + dt.timedelta(days=1), site=site)
+    t = q1(cur, f"""
+        SELECT COALESCE(SUM(files),0), COALESCE(SUM(bytes),0),
+               COALESCE(SUM(files) FILTER (WHERE {USB_BIZ}),0), COALESCE(SUM(bytes) FILTER (WHERE {USB_BIZ}),0),
+               COUNT(DISTINCT user_key) FILTER (WHERE user_key <> ''), COUNT(DISTINCT aid),
+               COUNT(DISTINCT device_serial) FILTER (WHERE device_serial <> ''),
+               COUNT(DISTINCT user_key) FILTER (WHERE user_key <> '' AND {USB_BIZ}),
+               COALESCE(SUM(files) FILTER (WHERE {USB_SENSITIVE}),0),
+               COUNT(DISTINCT user_key) FILTER (WHERE user_key <> '' AND {USB_SENSITIVE})
+        FROM usb_file_writes_daily WHERE day BETWEEN %(since)s AND %(until)s AND {SITE}""", **rng)
+    sc = q1(cur, f"""
+        SELECT COUNT(*), COUNT(*) FILTER (WHERE status IS DISTINCT FROM 'completed'),
+               COUNT(*) FILTER (WHERE files_malicious > 0)
+        FROM usb_scans WHERE created_on >= %(since)s AND created_on < %(until_excl)s AND {SITE}""", **rng)
+    det = q1(cur, f"""
+        SELECT COUNT(*), COUNT(*) FILTER (WHERE a.quarantined)
+        FROM security_alerts a JOIN usb_scans s ON s.scan_id = a.scan_id
+        WHERE a.created_at >= %(since)s AND a.created_at < %(until_excl)s
+          AND {SITE.replace("site_label", "a.site_label")}""", **rng)
+    out = {"files": t[0], "bytes": t[1], "biz_files": t[2], "biz_bytes": t[3], "people": t[4], "pcs": t[5],
+           "devices": t[6], "biz_people": t[7], "sensitive_files": t[8], "sensitive_people": t[9],
+           "scans": sc[0], "scans_incomplete": sc[1], "scans_malicious": sc[2],
+           "detections": det[0], "quarantined": det[1]}
+    if flows_only:
+        return out
+    out["new_devices"] = q1(cur, f"""
+        SELECT COUNT(*) FROM (SELECT device_serial FROM usb_file_writes_daily
+                              WHERE device_serial <> '' AND {SITE} GROUP BY 1
+                              HAVING MIN(day) BETWEEN %(since)s AND %(until)s) d""", **rng)[0] if new_devices else None
+    out["cats"] = qall(cur, f"""
+        SELECT category, SUM(files), SUM(bytes), COUNT(DISTINCT user_key) FILTER (WHERE user_key <> '')
+        FROM usb_file_writes_daily WHERE day BETWEEN %(since)s AND %(until)s AND {SITE}
+        GROUP BY 1""", **rng)
+    out["bucket"] = "day" if p.kind == "week" else "week"
+    out["buckets"] = qall(cur, f"""
+        SELECT GREATEST(date_trunc('{out["bucket"]}', day)::date, %(since)s::date),
+               SUM(files), COALESCE(SUM(files) FILTER (WHERE {USB_BIZ}),0)
+        FROM usb_file_writes_daily WHERE day BETWEEN %(since)s AND %(until)s AND {SITE}
+        GROUP BY 1 ORDER BY 1""", **rng)
+    out["people_top"] = [] if site is None else qall(cur, f"""
+        SELECT max(user_name), max(department), string_agg(DISTINCT site_label, ', '), COUNT(DISTINCT aid),
+               COUNT(DISTINCT device_serial) FILTER (WHERE device_serial <> ''),
+               SUM(files) FILTER (WHERE {USB_BIZ}), SUM(bytes) FILTER (WHERE {USB_BIZ}),
+               (array_agg(category ORDER BY files DESC) FILTER (WHERE {USB_BIZ}))[1]
+        FROM usb_file_writes_daily
+        WHERE day BETWEEN %(since)s AND %(until)s AND {SITE} AND user_key <> ''
+        GROUP BY user_key HAVING SUM(files) FILTER (WHERE {USB_BIZ}) > 0
+        ORDER BY 6 DESC, 7 DESC LIMIT 10""", **rng)
+    out["by_site"] = qall(cur, f"""
+        WITH w AS (SELECT site_label, SUM(files) f, COALESCE(SUM(files) FILTER (WHERE {USB_BIZ}),0) bf,
+                          SUM(bytes) b, COUNT(DISTINCT user_key) FILTER (WHERE user_key <> '') ppl,
+                          COUNT(DISTINCT device_serial) FILTER (WHERE device_serial <> '') dev
+                   FROM usb_file_writes_daily WHERE day BETWEEN %(since)s AND %(until)s GROUP BY 1),
+             s AS (SELECT site_label, COUNT(*) n FROM usb_scans
+                   WHERE created_on >= %(since)s AND created_on < %(until_excl)s GROUP BY 1),
+             d AS (SELECT a.site_label, COUNT(*) n FROM security_alerts a JOIN usb_scans x ON x.scan_id = a.scan_id
+                   WHERE a.created_at >= %(since)s AND a.created_at < %(until_excl)s GROUP BY 1)
+        SELECT site_label, COALESCE(w.f,0), COALESCE(w.bf,0), COALESCE(w.b,0), COALESCE(w.ppl,0),
+               COALESCE(w.dev,0), COALESCE(s.n,0), COALESCE(d.n,0)
+        FROM w FULL JOIN s USING (site_label) FULL JOIN d USING (site_label)
+        ORDER BY 3 DESC, 2 DESC""", **rng) if site is None else []
+    return out
+
+
 def snapshot_trend(cur, table: str, expr: str, p: Period, site: Optional[str],
                    where: str = "TRUE") -> Optional[dict]:
     """Change in SUM(expr) across `table`'s daily snapshots over the period,
@@ -589,6 +665,8 @@ def history_start(cur) -> Dict[str, Optional[dt.date]]:
         "alerts": q1(cur, "SELECT MIN(created_at)::date FROM security_alerts")[0],
         "email": q1(cur, "SELECT MIN(snapshot_date) FROM daily_email_metrics")[0],
         "email_flow": q1(cur, "SELECT MIN(snapshot_date) FROM daily_email_flow_metrics")[0],
+        "usb": q1(cur, "SELECT MIN(day) FROM usb_file_writes_daily")[0],
+        "usb_scans": q1(cur, "SELECT MIN(created_on)::date FROM usb_scans")[0],
     }
 
 
@@ -604,6 +682,8 @@ def fetch_trends(cur, p: Period, site: Optional[str], hist: Dict[str, Optional[d
     pe = fetch_email(cur, prev, site) if covered("email") else None
     pf = funnel_stages(fetch_email_flow(cur, prev, site)) if covered("email_flow") else None
     px = fetch_external(cur, prev, site) if covered("external") else None
+    pu = fetch_usb(cur, prev, site, flows_only=True) if covered("usb") else None
+    ps = fetch_usb(cur, prev, site, flows_only=True) if covered("usb_scans") else None
     ext_since = hist["external_snap"] and f"snapshot_date >= '{hist['external_snap'].isoformat()}'"
     return {
         "open_vulns": snapshot_trend(cur, "daily_source_metrics", "total", p, site, f"{ENDPOINT} AND {after_bulk()}"),
@@ -635,6 +715,8 @@ def fetch_trends(cur, p: Period, site: Optional[str], hist: Dict[str, Optional[d
                       if ext_since else None,
         "ext_open": snapshot_trend(cur, "daily_source_metrics", "total", p, site, EXTERNAL),
         "prev_ext_opened": px and px["opened"], "prev_ext_fixed": px and px["fixed"],
+        "prev_usb_files": pu and pu["files"], "prev_usb_biz": pu and pu["biz_files"],
+        "prev_usb_scans": ps and ps["scans"], "prev_usb_detections": ps and ps["detections"],
     }
 
 
@@ -933,7 +1015,7 @@ def build_page_estate(p: Period, scope: str, site: Optional[str], es: dict, tr: 
     scope_note = "Org-wide figures across all sites" if site is None else f"Figures for {html.escape(site)} only"
 
     return f"""<div class="page">
-{header(p, scope, "1 of 5 &mdash; Estate")}
+{header(p, scope, "1 of 6 &mdash; Estate")}
 
 <h2>What we're protecting</h2>
 <div class="tiles tiles-3">
@@ -959,7 +1041,7 @@ def build_page_estate(p: Period, scope: str, site: Optional[str], es: dict, tr: 
 {os_rows or '<tr><td colspan="7" class="empty">No managed devices.</td></tr>'}</table>
 {site_section}
 
-<footer>Page 1 of 5 &mdash; secops-dashboard. {scope_note}; current as of generation time. Devices = Falcon-managed
+<footer>Page 1 of 6 &mdash; secops-dashboard. {scope_note}; current as of generation time. Devices = Falcon-managed
 hosts; "missing a sensor" = in-use AD computer accounts Falcon has no sensor on (duplicates, service accounts,
 appliances and out-of-scope services excluded). Support dates are the vendor's end of security updates; Windows 11
 is reported without its feature-update build, so isn't assessed. Override dates (e.g. Windows 10 Extended Security
@@ -992,7 +1074,7 @@ def build_page1(p: Period, scope: str, site: Optional[str], v: dict, products: L
 {_sev_table(sites, "Site")}"""
 
     return f"""<div class="page">
-{header(p, scope, "2 of 5 &mdash; Endpoint Vulnerabilities")}
+{header(p, scope, "2 of 6 &mdash; Endpoint Vulnerabilities")}
 
 <h2>Headline</h2>
 <div class="tiles tiles-3">
@@ -1027,7 +1109,7 @@ def build_page1(p: Period, scope: str, site: Optional[str], v: dict, products: L
 </div>
 {site_section}
 
-<footer>Page 2 of 5 &mdash; secops-dashboard. {scope_note}; endpoint vulnerabilities only (Falcon
+<footer>Page 2 of 6 &mdash; secops-dashboard. {scope_note}; endpoint vulnerabilities only (Falcon
 Spotlight -- external risks are on page 3); "opened/fixed" and the bar chart cover the report period only;
 open, KEV, exposure and sensor counts are current as of generation time. "Remotely exploitable" = network
 attack vector, no privileges or user interaction needed, with a known exploit. Vulnerability age is measured
@@ -1062,7 +1144,7 @@ def build_page_email(p: Period, scope: str, site: Optional[str], em: dict, flow:
         + email_volume_table(em["all_by_direction"].get("inbound", [])))
 
     return f"""<div class="page">
-{header(p, scope, "4 of 5 &mdash; Email")}
+{header(p, scope, "4 of 6 &mdash; Email")}
 
 <h2>Headline</h2>
 <div class="tiles tiles-3">
@@ -1105,7 +1187,7 @@ def build_page_email(p: Period, scope: str, site: Optional[str], em: dict, flow:
 
 {volume_section}
 
-<footer>Page 4 of 5 &mdash; secops-dashboard. {scope_note}; Check Point Harmony Email &amp; Collaboration.
+<footer>Page 4 of 6 &mdash; secops-dashboard. {scope_note}; Check Point Harmony Email &amp; Collaboration.
 Mail flow counts emails (Microsoft's spam verdict: junk = SCL 5-6, quarantined = SCL 7-9; then Check Point's
 verdict); "inbound" includes internal mail, as Check Point's console counts it. "Phishing + malware" is Check
 Point's per-email verdict -- broader than the console's "Malicious" box. Threat tables count security events (one
@@ -1137,7 +1219,7 @@ def build_page_external(p: Period, scope: str, site: Optional[str], x: dict, tr:
     scope_note = "Org-wide figures across all sites" if site is None else f"Figures for {html.escape(site)} only"
 
     return f"""<div class="page">
-{header(p, scope, "3 of 5 &mdash; External Attack Surface")}
+{header(p, scope, "3 of 6 &mdash; External Attack Surface")}
 
 <h2>Headline</h2>
 <div class="tiles tiles-3">
@@ -1175,7 +1257,7 @@ def build_page_external(p: Period, scope: str, site: Optional[str], x: dict, tr:
   </div>
 </div>
 
-<footer>Page 3 of 5 &mdash; secops-dashboard. {scope_note}; external attack surface from Hadrian. "Confirmed" =
+<footer>Page 3 of 6 &mdash; secops-dashboard. {scope_note}; external attack surface from Hadrian. "Confirmed" =
 verified, unpatched-technology and infected-device risks; "potential" risks are unverified detections, many
 predating the current review workflow. Severities are Hadrian's own. A risk closed because a rescan no longer
 finds it counts as fixed. Assets take their site from their Hadrian tag, or from their apex domain if untagged.
@@ -1211,7 +1293,7 @@ def build_page2(p: Period, scope: str, site: Optional[str], a: dict, idn: dict, 
     scope_note = "Org-wide figures across all sites" if site is None else f"Figures for {html.escape(site)} only"
 
     return f"""<div class="page">
-{header(p, scope, "5 of 5 &mdash; Alerts &amp; Identity")}
+{header(p, scope, "5 of 6 &mdash; Alerts &amp; Identity")}
 
 <h2>Headline</h2>
 <div class="tiles tiles-3">
@@ -1243,7 +1325,7 @@ def build_page2(p: Period, scope: str, site: Optional[str], a: dict, idn: dict, 
 {cat_table("compromise")}
 {cat_table("exposure")}
 
-<footer>Page 5 of 5 &mdash; secops-dashboard. {scope_note}; alert counts and the bar chart cover the report
+<footer>Page 5 of 6 &mdash; secops-dashboard. {scope_note}; alert counts and the bar chart cover the report
 period only and exclude informational-severity alerts. Identity risk (Falcon Identity Protection) is current as of
 generation time and counts enabled accounts (or unknown status), grouped into actionable categories; the full
 risk-factor list is on the SecOps dashboards and in the site action packs.
@@ -1251,9 +1333,115 @@ risk-factor list is on the SecOps dashboards and in the site action packs.
 </div>"""
 
 
+def fmt_bytes(n: float) -> str:
+    n = float(n or 0)
+    for div, unit in ((1024 ** 4, "TB"), (1024 ** 3, "GB"), (1024 ** 2, "MB"), (1024, "KB")):
+        if n >= div:
+            v = n / div
+            return f"{v:.1f} {unit}" if v < 100 else f"{v:,.0f} {unit}"
+    return f"{n:.0f} B"
+
+
+def mask_user(u: Optional[str]) -> str:
+    """Same rule as account names elsewhere in the report: first letter only.
+    The monthly action pack carries the names."""
+    u = (u or "").strip()
+    return f"{u[0]}*****" if u else "(no user)"
+
+
+def build_page_usb(p: Period, scope: str, site: Optional[str], u: dict, tr: dict) -> str:
+    cats = {c: (n, b, ppl) for c, n, b, ppl in u["cats"]}
+    parts = [(uc.LABEL[c], int(cats[c][0]), uc.COLOR[c]) for c in uc.ORDER if c in cats and cats[c][0]]
+    biz = set(uc.BUSINESS)
+    cat_rows = "".join(
+        f'<tr><td title="{html.escape(desc)}"><span class="legend-dot" style="background:{color}"></span>'
+        f'<b>{html.escape(label)}</b>'
+        f'{" <span style=color:" + SEVERITY_COLOR["medium"] + ">&#9679; business data</span>" if key in biz else ""}'
+        f'</td>'
+        f'<td class="num">{int(cats[key][0]):,}</td><td class="num">{fmt_bytes(cats[key][1])}</td>'
+        f'<td class="num">{int(cats[key][2]):,}</td></tr>'
+        for key, label, color, _, desc in uc.CATEGORIES if key in cats)
+    cat_table = (f'<table><tr><th>File category</th><th class="num">Files</th><th class="num">Volume</th>'
+                 f'<th class="num">People</th></tr>{cat_rows}</table>') if cat_rows else \
+        '<p class="empty">No files written to removable media this period.</p>'
+
+    if site is None:
+        rows = "".join(
+            f'<tr><td>{html.escape(s_)}</td><td class="num">{f:,}</td><td class="num">{bf:,}</td>'
+            f'<td class="num">{fmt_bytes(b)}</td><td class="num">{ppl:,}</td><td class="num">{dev:,}</td>'
+            f'<td class="num">{scans:,}</td><td class="num">{det:,}</td></tr>'
+            for s_, f, bf, b, ppl, dev, scans, det in u["by_site"])
+        detail = (f'<h2>By site</h2><table><tr><th>Site</th><th class="num">Files</th>'
+                  f'<th class="num">Business data</th><th class="num">Volume</th><th class="num">People</th>'
+                  f'<th class="num">USB drives</th><th class="num">Insertions scanned</th>'
+                  f'<th class="num">Malware found</th></tr>'
+                  f'{rows or "<tr><td colspan=8 class=empty>No removable-media activity this period.</td></tr>"}'
+                  f'</table>')
+    else:
+        detail = ""
+    people = "".join(
+        f'<tr><td>{html.escape(mask_user(un))}</td><td>{html.escape(dept or "")}</td>'
+        + (f'<td>{html.escape(sites or "")}</td>' if site is None else "")
+        + f'<td class="num">{pcs:,}</td><td class="num">{devs:,}</td><td class="num">{int(bf or 0):,}</td>'
+          f'<td class="num">{fmt_bytes(bb)}</td><td>{html.escape(uc.LABEL.get(top or "", ""))}</td></tr>'
+        for un, dept, sites, pcs, devs, bf, bb, top in u["people_top"])
+    people_table = (
+        f'<h2>Most business data written &mdash; top {len(u["people_top"])} people</h2>'
+        f'<table><tr><th>Person</th><th>Department</th>{"<th>Site</th>" if site is None else ""}'
+        f'<th class="num">PCs</th><th class="num">USB drives</th><th class="num">Files</th>'
+        f'<th class="num">Volume</th><th>Mostly</th></tr>{people}</table>') if people else ""
+
+    new_dev = (f"{u['new_devices']:,} not seen before this period" if u.get("new_devices") is not None
+               else "across all PCs")
+    by = "day" if u["bucket"] == "day" else "week"
+    scope_note = "Org-wide figures across all sites" if site is None else f"Figures for {html.escape(site)} only"
+    return f"""<div class="page">
+{header(p, scope, "6 of 6 &mdash; Removable Media (USB)")}
+
+<h2>Headline</h2>
+<div class="tiles tiles-3">
+  {tile("Files written to USB", u["files"], INK,
+        f"{fmt_bytes(u['bytes'])} by {u['people']:,} people on {u['pcs']:,} PCs",
+        flow_line(tr.get("prev_usb_files"), u["files"], tr["prev_word"]))}
+  {tile("Business data written", u["biz_files"], SEVERITY_COLOR["medium"] if u["biz_files"] else INK,
+        f"{fmt_bytes(u['biz_bytes'])} by {u['biz_people']:,} people -- documents, spreadsheets, email, "
+        f"medical images, archives", flow_line(tr.get("prev_usb_biz"), u["biz_files"], tr["prev_word"]))}
+  {tile("Email & medical images written", u["sensitive_files"],
+        SEVERITY_COLOR["high"] if u["sensitive_files"] else GOOD,
+        f"{u['sensitive_people']:,} people -- mailbox exports, messages, DICOM")}
+  {tile("USB drives used", u["devices"], INK, new_dev)}
+  {tile("USB insertions scanned", u["scans"], INK,
+        f"{u['scans_incomplete']:,} didn't finish (usually the drive was removed)" if u["scans"] else
+        "Falcon scans each drive when it's plugged in", flow_line(tr.get("prev_usb_scans"), u["scans"],
+                                                                   tr["prev_word"], up_is_bad=False))}
+  {tile("Malware found on USB drives", u["detections"], SEVERITY_COLOR["critical"] if u["detections"] else GOOD,
+        f"{u['quarantined']:,} quarantined; found on {u['scans_malicious']:,} insertions",
+        flow_line(tr.get("prev_usb_detections"), u["detections"], tr["prev_word"]))}
+</div>
+
+<h2>Files written &mdash; by {by}</h2>
+{svg_bars(u["buckets"], u["bucket"], names=("All files", "Business data"), colors=(FAINT, SEVERITY_COLOR["medium"]))}
+
+<h2>What was written</h2>
+{svg_stacked_bar(parts) if parts else ""}
+{cat_table}
+
+{detail}
+{people_table}
+
+<footer>Page 6 of 6 &mdash; secops-dashboard. {scope_note}. Files written to any removable drive (USB sticks and
+disks, SD cards) seen by the Falcon sensor; Office lock and temp files are left out. Category comes from the file
+extension, or Falcon's file-type detection when there isn't one. Business data = documents, spreadsheets and data
+files, email, medical images and archives (an archive's contents are unknown). Insertions scanned = the on-demand scan
+Falcon starts automatically when a drive is plugged in; malware found = detections from those scans. People are
+masked here (site reports only); names, PCs, drives and file names are in the monthly site action pack.
+{TREND_NOTE.format(prev_word=html.escape(tr["prev_word"]))}</footer>
+</div>"""
+
+
 def build_html(p: Period, scope: str, site: Optional[str], v: dict, a: dict, idn: dict,
                em: dict, products: List[Tuple], sites: List[Tuple], x: dict, flow: Dict[str, int], es: dict,
-               tr: dict) -> str:
+               tr: dict, u: dict) -> str:
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <title>Security Posture Report -- {html.escape(scope)} -- {html.escape(p.label)}</title>
@@ -1320,6 +1508,7 @@ def build_html(p: Period, scope: str, site: Optional[str], v: dict, a: dict, idn
 {build_page_external(p, scope, site, x, tr)}
 {build_page_email(p, scope, site, em, flow, tr)}
 {build_page2(p, scope, site, a, idn, tr)}
+{build_page_usb(p, scope, site, u, tr)}
 </body></html>
 """
 
@@ -1334,7 +1523,8 @@ def render(cur, p: Period, site: Optional[str], hist: Dict[str, Optional[dt.date
     return build_html(p, scope, site, fetch_vulns(cur, p, site, days_last_seen), fetch_alerts(cur, p, site),
                       fetch_identity(cur, site), fetch_email(cur, p, site), products,
                       sites, fetch_external(cur, p, site), fetch_email_flow(cur, p, site), fetch_estate(cur, site),
-                      fetch_trends(cur, p, site, hist, top and top[0]))
+                      fetch_trends(cur, p, site, hist, top and top[0]),
+                      fetch_usb(cur, p, site, new_devices=bool(hist["usb"] and hist["usb"] < p.since)))
 
 
 def site_labels(cfg: Dict[str, Any]) -> List[str]:
