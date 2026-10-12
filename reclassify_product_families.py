@@ -10,6 +10,7 @@ Usage:
 """
 
 import argparse
+import sys
 from typing import Dict, Any, List, Tuple
 
 import db_schema
@@ -90,6 +91,7 @@ def apply_mapping(conn, mapping: Dict[str, Dict[str, str]], dry_run: bool = Fals
 
     changed = 0
     unchanged = 0
+    rows_updated = 0
 
     for idx, (product, cls) in enumerate(mapping.items(), start=1):
         vendor = cls["vendor"]
@@ -116,22 +118,28 @@ def apply_mapping(conn, mapping: Dict[str, Dict[str, str]], dry_run: bool = Fals
             UPDATE daily_product_metrics
             SET vendor = %s,
                 product_family = %s
-            WHERE product = %s;
+            WHERE product = %s
+              AND (vendor IS DISTINCT FROM %s OR product_family IS DISTINCT FROM %s);
             """,
-            (vendor, family, product),
+            (vendor, family, product, vendor, family),
         )
+        rows_updated += cur.rowcount
 
         # vuln_findings is the source of truth going forward (daily_product_metrics
-        # is a derived snapshot) -- keep both in sync when rules change.
+        # is a derived snapshot) -- keep both in sync when rules change. Only rows
+        # whose classification differs are touched; rewriting all of them nightly
+        # took ~2h and bloated the table for the rollup's vacuum.
         cur.execute(
             """
             UPDATE vuln_findings
             SET product_vendor = %s,
                 product_family = %s
-            WHERE product_key = %s;
+            WHERE product_key = %s
+              AND (product_vendor IS DISTINCT FROM %s OR product_family IS DISTINCT FROM %s);
             """,
-            (vendor, family, product),
+            (vendor, family, product, vendor, family),
         )
+        rows_updated += cur.rowcount
 
         # Commit every 100 products to avoid holding a huge transaction
         if idx % 100 == 0 and not dry_run:
@@ -144,7 +152,7 @@ def apply_mapping(conn, mapping: Dict[str, Dict[str, str]], dry_run: bool = Fals
 
     print(
         f"[summary] products classified: {total} "
-        f"(changed={changed}, still_misc_or_unchanged={unchanged}, dry_run={dry_run})"
+        f"(changed={changed}, still_misc_or_unchanged={unchanged}, rows_updated={rows_updated}, dry_run={dry_run})"
     )
 
 
@@ -164,6 +172,7 @@ def main():
         help="Do not write changes, just show what would be updated",
     )
     args = parser.parse_args()
+    sys.stdout.reconfigure(line_buffering=True)   # progress shows in the cron log as it happens
 
     cfg = load_config(args.config)
     db_schema.ensure_schema(cfg)
