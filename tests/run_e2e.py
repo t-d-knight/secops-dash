@@ -326,15 +326,6 @@ def main() -> int:
         drives = {r[2]: r for r in wb["USB drives"].iter_rows(min_row=2, values_only=True)}
         check("Shared drive" in (drives.get("SER1") or ("",) * 14)[13], f"SER1 used by two people flagged shared: {drives}")
         check(wb["USB malware"].max_row == 2, "USB malware tab lists the detection")
-    # SAMPLES_DIR=reports python3 tests/run_e2e.py  -> refresh the committed synthetic samples
-    if os.environ.get("SAMPLES_DIR") and not failures:
-        import shutil
-        dest = os.environ["SAMPLES_DIR"]
-        shutil.copy(os.path.join(out, "exec-region.html"), os.path.join(dest, "sample-exec-report.html"))
-        shutil.copy(os.path.join(out, "exec-site.html"), os.path.join(dest, "sample-exec-report-site.html"))
-        region_pack = next(f for f in packs if f.startswith("region-"))
-        shutil.copy(os.path.join(out, region_pack), os.path.join(dest, "sample-action-pack.xlsx"))
-        print(f"  samples written to {dest}")
 
     print("== dashboard SQL")
     n = 0

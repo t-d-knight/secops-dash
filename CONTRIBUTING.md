@@ -51,4 +51,4 @@ python3 -m venv venv && venv/bin/pip install -r requirements.txt   # the check n
 
 ## Tests
 
-`tests/run_e2e.py` runs every collector against mocked vendor APIs into a throwaway database, then the rollups, reports, action packs and every dashboard query. Run it before committing anything that touches collectors, rollups or reports; `SAMPLES_DIR=reports` also refreshes the committed synthetic samples.
+`tests/run_e2e.py` runs every collector against mocked vendor APIs into a throwaway database, then the rollups, reports, action packs and every dashboard query. Run it before committing anything that touches collectors, rollups or reports. `tests/demo_samples.py` regenerates the committed sample reports (`reports/sample-*`) from a made-up four-site estate with months of history, built on the same mocks.
