@@ -304,7 +304,7 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT 100.0 * count(*) FILTER (WHERE a.source_asset_id IN (SELECT DISTINCT source_asset_id FROM vuln_findings WHERE source = 'falcon_spotlight')) / NULLIF(count(*), 0) FROM (SELECT * FROM assets WHERE source = 'falcon' AND NOT retired AND last_seen > now() - interval '7 days') a WHERE a.site_label IN ($site)"
+          "rawSql": "SELECT 100.0 * count(*) FILTER (WHERE EXISTS (SELECT 1 FROM vuln_findings v WHERE v.source = 'falcon_spotlight' AND v.source_asset_id = a.source_asset_id)) / NULLIF(count(*), 0) FROM (SELECT * FROM assets WHERE source = 'falcon' AND NOT retired AND last_seen > now() - interval '7 days') a WHERE a.site_label IN ($site)"
         }
       ],
       "description": "Active managed hosts Falcon has returned vulnerability data for. Everything below 100% is estate the vuln figures can't see."
@@ -364,7 +364,7 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT count(*) FROM (SELECT * FROM assets WHERE source = 'falcon' AND NOT retired AND last_seen > now() - interval '7 days') a WHERE a.site_label IN ($site) AND a.source_asset_id NOT IN (SELECT DISTINCT source_asset_id FROM vuln_findings WHERE source = 'falcon_spotlight')"
+          "rawSql": "SELECT count(*) FROM (SELECT * FROM assets WHERE source = 'falcon' AND NOT retired AND last_seen > now() - interval '7 days') a WHERE a.site_label IN ($site) AND NOT EXISTS (SELECT 1 FROM vuln_findings v WHERE v.source = 'falcon_spotlight' AND v.source_asset_id = a.source_asset_id)"
         }
       ]
     },
@@ -619,7 +619,7 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT s.site_label AS \"Site\", COALESCE(a.active,0) AS \"Active hosts\", COALESCE(a.assessed,0) AS \"Assessed\", round(100.0 * COALESCE(a.assessed,0) / NULLIF(a.active,0), 1) AS \"% assessed\", COALESCE(st.n,0) AS \"Stale sensors\", COALESCE(u.n,0) AS \"Missing a sensor\" FROM dim_site s LEFT JOIN (SELECT site_label, count(*) AS active, count(*) FILTER (WHERE source_asset_id IN (SELECT DISTINCT source_asset_id FROM vuln_findings WHERE source = 'falcon_spotlight')) AS assessed FROM (SELECT * FROM assets WHERE source = 'falcon' AND NOT retired AND last_seen > now() - interval '7 days') x GROUP BY 1) a ON a.site_label = s.site_label LEFT JOIN (SELECT site_label, count(*) n FROM assets WHERE source = 'falcon' AND NOT retired AND last_seen <= now() - interval '7 days' GROUP BY 1) st ON st.site_label = s.site_label LEFT JOIN (SELECT site_label, count(*) n FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND discovery_class IN ('domain_controller_no_sensor', 'server_no_sensor', 'workstation_no_sensor', 'cloud_no_sensor') GROUP BY 1) u ON u.site_label = s.site_label WHERE s.site_label IN ($site) ORDER BY \"% assessed\" NULLS LAST, \"Active hosts\" DESC"
+          "rawSql": "SELECT s.site_label AS \"Site\", COALESCE(a.active,0) AS \"Active hosts\", COALESCE(a.assessed,0) AS \"Assessed\", round(100.0 * COALESCE(a.assessed,0) / NULLIF(a.active,0), 1) AS \"% assessed\", COALESCE(st.n,0) AS \"Stale sensors\", COALESCE(u.n,0) AS \"Missing a sensor\" FROM dim_site s LEFT JOIN (SELECT site_label, count(*) AS active, count(*) FILTER (WHERE EXISTS (SELECT 1 FROM vuln_findings v WHERE v.source = 'falcon_spotlight' AND v.source_asset_id = a.source_asset_id)) AS assessed FROM (SELECT * FROM assets WHERE source = 'falcon' AND NOT retired AND last_seen > now() - interval '7 days') a GROUP BY 1) a ON a.site_label = s.site_label LEFT JOIN (SELECT site_label, count(*) n FROM assets WHERE source = 'falcon' AND NOT retired AND last_seen <= now() - interval '7 days' GROUP BY 1) st ON st.site_label = s.site_label LEFT JOIN (SELECT site_label, count(*) n FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND discovery_class IN ('domain_controller_no_sensor', 'server_no_sensor', 'workstation_no_sensor', 'cloud_no_sensor') GROUP BY 1) u ON u.site_label = s.site_label WHERE s.site_label IN ($site) ORDER BY \"% assessed\" NULLS LAST, \"Active hosts\" DESC"
         }
       ]
     },
@@ -653,7 +653,7 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT a.hostname AS \"Hostname\", a.site_label AS \"Site\", a.product_type AS \"Type\", a.os_version AS \"OS\", a.sensor_version AS \"Sensor\", a.last_seen AS \"Last seen\", array_to_string(a.groups, ', ') AS \"Host groups\" FROM (SELECT * FROM assets WHERE source = 'falcon' AND NOT retired AND last_seen > now() - interval '7 days') a WHERE a.site_label IN ($site) AND a.source_asset_id NOT IN (SELECT DISTINCT source_asset_id FROM vuln_findings WHERE source = 'falcon_spotlight') ORDER BY a.site_label, a.hostname"
+          "rawSql": "SELECT a.hostname AS \"Hostname\", a.site_label AS \"Site\", a.product_type AS \"Type\", a.os_version AS \"OS\", a.sensor_version AS \"Sensor\", a.last_seen AS \"Last seen\", array_to_string(a.groups, ', ') AS \"Host groups\" FROM (SELECT * FROM assets WHERE source = 'falcon' AND NOT retired AND last_seen > now() - interval '7 days') a WHERE a.site_label IN ($site) AND NOT EXISTS (SELECT 1 FROM vuln_findings v WHERE v.source = 'falcon_spotlight' AND v.source_asset_id = a.source_asset_id) ORDER BY a.site_label, a.hostname"
         }
       ],
       "description": "Compare sensor version, host groups and policy against assessed hosts to find what Exposure Management isn't covering."

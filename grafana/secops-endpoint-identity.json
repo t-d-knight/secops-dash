@@ -1427,11 +1427,185 @@
     },
     {
       "id": 25,
-      "type": "bargauge",
-      "title": "Accounts by risk factor",
+      "type": "stat",
+      "title": "Enabled accounts",
       "gridPos": {
         "x": 12,
         "y": 44,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM identity_entities e WHERE NOT e.retired AND e.enabled IS NOT FALSE AND COALESCE(e.account_kind, 'human') <> 'out_of_scope' AND e.site_label IN ($site)"
+        }
+      ],
+      "description": "Enabled (or unknown-status) accounts, all kinds: people, service, mailbox, generic, VPN / remote-app. The denominator for the stale percentages."
+    },
+    {
+      "id": 26,
+      "type": "stat",
+      "title": "Stale: all enabled accounts",
+      "gridPos": {
+        "x": 16,
+        "y": 44,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 25
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT round(100.0 * count(*) FILTER (WHERE EXISTS (SELECT 1 FROM identity_risk_factors f WHERE f.source = e.source AND f.entity_id = e.entity_id AND f.factor_type = 'STALE_ACCOUNT')) / NULLIF(count(*), 0), 1) FROM identity_entities e WHERE NOT e.retired AND e.enabled IS NOT FALSE AND COALESCE(e.account_kind, 'human') <> 'out_of_scope' AND e.site_label IN ($site)"
+        }
+      ],
+      "description": "Enabled accounts Falcon Identity flags STALE_ACCOUNT (no recent activity). Disable or confirm still needed."
+    },
+    {
+      "id": 27,
+      "type": "stat",
+      "title": "Stale: people's main accounts",
+      "gridPos": {
+        "x": 20,
+        "y": 44,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 25
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT round(100.0 * count(*) FILTER (WHERE EXISTS (SELECT 1 FROM identity_risk_factors f WHERE f.source = e.source AND f.entity_id = e.entity_id AND f.factor_type = 'STALE_ACCOUNT')) / NULLIF(count(*), 0), 1) FROM identity_entities e WHERE NOT e.retired AND e.enabled IS NOT FALSE AND COALESCE(e.account_kind, 'human') <> 'out_of_scope' AND e.site_label IN ($site) AND COALESCE(e.account_kind, 'human') = 'human' AND e.access_account IS NULL"
+        }
+      ],
+      "description": "As left, for human accounts only, excluding service / mailbox / generic accounts and shared-domain VPN / remote-app second accounts: roughly, staff who've left or moved on."
+    },
+    {
+      "id": 28,
+      "type": "bargauge",
+      "title": "Accounts by risk factor",
+      "gridPos": {
+        "x": 0,
+        "y": 48,
         "w": 12,
         "h": 8
       },
@@ -1478,12 +1652,12 @@
       ]
     },
     {
-      "id": 26,
+      "id": 29,
       "type": "timeseries",
       "title": "Risk factor trend",
       "gridPos": {
-        "x": 0,
-        "y": 52,
+        "x": 12,
+        "y": 48,
         "w": 12,
         "h": 8
       },
@@ -1517,12 +1691,83 @@
       ]
     },
     {
-      "id": 27,
+      "id": 30,
+      "type": "timeseries",
+      "title": "Stale accounts, % of enabled",
+      "gridPos": {
+        "x": 0,
+        "y": 56,
+        "w": 24,
+        "h": 7
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "fillOpacity": 15
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "All enabled accounts"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "People's main accounts"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT snapshot_date::timestamp AS time, round(100.0 * sum(value) FILTER (WHERE metric = 'cat:stale_accounts') / NULLIF(sum(value) FILTER (WHERE metric = 'total:enabled_accounts'), 0), 1) AS \"All enabled accounts\", round(100.0 * sum(value) FILTER (WHERE metric = 'total:stale_people') / NULLIF(sum(value) FILTER (WHERE metric = 'total:enabled_people'), 0), 1) AS \"People's main accounts\" FROM daily_identity_metrics WHERE metric IN ('cat:stale_accounts', 'total:enabled_accounts', 'total:stale_people', 'total:enabled_people') AND site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1 HAVING sum(value) FILTER (WHERE metric = 'total:enabled_accounts') > 0 ORDER BY 1"
+        }
+      ],
+      "description": "From the nightly identity snapshot (history from 14 Oct 2026, when the enabled-account totals started being recorded)."
+    },
+    {
+      "id": 31,
       "type": "table",
       "title": "Identity remediation list",
       "gridPos": {
         "x": 0,
-        "y": 60,
+        "y": 63,
         "w": 24,
         "h": 10
       },
@@ -1633,25 +1878,25 @@
       "description": "Work list for the service desk (users) and cyber/systems (privileged/service accounts)."
     },
     {
-      "id": 28,
+      "id": 32,
       "type": "row",
       "title": "Entra ID",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 70,
+        "y": 73,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 29,
+      "id": 33,
       "type": "stat",
       "title": "Users at risk",
       "gridPos": {
         "x": 0,
-        "y": 71,
+        "y": 74,
         "w": 4,
         "h": 4
       },
@@ -1705,12 +1950,12 @@
       ]
     },
     {
-      "id": 30,
+      "id": 34,
       "type": "stat",
       "title": "Confirmed compromised",
       "gridPos": {
         "x": 4,
-        "y": 71,
+        "y": 74,
         "w": 4,
         "h": 4
       },
@@ -1764,12 +2009,12 @@
       ]
     },
     {
-      "id": 31,
+      "id": 35,
       "type": "stat",
       "title": "Risk detections (range)",
       "gridPos": {
         "x": 8,
-        "y": 71,
+        "y": 74,
         "w": 4,
         "h": 4
       },
@@ -1815,12 +2060,12 @@
       ]
     },
     {
-      "id": 32,
+      "id": 36,
       "type": "stat",
       "title": "MFA registered",
       "gridPos": {
         "x": 12,
-        "y": 71,
+        "y": 74,
         "w": 4,
         "h": 4
       },
@@ -1875,12 +2120,12 @@
       ]
     },
     {
-      "id": 33,
+      "id": 37,
       "type": "stat",
       "title": "Admins without MFA",
       "gridPos": {
         "x": 16,
-        "y": 71,
+        "y": 74,
         "w": 8,
         "h": 4
       },
@@ -1930,12 +2175,12 @@
       ]
     },
     {
-      "id": 34,
+      "id": 38,
       "type": "bargauge",
       "title": "MFA registration by site",
       "gridPos": {
         "x": 0,
-        "y": 75,
+        "y": 78,
         "w": 8,
         "h": 8
       },
@@ -1992,12 +2237,12 @@
       ]
     },
     {
-      "id": 35,
+      "id": 39,
       "type": "table",
       "title": "Risky users",
       "gridPos": {
         "x": 8,
-        "y": 75,
+        "y": 78,
         "w": 16,
         "h": 8
       },
@@ -2087,12 +2332,12 @@
       ]
     },
     {
-      "id": 36,
+      "id": 40,
       "type": "table",
       "title": "Recent risk detections",
       "gridPos": {
         "x": 0,
-        "y": 83,
+        "y": 86,
         "w": 24,
         "h": 8
       },
@@ -2182,24 +2427,24 @@
       ]
     },
     {
-      "id": 37,
+      "id": 41,
       "type": "row",
       "title": "Sign-in activity (Log Analytics)",
       "collapsed": true,
       "gridPos": {
         "x": 0,
-        "y": 91,
+        "y": 94,
         "w": 24,
         "h": 1
       },
       "panels": [
         {
-          "id": 38,
+          "id": 42,
           "type": "timeseries",
           "title": "Sign-ins: success vs failure",
           "gridPos": {
             "x": 0,
-            "y": 92,
+            "y": 95,
             "w": 12,
             "h": 8
           },
@@ -2294,12 +2539,12 @@
           ]
         },
         {
-          "id": 39,
+          "id": 43,
           "type": "timeseries",
           "title": "MFA denied",
           "gridPos": {
             "x": 12,
-            "y": 92,
+            "y": 95,
             "w": 12,
             "h": 8
           },
@@ -2394,12 +2639,12 @@
           ]
         },
         {
-          "id": 40,
+          "id": 44,
           "type": "timeseries",
           "title": "Legacy authentication by client",
           "gridPos": {
             "x": 0,
-            "y": 100,
+            "y": 103,
             "w": 12,
             "h": 8
           },
@@ -2494,12 +2739,12 @@
           ]
         },
         {
-          "id": 41,
+          "id": 45,
           "type": "timeseries",
           "title": "Risky sign-ins",
           "gridPos": {
             "x": 12,
-            "y": 100,
+            "y": 103,
             "w": 12,
             "h": 8
           },
@@ -2594,12 +2839,12 @@
           ]
         },
         {
-          "id": 42,
+          "id": 46,
           "type": "timeseries",
           "title": "Conditional Access blocks",
           "gridPos": {
             "x": 0,
-            "y": 108,
+            "y": 111,
             "w": 12,
             "h": 8
           },

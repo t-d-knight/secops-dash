@@ -172,9 +172,10 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT count(*) AS \"Open Findings\" FROM fact_vuln_findings_current WHERE site_label IN ($site)"
+          "rawSql": "SELECT COALESCE(sum(n), 0) AS \"Open Findings\" FROM dash_vuln_site_summary WHERE site_label IN ($site)"
         }
-      ]
+      ],
+      "description": "As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
     },
     {
       "id": 2,
@@ -228,9 +229,10 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT count(*) AS \"Critical + High\" FROM fact_vuln_findings_current WHERE site_label IN ($site) AND severity IN ('critical','high')"
+          "rawSql": "SELECT COALESCE(sum(n) FILTER (WHERE severity IN ('critical','high')), 0) AS \"Critical + High\" FROM dash_vuln_site_summary WHERE site_label IN ($site)"
         }
-      ]
+      ],
+      "description": "As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
     },
     {
       "id": 3,
@@ -284,9 +286,10 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT round(100.0 * count(*) FILTER (WHERE sla_breach) / NULLIF(count(*),0), 1) AS \"SLA Breach Rate\" FROM fact_vuln_findings_current WHERE site_label IN ($site)"
+          "rawSql": "SELECT round(100.0 * sum(n) FILTER (WHERE sla_breach) / NULLIF(sum(n),0), 1) AS \"SLA Breach Rate\" FROM dash_vuln_site_summary WHERE site_label IN ($site)"
         }
-      ]
+      ],
+      "description": "As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
     },
     {
       "id": 4,
@@ -340,9 +343,10 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT round(100.0 * count(*) FILTER (WHERE has_kev) / NULLIF(count(*),0), 1) AS \"Active KEV %\" FROM fact_vuln_findings_current WHERE site_label IN ($site)"
+          "rawSql": "SELECT round(100.0 * sum(n) FILTER (WHERE has_kev) / NULLIF(sum(n),0), 1) AS \"Active KEV %\" FROM dash_vuln_site_summary WHERE site_label IN ($site)"
         }
-      ]
+      ],
+      "description": "As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
     },
     {
       "id": 23,
@@ -396,9 +400,10 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT count(*) AS \"Remote+NoAuth Crit/High\" FROM fact_vuln_findings_current WHERE site_label IN ($site) AND severity IN ('critical','high') AND is_remote_no_auth"
+          "rawSql": "SELECT COALESCE(sum(n) FILTER (WHERE severity IN ('critical','high') AND is_remote_no_auth), 0) AS \"Remote+NoAuth Crit/High\" FROM dash_vuln_site_summary WHERE site_label IN ($site)"
         }
-      ]
+      ],
+      "description": "As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
     },
     {
       "id": 24,
@@ -572,8 +577,8 @@
     {
       "id": 212,
       "type": "stat",
-      "title": "Net Change (Opened \u2212 Closed)",
-      "description": "Findings opened minus findings closed over the selected time range. Positive = backlog growing.",
+      "title": "Net Change (Opened − Closed)",
+      "description": "Findings opened minus fixed over the selected time range (per day of the event, as the exec reports count them; expired records aren't counted as opened). Positive = backlog growing.",
       "gridPos": {
         "x": 0,
         "y": 31,
@@ -621,7 +626,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "WITH opened AS (\n  SELECT count(*) AS n FROM vuln_findings\n  WHERE site_label IN ($site) AND first_found::date BETWEEN '${__from:date}' AND '${__to:date}'\n),\nclosed AS (\n  SELECT COALESCE(sum(fixed_count),0) AS n FROM daily_mttr_metrics\n  WHERE site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}' AND '${__to:date}'\n)\nSELECT (opened.n - closed.n)::int AS \"Net Change\" FROM opened, closed"
+          "rawSql": "SELECT (COALESCE(sum(opened),0) - COALESCE(sum(fixed),0))::int AS \"Net Change\" FROM daily_vuln_flow_metrics WHERE site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}' AND '${__to:date}'"
         }
       ]
     },
@@ -690,9 +695,10 @@
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "WITH opened AS (\n  SELECT date_trunc('day', first_found)::date AS d, count(*) AS n\n  FROM vuln_findings\n  WHERE site_label IN ($site) AND first_found::date BETWEEN '${__from:date}' AND '${__to:date}'\n  GROUP BY 1\n),\nclosed AS (\n  SELECT snapshot_date AS d, sum(fixed_count) AS n\n  FROM daily_mttr_metrics\n  WHERE site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}' AND '${__to:date}'\n  GROUP BY 1\n)\nSELECT COALESCE(o.d, c.d)::timestamp AS time, COALESCE(o.n, 0) AS \"Opened\", -COALESCE(c.n, 0) AS \"Closed\"\nFROM opened o FULL OUTER JOIN closed c ON o.d = c.d\nORDER BY time"
+          "rawSql": "SELECT snapshot_date::timestamp AS time, sum(opened) AS \"Opened\", -sum(fixed) AS \"Closed\" FROM daily_vuln_flow_metrics WHERE site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}' AND '${__to:date}' GROUP BY 1 ORDER BY 1"
         }
-      ]
+      ],
+      "description": "Per day of the event, from the nightly rollup (daily_vuln_flow_metrics) -- the same figures as the exec reports' opened/fixed. Expired records (vanished without a fix) aren't counted as opened."
     },
     {
       "id": 106,
@@ -709,7 +715,7 @@
         {
           "id": 18,
           "type": "stat",
-          "title": "Open Findings \u0394 (7d)",
+          "title": "Open Findings Δ (7d)",
           "gridPos": {
             "x": 0,
             "y": 40,
@@ -762,7 +768,7 @@
         {
           "id": 19,
           "type": "stat",
-          "title": "Crit + High \u0394 (7d)",
+          "title": "Crit + High Δ (7d)",
           "gridPos": {
             "x": 6,
             "y": 40,
@@ -815,7 +821,7 @@
         {
           "id": 20,
           "type": "stat",
-          "title": "SLA Breach Rate \u0394 (7d, pts)",
+          "title": "SLA Breach Rate Δ (7d, pts)",
           "gridPos": {
             "x": 12,
             "y": 40,
@@ -868,7 +874,7 @@
         {
           "id": 21,
           "type": "stat",
-          "title": "Active KEV % \u0394 (7d, pts)",
+          "title": "Active KEV % Δ (7d, pts)",
           "gridPos": {
             "x": 18,
             "y": 40,
@@ -1507,9 +1513,10 @@
             {
               "refId": "A",
               "format": "table",
-              "rawSql": "SELECT kev_cve_id AS \"CVE\", mode() WITHIN GROUP (ORDER BY product_family) FILTER (WHERE product_family IS NOT NULL) AS \"Application\", round(max(cvss_score)::numeric,1) AS \"CVSS\", max(kev_due_date) AS \"KEV Due\", max(kev_ransomware_use) AS \"Ransomware Use\", count(*) AS \"Findings\", count(DISTINCT source_asset_id) AS \"Assets\", count(DISTINCT site_label) AS \"Sites\", count(*) FILTER (WHERE severity='critical') AS \"Crit\", count(*) FILTER (WHERE severity='high') AS \"High\", count(*) FILTER (WHERE severity='medium') AS \"Med\", count(*) FILTER (WHERE severity='low') AS \"Low\", round(max(age_days)::numeric,1) AS \"Oldest (days)\" FROM fact_vuln_findings_current WHERE has_kev AND site_label IN ($site) GROUP BY kev_cve_id ORDER BY \"KEV Due\" ASC NULLS LAST, \"Crit\" DESC LIMIT 100"
+              "rawSql": "SELECT kev_cve_id AS \"CVE\", mode() WITHIN GROUP (ORDER BY product_family) FILTER (WHERE product_family IS NOT NULL) AS \"Application\", round(max(cvss_score)::numeric,1) AS \"CVSS\", max(kev_due_date) AS \"KEV Due\", max(kev_ransomware_use) AS \"Ransomware Use\", count(*) AS \"Findings\", count(DISTINCT source_asset_id) AS \"Assets\", count(DISTINCT site_label) AS \"Sites\", count(*) FILTER (WHERE severity='critical') AS \"Crit\", count(*) FILTER (WHERE severity='high') AS \"High\", count(*) FILTER (WHERE severity='medium') AS \"Med\", count(*) FILTER (WHERE severity='low') AS \"Low\", round(max(age_days)::numeric,1) AS \"Oldest (days)\" FROM dash_vuln_kev_epss WHERE has_kev AND site_label IN ($site) GROUP BY kev_cve_id ORDER BY \"KEV Due\" ASC NULLS LAST, \"Crit\" DESC LIMIT 100"
             }
-          ]
+          ],
+          "description": "As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
         }
       ]
     },
@@ -1643,9 +1650,10 @@
             {
               "refId": "A",
               "format": "table",
-              "rawSql": "WITH cve_findings AS (\n  SELECT vf.id, vf.cvss_vector FROM vuln_findings vf\n  WHERE vf.state IN ('OPEN','REOPENED')\n    AND EXISTS (SELECT 1 FROM vuln_finding_cves fc WHERE fc.finding_id = vf.id)\n)\nSELECT\n  count(*) AS \"CVE-Backed Open Findings\",\n  count(*) FILTER (WHERE cvss_vector IS NOT NULL) AS \"With CVSS Vector\",\n  count(*) FILTER (WHERE cvss_vector IS NULL) AS \"Missing Vector\",\n  (SELECT count(*) FROM nvd_cvss_cache WHERE found) AS \"NVD: CVEs Found\",\n  (SELECT count(*) FROM nvd_cvss_cache WHERE NOT found) AS \"NVD: Not Yet Scored\"\nFROM cve_findings;"
+              "rawSql": "SELECT * FROM dash_nvd_coverage"
             }
-          ]
+          ],
+          "description": "As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
         },
         {
           "id": 205,
@@ -1732,9 +1740,10 @@
             {
               "refId": "A",
               "format": "table",
-              "rawSql": "SELECT epss_cve_id AS \"CVE\", mode() WITHIN GROUP (ORDER BY product_family) FILTER (WHERE product_family IS NOT NULL) AS \"Application\", round(max(cvss_score)::numeric,1) AS \"CVSS\", round((epss_score*100)::numeric,1) AS \"EPSS %\", round((epss_percentile*100)::numeric,1) AS \"Percentile\", count(*) AS \"Findings\", count(DISTINCT source_asset_id) AS \"Assets\", count(DISTINCT site_label) AS \"Sites\", count(*) FILTER (WHERE severity='critical') AS \"Crit\", count(*) FILTER (WHERE severity='high') AS \"High\", count(*) FILTER (WHERE severity='medium') AS \"Med\", count(*) FILTER (WHERE severity='low') AS \"Low\", count(*) FILTER (WHERE is_remote_no_auth) AS \"Remote/No-Auth\", round(max(age_days)::numeric,1) AS \"Oldest (days)\", ((count(*) FILTER (WHERE severity='critical')*10 + count(*) FILTER (WHERE severity='high')*5 + count(*) FILTER (WHERE severity='medium')*2 + count(*) FILTER (WHERE severity='low')*1) + ROUND((count(*) FILTER (WHERE severity='critical')*10 + count(*) FILTER (WHERE severity='high')*5 + count(*) FILTER (WHERE severity='medium')*2 + count(*) FILTER (WHERE severity='low')*1) * epss_score) + (count(*) FILTER (WHERE is_remote_no_auth) * 5))::int AS \"Priority\" FROM fact_vuln_findings_current WHERE site_label IN ($site) AND epss_score >= 0.5 AND NOT has_kev GROUP BY epss_cve_id, epss_score, epss_percentile ORDER BY \"Priority\" DESC LIMIT 100"
+              "rawSql": "SELECT epss_cve_id AS \"CVE\", mode() WITHIN GROUP (ORDER BY product_family) FILTER (WHERE product_family IS NOT NULL) AS \"Application\", round(max(cvss_score)::numeric,1) AS \"CVSS\", round((epss_score*100)::numeric,1) AS \"EPSS %\", round((epss_percentile*100)::numeric,1) AS \"Percentile\", count(*) AS \"Findings\", count(DISTINCT source_asset_id) AS \"Assets\", count(DISTINCT site_label) AS \"Sites\", count(*) FILTER (WHERE severity='critical') AS \"Crit\", count(*) FILTER (WHERE severity='high') AS \"High\", count(*) FILTER (WHERE severity='medium') AS \"Med\", count(*) FILTER (WHERE severity='low') AS \"Low\", count(*) FILTER (WHERE is_remote_no_auth) AS \"Remote/No-Auth\", round(max(age_days)::numeric,1) AS \"Oldest (days)\", ((count(*) FILTER (WHERE severity='critical')*10 + count(*) FILTER (WHERE severity='high')*5 + count(*) FILTER (WHERE severity='medium')*2 + count(*) FILTER (WHERE severity='low')*1) + ROUND((count(*) FILTER (WHERE severity='critical')*10 + count(*) FILTER (WHERE severity='high')*5 + count(*) FILTER (WHERE severity='medium')*2 + count(*) FILTER (WHERE severity='low')*1) * epss_score) + (count(*) FILTER (WHERE is_remote_no_auth) * 5))::int AS \"Priority\" FROM dash_vuln_kev_epss WHERE site_label IN ($site) AND epss_score >= 0.5 AND NOT has_kev GROUP BY epss_cve_id, epss_score, epss_percentile ORDER BY \"Priority\" DESC LIMIT 100"
             }
-          ]
+          ],
+          "description": "As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
         }
       ]
     },
@@ -1794,9 +1803,10 @@
             {
               "refId": "A",
               "format": "table",
-              "rawSql": "SELECT hostname AS \"Host\", site_label AS \"Site\", CASE source WHEN 'hadrian' THEN 'External' ELSE 'Endpoint' END AS \"Source\", asset_type AS \"Type\", open_critical AS \"Crit\", open_high AS \"High\", open_medium AS \"Med\", open_low AS \"Low\", open_kev_count AS \"KEV\", open_remote_no_auth AS \"Remote/No-Auth\", round(oldest_open_finding_age_days::numeric,1) AS \"Oldest (days)\", risk_score AS \"Risk Score\" FROM asset_risk_summary WHERE site_label IN ($site) ORDER BY risk_score DESC LIMIT 25"
+              "rawSql": "SELECT hostname AS \"Host\", site_label AS \"Site\", CASE source WHEN 'hadrian' THEN 'External' ELSE 'Endpoint' END AS \"Source\", asset_type AS \"Type\", open_critical AS \"Crit\", open_high AS \"High\", open_medium AS \"Med\", open_low AS \"Low\", open_kev_count AS \"KEV\", open_remote_no_auth AS \"Remote/No-Auth\", round(oldest_open_finding_age_days::numeric,1) AS \"Oldest (days)\", risk_score AS \"Risk Score\" FROM dash_asset_risk WHERE site_label IN ($site) ORDER BY risk_score DESC LIMIT 25"
             }
-          ]
+          ],
+          "description": "As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
         }
       ]
     },
@@ -1856,9 +1866,10 @@
             {
               "refId": "A",
               "format": "table",
-              "rawSql": "SELECT title AS \"Fix\", CASE source WHEN 'hadrian' THEN 'External' ELSE 'Endpoint' END AS \"Source\", affected_sites AS \"Sites\", product_family AS \"Product Family\", affected_assets AS \"Assets\", open_findings AS \"Findings\", crit AS \"Crit\", high AS \"High\", medium AS \"Med\", low AS \"Low\", remote_no_auth_count AS \"Remote/No-Auth\", CASE WHEN has_kev THEN 'Yes' ELSE 'No' END AS \"KEV\", round((COALESCE(max_epss,0)*100)::numeric,1) AS \"Max EPSS %\", priority_score AS \"Priority\" FROM patch_impact_summary ORDER BY priority_score DESC LIMIT 10"
+              "rawSql": "SELECT title AS \"Fix\", CASE source WHEN 'hadrian' THEN 'External' ELSE 'Endpoint' END AS \"Source\", affected_sites AS \"Sites\", product_family AS \"Product Family\", affected_assets AS \"Assets\", open_findings AS \"Findings\", crit AS \"Crit\", high AS \"High\", medium AS \"Med\", low AS \"Low\", remote_no_auth_count AS \"Remote/No-Auth\", CASE WHEN has_kev THEN 'Yes' ELSE 'No' END AS \"KEV\", round((COALESCE(max_epss,0)*100)::numeric,1) AS \"Max EPSS %\", priority_score AS \"Priority\" FROM dash_patch_impact ORDER BY priority_score DESC LIMIT 10"
             }
-          ]
+          ],
+          "description": "As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
         }
       ]
     },

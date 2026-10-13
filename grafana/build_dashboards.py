@@ -166,6 +166,8 @@ def sev_cell(col="Severity"):
 BAD_UP = [{"color": "green", "value": None}, {"color": "orange", "value": 1}, {"color": "red", "value": 10}]
 GOOD_PCT = [{"color": "red", "value": None}, {"color": "orange", "value": 80}, {"color": "green", "value": 95}]
 NEUTRAL = [{"color": "text", "value": None}]
+# share of enabled accounts gone stale: some churn is normal, a quarter is a cleanup job
+STALE_PCT = [{"color": "green", "value": None}, {"color": "orange", "value": 10}, {"color": "red", "value": 25}]
 
 
 def dashboard(uid, title, description, b: Builder):
@@ -206,13 +208,16 @@ def overview():
         "If a number looks too good, check **Data freshness** at the bottom first.", h=4)
 
     b.row("Posture at a glance")
+    # dash_vuln_site_summary: pre-computed nightly by rollup_daily_metrics.py (the live
+    # fact view took 1-2 minutes per panel at estate scale)
     b.stat("Open Crit + High vulns",
-           "SELECT count(*) FROM fact_vuln_findings_current WHERE site_label IN ($site) "
-           "AND severity IN ('critical','high') AND last_found >= now() - interval '30 days'",
-           thresholds=[{"color": "green", "value": None}, {"color": "orange", "value": 1}, {"color": "red", "value": 500}])
+           "SELECT COALESCE(sum(n), 0) FROM dash_vuln_site_summary WHERE site_label IN ($site) "
+           "AND severity IN ('critical','high') AND seen_30d",
+           thresholds=[{"color": "green", "value": None}, {"color": "orange", "value": 1}, {"color": "red", "value": 500}],
+           description="As at the last nightly run (pre-computed by rollup_daily_metrics.py).")
     b.stat("Open KEV findings",
-           "SELECT count(*) FROM fact_vuln_findings_current WHERE site_label IN ($site) AND has_kev "
-           "AND last_found >= now() - interval '30 days'", thresholds=BAD_UP)
+           "SELECT COALESCE(sum(n), 0) FROM dash_vuln_site_summary WHERE site_label IN ($site) AND has_kev "
+           "AND seen_30d", thresholds=BAD_UP, description="As at the last nightly run (pre-computed by rollup_daily_metrics.py).")
     b.stat("Open Crit/High alerts",
            "SELECT count(*) FROM security_alerts WHERE site_label IN ($site) AND status <> 'closed' "
            "AND severity IN ('critical','high')", thresholds=BAD_UP)
@@ -234,11 +239,11 @@ def overview():
     b.table("Site scorecard", """
         WITH v AS (
             SELECT site_label,
-                   count(*) FILTER (WHERE severity IN ('critical','high') AND source <> 'hadrian') AS ep_ch,
-                   count(*) FILTER (WHERE severity IN ('critical','high') AND source = 'hadrian') AS ext_ch,
-                   count(*) FILTER (WHERE has_kev) AS kev,
-                   count(*) FILTER (WHERE sla_breach) AS sla
-            FROM fact_vuln_findings_current WHERE last_found >= now() - interval '30 days' GROUP BY 1),
+                   sum(n) FILTER (WHERE severity IN ('critical','high') AND source <> 'hadrian') AS ep_ch,
+                   sum(n) FILTER (WHERE severity IN ('critical','high') AND source = 'hadrian') AS ext_ch,
+                   sum(n) FILTER (WHERE has_kev) AS kev,
+                   sum(n) FILTER (WHERE sla_breach) AS sla
+            FROM dash_vuln_site_summary WHERE seen_30d GROUP BY 1),
         a AS (SELECT site_label, count(*) FILTER (WHERE status <> 'closed' AND severity IN ('critical','high')) AS al
               FROM security_alerts GROUP BY 1),
         i AS (SELECT site_label, count(*) FILTER (WHERE risk_severity = 'high') AS hi
@@ -441,6 +446,25 @@ def endpoint_identity():
            "AND site_label IN ($site)", thresholds=NEUTRAL)
     b.stat("Enabled, password > 1 year", "SELECT count(*) FROM identity_entities WHERE NOT retired AND enabled "
            "AND password_last_change < now() - interval '365 days' AND site_label IN ($site)", thresholds=BAD_UP)
+    # Same population as the exec report's identity page (identity_categories: enabled or
+    # unknown status, out-of-scope services excluded); "people" = human accounts minus
+    # the shared-domain VPN / remote-app second accounts.
+    enabled = ("FROM identity_entities e WHERE NOT e.retired AND e.enabled IS NOT FALSE "
+               "AND COALESCE(e.account_kind, 'human') <> 'out_of_scope' AND e.site_label IN ($site)")
+    stale = ("EXISTS (SELECT 1 FROM identity_risk_factors f WHERE f.source = e.source "
+             "AND f.entity_id = e.entity_id AND f.factor_type = 'STALE_ACCOUNT')")
+    people = "COALESCE(e.account_kind, 'human') = 'human' AND e.access_account IS NULL"
+    b.stat("Enabled accounts", f"SELECT count(*) {enabled}", thresholds=NEUTRAL,
+           description="Enabled (or unknown-status) accounts, all kinds: people, service, mailbox, generic, "
+                       "VPN / remote-app. The denominator for the stale percentages.")
+    b.stat("Stale: all enabled accounts", f"SELECT round(100.0 * count(*) FILTER (WHERE {stale}) / NULLIF(count(*), 0), 1) "
+           f"{enabled}", unit="percent", decimals=1, thresholds=STALE_PCT,
+           description="Enabled accounts Falcon Identity flags STALE_ACCOUNT (no recent activity). "
+                       "Disable or confirm still needed.")
+    b.stat("Stale: people's main accounts", f"SELECT round(100.0 * count(*) FILTER (WHERE {stale}) / "
+           f"NULLIF(count(*), 0), 1) {enabled} AND {people}", unit="percent", decimals=1, thresholds=STALE_PCT,
+           description="As left, for human accounts only, excluding service / mailbox / generic accounts and "
+                       "shared-domain VPN / remote-app second accounts: roughly, staff who've left or moved on.")
     b.bars("Accounts by risk factor", """
         SELECT f.factor_type AS "Factor", count(DISTINCT f.entity_id) AS "Accounts"
         FROM identity_risk_factors f JOIN identity_entities e ON e.source = f.source AND e.entity_id = f.entity_id
@@ -450,6 +474,19 @@ def endpoint_identity():
         SELECT snapshot_date::timestamp AS time, replace(metric, 'factor:', '') AS metric, sum(value) AS value
         FROM daily_identity_metrics WHERE metric LIKE 'factor:%' AND site_label IN ($site) AND {rng_d('snapshot_date')}
         GROUP BY 1, 2 ORDER BY 1""", w=12)
+    b.ts("Stale accounts, % of enabled", f"""
+        SELECT snapshot_date::timestamp AS time,
+               round(100.0 * sum(value) FILTER (WHERE metric = 'cat:stale_accounts')
+                     / NULLIF(sum(value) FILTER (WHERE metric = 'total:enabled_accounts'), 0), 1) AS "All enabled accounts",
+               round(100.0 * sum(value) FILTER (WHERE metric = 'total:stale_people')
+                     / NULLIF(sum(value) FILTER (WHERE metric = 'total:enabled_people'), 0), 1) AS "People's main accounts"
+        FROM daily_identity_metrics
+        WHERE metric IN ('cat:stale_accounts', 'total:enabled_accounts', 'total:stale_people', 'total:enabled_people')
+          AND site_label IN ($site) AND {rng_d('snapshot_date')}
+        GROUP BY 1 HAVING sum(value) FILTER (WHERE metric = 'total:enabled_accounts') > 0 ORDER BY 1""",
+         w=24, h=7, unit="percent", colors={"All enabled accounts": "orange", "People's main accounts": "red"},
+         description="From the nightly identity snapshot (history from 14 Oct 2026, when the enabled-account "
+                     "totals started being recorded).")
     b.table("Identity remediation list", """
         SELECT coalesce(e.upn, e.display_name) AS "Account", e.sam_account_name AS "sAMAccountName", e.domain AS "Domain",
                e.site_label AS "Site", e.risk_severity AS "Severity", round(e.risk_score::numeric, 2) AS "Score",
@@ -638,7 +675,11 @@ def email_external():
 # API has no "assessed, zero findings" signal to do better with.
 ACTIVE_HOSTS = ("SELECT * FROM assets WHERE source = 'falcon' AND NOT retired "
                 "AND last_seen > now() - interval '7 days'")
-ASSESSED = "SELECT DISTINCT source_asset_id FROM vuln_findings WHERE source = 'falcon_spotlight'"
+# "Falcon has returned vulnerability data for this host", as an index probe on
+# vuln_findings (source, source_asset_id, ...) per host: IN / NOT IN (SELECT DISTINCT
+# ...) read the whole multi-GB table and took 2-45 s depending on what was cached.
+ASSESSED_A = ("EXISTS (SELECT 1 FROM vuln_findings v WHERE v.source = 'falcon_spotlight' "
+              "AND v.source_asset_id = a.source_asset_id)")
 CONFIRMED = "('Verified','UnpatchedTechnology','InfectedDevice')"
 
 
@@ -671,14 +712,14 @@ def worklist():
     b.stat("Active managed hosts (7d)", f"SELECT count(*) FROM ({ACTIVE_HOSTS}) a WHERE site_label IN ($site)",
            thresholds=NEUTRAL)
     b.stat("Vulnerability assessment coverage", f"""
-        SELECT 100.0 * count(*) FILTER (WHERE a.source_asset_id IN ({ASSESSED})) / NULLIF(count(*), 0)
+        SELECT 100.0 * count(*) FILTER (WHERE {ASSESSED_A}) / NULLIF(count(*), 0)
         FROM ({ACTIVE_HOSTS}) a WHERE a.site_label IN ($site)""", unit="percent", decimals=1,
            thresholds=GOOD_PCT,
            description="Active managed hosts Falcon has returned vulnerability data for. Everything below 100% is "
                        "estate the vuln figures can't see.")
     b.stat("Active hosts not assessed", f"""
         SELECT count(*) FROM ({ACTIVE_HOSTS}) a
-        WHERE a.site_label IN ($site) AND a.source_asset_id NOT IN ({ASSESSED})""", thresholds=BAD_UP)
+        WHERE a.site_label IN ($site) AND NOT {ASSESSED_A}""", thresholds=BAD_UP)
     b.stat("Stale sensors", """
         SELECT count(*) FROM assets WHERE source = 'falcon' AND NOT retired AND site_label IN ($site)
           AND last_seen <= now() - interval '7 days'""", thresholds=BAD_UP,
@@ -701,8 +742,8 @@ def worklist():
                COALESCE(st.n,0) AS "Stale sensors", COALESCE(u.n,0) AS "Missing a sensor"
         FROM dim_site s
         LEFT JOIN (SELECT site_label, count(*) AS active,
-                          count(*) FILTER (WHERE source_asset_id IN ({ASSESSED})) AS assessed
-                   FROM ({ACTIVE_HOSTS}) x GROUP BY 1) a ON a.site_label = s.site_label
+                          count(*) FILTER (WHERE {ASSESSED_A}) AS assessed
+                   FROM ({ACTIVE_HOSTS}) a GROUP BY 1) a ON a.site_label = s.site_label
         LEFT JOIN (SELECT site_label, count(*) n FROM assets WHERE source = 'falcon' AND NOT retired
                      AND last_seen <= now() - interval '7 days' GROUP BY 1) st ON st.site_label = s.site_label
         LEFT JOIN (SELECT site_label, count(*) n FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired
@@ -715,7 +756,7 @@ def worklist():
                a.os_version AS "OS", a.sensor_version AS "Sensor", a.last_seen AS "Last seen",
                array_to_string(a.groups, ', ') AS "Host groups"
         FROM ({ACTIVE_HOSTS}) a
-        WHERE a.site_label IN ($site) AND a.source_asset_id NOT IN ({ASSESSED})
+        WHERE a.site_label IN ($site) AND NOT {ASSESSED_A}
         ORDER BY a.site_label, a.hostname""", w=14, h=10,
             description="Compare sensor version, host groups and policy against assessed hosts to find what "
                         "Exposure Management isn't covering.")

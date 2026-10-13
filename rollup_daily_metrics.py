@@ -678,6 +678,57 @@ def rollup_email_metrics(cur, snapshot_date: dt.date, lookback_days: int = 3) ->
 # ------------------------------------------------------------
 #  MAIN
 # ------------------------------------------------------------
+# Dashboard summary tables. The Grafana vuln panels used to query the
+# fact_vuln_findings_current / asset_risk_summary / patch_impact_summary
+# views live: KEV/EPSS/SLA computed for every open finding (millions) on
+# every panel load, 1-2 minutes per panel. The data only changes once a
+# night, so build the small answers here instead. Plain tables rebuilt and
+# swapped in, not materialized views: ensure_schema() drops and recreates
+# those views (CASCADE) on every script start, which would empty an MV.
+DASH_TABLES = {
+    # counts by every dimension a vuln stat tile / the overview scorecard filters on
+    "dash_vuln_site_summary": ("""
+        SELECT site_label, source, severity, has_kev, COALESCE(sla_breach, false) AS sla_breach,
+               COALESCE(is_remote_no_auth, false) AS is_remote_no_auth,
+               last_found >= now() - interval '30 days' AS seen_30d, count(*)::bigint AS n
+        FROM fact_vuln_findings_current GROUP BY 1, 2, 3, 4, 5, 6, 7""", ["site_label"]),
+    # the KEV / "likely next" (EPSS) tables' rows, unaggregated so their queries stay as they were
+    "dash_vuln_kev_epss": ("""
+        SELECT site_label, source_asset_id, severity, cvss_score, product_family, is_remote_no_auth, age_days,
+               has_kev, kev_cve_id, kev_due_date, kev_ransomware_use, epss_cve_id, epss_score, epss_percentile
+        FROM fact_vuln_findings_current WHERE has_kev OR epss_score >= 0.5""", ["site_label"]),
+    "dash_asset_risk": ("SELECT * FROM asset_risk_summary", ["site_label", "risk_score DESC"]),
+    "dash_patch_impact": ("SELECT * FROM patch_impact_summary", ["priority_score DESC"]),
+    # one row: how much of the open CVE-backed estate has a CVSS vector (vendor or NVD)
+    "dash_nvd_coverage": ("""
+        WITH cve_findings AS (
+            SELECT vf.id, vf.cvss_vector FROM vuln_findings vf
+            WHERE vf.state IN ('OPEN','REOPENED')
+              AND EXISTS (SELECT 1 FROM vuln_finding_cves fc WHERE fc.finding_id = vf.id))
+        SELECT count(*) AS "CVE-Backed Open Findings",
+               count(*) FILTER (WHERE cvss_vector IS NOT NULL) AS "With CVSS Vector",
+               count(*) FILTER (WHERE cvss_vector IS NULL) AS "Missing Vector",
+               (SELECT count(*) FROM nvd_cvss_cache WHERE found) AS "NVD: CVEs Found",
+               (SELECT count(*) FROM nvd_cvss_cache WHERE NOT found) AS "NVD: Not Yet Scored"
+        FROM cve_findings""", []),
+}
+
+
+def rebuild_dashboard_tables(cur) -> None:
+    for name, (sql, indexes) in DASH_TABLES.items():
+        t0 = dt.datetime.now()
+        cur.execute(f"DROP TABLE IF EXISTS {name}_new")
+        cur.execute(f"CREATE TABLE {name}_new AS {sql}")
+        rows = cur.rowcount
+        for i, cols in enumerate(indexes):
+            cur.execute(f"CREATE INDEX {name}_new_i{i} ON {name}_new ({cols})")
+        cur.execute(f"DROP TABLE IF EXISTS {name}")
+        cur.execute(f"ALTER TABLE {name}_new RENAME TO {name}")
+        for i in range(len(indexes)):
+            cur.execute(f"ALTER INDEX {name}_new_i{i} RENAME TO {name}_i{i}")
+        cur.execute(f"ANALYZE {name}")
+        print(f"[rollup] {name}: {rows:,} rows in {(dt.datetime.now() - t0).seconds}s")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Roll up vuln_findings into daily snapshot tables")
@@ -690,6 +741,8 @@ def main():
                         help="one-off: recompute the per-event-day tables this far back instead (bounded by "
                              "source retention -- FIXED findings 180d, alerts/email 365d)")
     parser.add_argument("--dry-run", action="store_true", help="Print computed rollup without writing")
+    parser.add_argument("--dashboard-tables-only", action="store_true",
+                        help="only rebuild the Grafana summary tables (dash_*), e.g. after a manual collector run")
     args = parser.parse_args()
 
     cfg = config_mod.load_config(args.config)
@@ -699,6 +752,11 @@ def main():
     flow_start = snapshot_date - dt.timedelta(days=args.backfill_days or args.flow_lookback_days)
 
     conn = pg_connect(cfg)
+    if args.dashboard_tables_only:
+        rebuild_dashboard_tables(conn.cursor())
+        conn.commit()
+        conn.close()
+        return
     if not args.dry_run:
         # Collectors rewrite every open finding each run, which clears the
         # visibility map -- so until vacuumed, the covering indexes the
@@ -742,7 +800,9 @@ def main():
     rollup_alert_metrics(cur, flow_start, snapshot_date)
     rollup_identity_metrics(cur, snapshot_date)
     rollup_email_metrics(cur, snapshot_date, (snapshot_date - flow_start).days)
+    conn.commit()   # snapshots are safe before the slower dashboard tables
 
+    rebuild_dashboard_tables(cur)
     conn.commit()
     conn.close()
     print(f"[rollup] Wrote vuln snapshots (daily_site/sla/product/kev/epss/mttr, "
