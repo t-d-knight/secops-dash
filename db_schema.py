@@ -638,10 +638,14 @@ DDL_STATEMENTS = [
     EXCEPTION WHEN invalid_table_definition THEN NULL;
     END $$;
     """,
-    "CREATE INDEX IF NOT EXISTS idx_vuln_findings_state ON vuln_findings (state);",
-    "CREATE INDEX IF NOT EXISTS idx_vuln_findings_severity ON vuln_findings (severity);",
+    # Dropped 2026-10-14: every changed finding (~1.8M a night) updates every index, and
+    # these three earn nothing back -- severity has four values, state is covered by
+    # (source, state), and product breakdowns read the rollup tables. DROP INDEX IF
+    # EXISTS so existing databases lose them too.
+    "DROP INDEX IF EXISTS idx_vuln_findings_state;",
+    "DROP INDEX IF EXISTS idx_vuln_findings_severity;",
     "CREATE INDEX IF NOT EXISTS idx_vuln_findings_product_key ON vuln_findings (product_key);",
-    "CREATE INDEX IF NOT EXISTS idx_vuln_findings_product_family ON vuln_findings (product_family);",
+    "DROP INDEX IF EXISTS idx_vuln_findings_product_family;",
     "CREATE INDEX IF NOT EXISTS idx_vuln_findings_first_found ON vuln_findings (first_found);",
     "CREATE INDEX IF NOT EXISTS idx_vuln_findings_last_fixed ON vuln_findings (last_fixed);",
     # Open endpoint findings only, covering what exec_report / action_pack

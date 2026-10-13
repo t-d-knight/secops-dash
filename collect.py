@@ -52,6 +52,11 @@ def main() -> int:
     db_schema.ensure_schema(cfg)
     resolver = SiteResolver(cfg)
     conn = pg_connect(cfg)
+    # Don't wait for each commit to reach disk. The nightly load writes millions of rows
+    # in thousands of batches; a crash can lose at most the last moment of it (never
+    # corrupt anything), and the next run re-pulls it anyway.
+    conn.cursor().execute("SET synchronous_commit = off")
+    conn.commit()
     failures = []
 
     for name in names:
