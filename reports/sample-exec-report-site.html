@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
-<title>Security Posture Report -- Riverside Health -- 2026-10-01 to 2026-10-07</title>
+<title>Security Posture Report -- Riverside Health -- 2026-10-07 to 2026-10-13</title>
 <style>
   :root { color-scheme: light; }
   * { box-sizing: border-box; }
@@ -36,19 +36,63 @@
   @media screen {
     .page { box-shadow: 0 1px 4px rgba(15,23,42,.08); border-radius: 4px; }
   }
+  @page { size: A4; margin: 12mm 12mm 14mm; }
   @media print {
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }   /* keep severity colours */
     body { background: #fff; }
     .page { padding: 0; max-width: none; margin: 0; box-shadow: none; break-after: page; }
+    .page:last-child { break-after: auto; }
+    /* Tighter than on screen so each section fits one A4 page: scale the whole
+       page a little and trim the spacing that's generous on a monitor. */
+    html { zoom: 0.84; }
+    header { margin-bottom: 12px; padding-bottom: 8px; }
+    h2 { margin: 14px 0 8px; padding-bottom: 4px; }
+    .tiles { gap: 8px; }
+    .tile { padding: 8px 12px; }
+    .tile-value { font-size: 22px; }
+    table { font-size: 11px; }
+    th { padding: 3px 6px; }
+    td { padding: 2px 6px; }
+    footer { margin-top: 14px; padding-top: 6px; font-size: 9px; }
     h2 { break-after: avoid; }
-    .row, .tiles { break-inside: avoid; }
+    .row, .tiles, tr, svg { break-inside: avoid; }
   }
 </style></head>
 <body>
 <div class="page">
 <header>
   <div><h1>Security Posture Report &mdash; Riverside Health</h1>
-       <div class="period">2026-10-01 to 2026-10-07 &middot; Page 1 of 4 &mdash; Endpoint Vulnerabilities</div></div>
-  <div class="meta">Generated 2026-10-07 08:36<br>secops-dashboard</div>
+       <div class="period">2026-10-07 to 2026-10-13 &middot; Page 1 of 6 &mdash; Estate</div></div>
+  <div class="meta">Generated 2026-10-13 11:56<br>secops-dashboard</div>
+</header>
+
+<h2>What we're protecting</h2>
+<div class="tiles tiles-3">
+  <div class="tile"><div class="tile-value" style="color:#0f172a">2</div><div class="tile-label">Managed devices</div><div class="tile-sub">2 workstations, 0 servers, 0 DCs -- 1 active this week</div><div class="tile-trend" style="color:#94a3b8">No earlier snapshot to compare yet</div></div>
+  <div class="tile"><div class="tile-value" style="color:#16a34a">0</div><div class="tile-label">Devices on an unsupported OS</div><div class="tile-sub">none</div><div class="tile-trend" style="color:#94a3b8">No earlier snapshot to compare yet</div></div>
+  <div class="tile"><div class="tile-value" style="color:#16a34a">0</div><div class="tile-label">OS support ending within 12 months</div><div class="tile-sub">none</div></div>
+  <div class="tile"><div class="tile-value" style="color:#ea580c">1</div><div class="tile-label">Machines missing a sensor</div><div class="tile-sub">in-use servers/workstations in AD -- plus 1 unidentified network devices</div></div>
+  <div class="tile"><div class="tile-value" style="color:#0f172a">1</div><div class="tile-label">Internet-facing domains</div><div class="tile-sub">monitored by Hadrian</div><div class="tile-trend" style="color:#94a3b8">No earlier snapshot to compare yet</div></div>
+  <div class="tile"><div class="tile-value" style="color:#0f172a">0</div><div class="tile-label">Public IP addresses</div><div class="tile-sub">monitored by Hadrian</div><div class="tile-trend" style="color:#94a3b8">No earlier snapshot to compare yet</div></div>
+</div>
+
+<h2>Operating systems (Falcon-managed devices)</h2>
+<table><tr><th>Operating system</th><th class="num">Devices</th><th class="num">Active (7d)</th>
+<th class="num">Workstations</th><th class="num">Servers</th><th class="num">Support ends</th><th>Status</th></tr>
+<tr><td>Unknown</td><td class="num">1</td><td class="num">0</td><td class="num">1</td><td class="num">0</td><td class="num">&ndash;</td><td style="color:#94a3b8">Not assessed</td></tr><tr><td>Windows 11</td><td class="num">1</td><td class="num">1</td><td class="num">1</td><td class="num">0</td><td class="num">&ndash;</td><td style="color:#94a3b8">Not assessed</td></tr></table>
+
+
+<footer>Page 1 of 6 &mdash; secops-dashboard. Figures for Riverside Health only; current as of generation time. Devices = Falcon-managed
+hosts; "missing a sensor" = in-use AD computer accounts Falcon has no sensor on (duplicates, service accounts,
+appliances and out-of-scope services excluded). Support dates are the vendor's end of security updates; Windows 11
+is reported without its feature-update build, so isn't assessed. Override dates (e.g. Windows 10 Extended Security
+Updates) under reporting.os_end_of_support. Arrows on current counts compare the daily snapshot at the start of the period with the one at its end (or the earliest available, if history is shorter); arrows on period counts compare with the previous 7 days.</footer>
+</div>
+<div class="page">
+<header>
+  <div><h1>Security Posture Report &mdash; Riverside Health</h1>
+       <div class="period">2026-10-07 to 2026-10-13 &middot; Page 2 of 6 &mdash; Endpoint Vulnerabilities</div></div>
+  <div class="meta">Generated 2026-10-13 11:56<br>secops-dashboard</div>
 </header>
 
 <h2>Headline</h2>
@@ -64,6 +108,7 @@
 <h2>Endpoint vulnerabilities &mdash; opened vs fixed by week</h2>
 <p class="empty">No data for this period.</p>
 
+
 <div class="row">
   <div class="col">
     <h2>Open critical+high, by product family</h2>
@@ -78,18 +123,18 @@
 </div>
 
 
-<footer>Page 1 of 4 &mdash; secops-dashboard. Figures for Riverside Health only; endpoint vulnerabilities only (Falcon
-Spotlight -- external risks are on page 2); "opened/fixed" and the bar chart cover the report period only;
+<footer>Page 2 of 6 &mdash; secops-dashboard. Figures for Riverside Health only; endpoint vulnerabilities only (Falcon
+Spotlight -- external risks are on page 3); "opened/fixed" and the bar chart cover the report period only;
 open, KEV, exposure and sensor counts are current as of generation time. "Remotely exploitable" = network
 attack vector, no privileges or user interaction needed, with a known exploit. Vulnerability age is measured
-from first detection; anything already present when collection began dates from then (04 Oct 2026).
+from first detection; anything already present when collection began dates from then (10 Oct 2026).
 Arrows on current counts compare the daily snapshot at the start of the period with the one at its end (or the earliest available, if history is shorter); arrows on period counts compare with the previous 7 days.</footer>
 </div>
 <div class="page">
 <header>
   <div><h1>Security Posture Report &mdash; Riverside Health</h1>
-       <div class="period">2026-10-01 to 2026-10-07 &middot; Page 2 of 4 &mdash; External Attack Surface</div></div>
-  <div class="meta">Generated 2026-10-07 08:36<br>secops-dashboard</div>
+       <div class="period">2026-10-07 to 2026-10-13 &middot; Page 3 of 6 &mdash; External Attack Surface</div></div>
+  <div class="meta">Generated 2026-10-13 11:56<br>secops-dashboard</div>
 </header>
 
 <h2>Headline</h2>
@@ -97,20 +142,20 @@ Arrows on current counts compare the daily snapshot at the start of the period w
   <div class="tile"><div class="tile-value" style="color:#0f172a">1</div><div class="tile-label">External assets monitored</div><div class="tile-sub">1 domains, 0 IPs</div><div class="tile-trend" style="color:#94a3b8">No earlier snapshot to compare yet</div></div>
   <div class="tile"><div class="tile-value" style="color:#d97706">2</div><div class="tile-label">Open external risks</div><div class="tile-sub">2 confirmed, 0 unverified (potential)</div><div class="tile-trend" style="color:#94a3b8">No earlier snapshot to compare yet</div></div>
   <div class="tile"><div class="tile-value" style="color:#ea580c">2</div><div class="tile-label">Confirmed risks open</div><div class="tile-sub">1 critical/high, 0 medium</div></div>
-  <div class="tile"><div class="tile-value" style="color:#dc2626">1</div><div class="tile-label">Leaked credentials</div><div class="tile-sub">open risks from infostealer-infected devices</div></div>
+  <div class="tile"><div class="tile-value" style="color:#16a34a">0</div><div class="tile-label">Leaked credentials</div><div class="tile-sub">infostealer leaks naming a still-enabled account of ours</div></div>
   <div class="tile"><div class="tile-value" style="color:#ea580c">1</div><div class="tile-label">Critical / high open (any type)</div></div>
   <div class="tile"><div class="tile-value" style="color:#ea580c">1 / 0</div><div class="tile-label">Opened vs fixed this period</div><div class="tile-sub">net +1</div><div class="tile-trend" style="color:#94a3b8">No full previous 7 days to compare yet</div></div>
 </div>
 
 <h2>Confirmed and high-severity external risks</h2>
 <table><tr><th>Severity</th><th>Type</th><th>Risk</th><th>Asset</th><th class="num">First seen</th></tr>
-<tr><td style="color:#dc2626">Critical</td><td>Unpatched tech</td><td>Unpatched Apache Log4j - Actively Exploited</td><td>portal.riversidehealth.test</td><td class="num">02 Oct</td></tr><tr><td style="color:#2563eb">Low</td><td>Infected device</td><td>Infostealer Infection: s*****@riversidehealth.test compromised</td><td>portal.riversidehealth.test</td><td class="num">25 Sep</td></tr></table>
+<tr><td style="color:#dc2626">Critical</td><td>Unpatched tech</td><td>Unpatched Apache Log4j - Actively Exploited</td><td>portal.riversidehealth.test</td><td class="num">08 Oct</td></tr></table>
 
 <div class="row">
   <div class="col">
     <h2>Open external risks by category</h2>
     <table><tr><th>Category</th><th class="num">Confirmed</th><th class="num">Unverified (potential)</th></tr>
-    <tr><td>unpatched technology</td><td class="num">1</td><td class="num">0</td></tr><tr><td>leaked credentials</td><td class="num">1</td><td class="num">0</td></tr></table>
+    <tr><td>leaked credentials</td><td class="num">1</td><td class="num">0</td></tr><tr><td>unpatched technology</td><td class="num">1</td><td class="num">0</td></tr></table>
   </div>
   <div class="col">
     <h2>Remediation SLA</h2>
@@ -120,7 +165,7 @@ Arrows on current counts compare the daily snapshot at the start of the period w
   </div>
 </div>
 
-<footer>Page 2 of 4 &mdash; secops-dashboard. Figures for Riverside Health only; external attack surface from Hadrian. "Confirmed" =
+<footer>Page 3 of 6 &mdash; secops-dashboard. Figures for Riverside Health only; external attack surface from Hadrian. "Confirmed" =
 verified, unpatched-technology and infected-device risks; "potential" risks are unverified detections, many
 predating the current review workflow. Severities are Hadrian's own. A risk closed because a rescan no longer
 finds it counts as fixed. Assets take their site from their Hadrian tag, or from their apex domain if untagged.
@@ -130,16 +175,23 @@ Arrows on current counts compare the daily snapshot at the start of the period w
 <div class="page">
 <header>
   <div><h1>Security Posture Report &mdash; Riverside Health</h1>
-       <div class="period">2026-10-01 to 2026-10-07 &middot; Page 3 of 4 &mdash; Email</div></div>
-  <div class="meta">Generated 2026-10-07 08:36<br>secops-dashboard</div>
+       <div class="period">2026-10-07 to 2026-10-13 &middot; Page 4 of 6 &mdash; Email</div></div>
+  <div class="meta">Generated 2026-10-13 11:56<br>secops-dashboard</div>
 </header>
 
 <h2>Headline</h2>
 <div class="tiles tiles-3">
+  <div class="tile"><div class="tile-value" style="color:#0f172a">4</div><div class="tile-label">Emails handled</div><div class="tile-sub">4 from outside, 0 internal</div><div class="tile-trend" style="color:#94a3b8">No full previous 7 days to compare yet</div></div>
+  <div class="tile"><div class="tile-value" style="color:#0f172a">75%</div><div class="tile-label">Filtered before reaching users</div><div class="tile-sub">3 emails quarantined by Microsoft or Check Point</div></div>
+  <div class="tile"><div class="tile-value" style="color:#dc2626">1</div><div class="tile-label">Phishing + malware caught</div><div class="tile-sub">phishing + malware (0 malware), 0 suspicious</div><div class="tile-trend" style="color:#94a3b8">No full previous 7 days to compare yet</div></div>
   <div class="tile"><div class="tile-value" style="color:#ea580c">1</div><div class="tile-label">Inbound email threats</div><div class="tile-sub">1 high+ severity</div><div class="tile-trend" style="color:#94a3b8">No full previous 7 days to compare yet</div></div>
   <div class="tile"><div class="tile-value" style="color:#0f172a">0</div><div class="tile-label">Outbound email threats</div><div class="tile-sub">0 high+ severity</div><div class="tile-trend" style="color:#94a3b8">No full previous 7 days to compare yet</div></div>
   <div class="tile"><div class="tile-value" style="color:#0f172a">96%</div><div class="tile-label">DMARC pass rate</div><div class="tile-sub">1037 messages seen</div></div>
 </div>
+
+<h2>Inbound mail flow (this period)</h2>
+<svg viewBox="0 0 640 250" width="100%" style="max-width:640px"><text x="0" y="27.0" font-size="10" font-weight="700" fill="#64748b">INBOUND</text><rect x="114.0" y="0" width="524.0" height="46" rx="4" fill="#cbd5e1"/><text x="376.0" y="18" font-size="10" fill="#0f172a" text-anchor="middle">Inbound + internal emails</text><text x="376.0" y="36" font-size="13" font-weight="700" fill="#0f172a" text-anchor="middle">4 <tspan font-size="10" font-weight="400">(100%)</tspan></text><text x="376.0" y="61" font-size="10" fill="#64748b" text-anchor="middle">&#8595; 4 emails &#8595;</text><text x="0" y="95.0" font-size="10" font-weight="700" fill="#64748b">MICROSOFT 365</text><rect x="114.0" y="68" width="172.0" height="46" rx="4" fill="#e2e8f0"/><text x="200.0" y="86" font-size="10" fill="#0f172a" text-anchor="middle">Inbox</text><text x="200.0" y="104" font-size="13" font-weight="700" fill="#0f172a" text-anchor="middle">2 <tspan font-size="10" font-weight="400">(50%)</tspan></text><rect x="290.0" y="68" width="172.0" height="46" rx="4" fill="#cbd5e1"/><text x="376.0" y="86" font-size="10" fill="#0f172a" text-anchor="middle">Junk folder</text><text x="376.0" y="104" font-size="13" font-weight="700" fill="#0f172a" text-anchor="middle">1 <tspan font-size="10" font-weight="400">(25%)</tspan></text><rect x="466.0" y="68" width="172.0" height="46" rx="4" fill="#475569"/><text x="552.0" y="86" font-size="10" fill="#ffffff" text-anchor="middle">Quarantined</text><text x="552.0" y="104" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">1 <tspan font-size="10" font-weight="400">(25%)</tspan></text><text x="376.0" y="129" font-size="10" fill="#64748b" text-anchor="middle">&#8595; 3 passed on to Check Point &#8595;</text><text x="0" y="163.0" font-size="10" font-weight="700" fill="#64748b">CHECK POINT</text><rect x="114.0" y="136" width="128.0" height="46" rx="4" fill="#e2e8f0"/><text x="178.0" y="154" font-size="10" fill="#0f172a" text-anchor="middle">Clean</text><text x="178.0" y="172" font-size="13" font-weight="700" fill="#0f172a" text-anchor="middle">1 <tspan font-size="10" font-weight="400">(25%)</tspan></text><rect x="246.0" y="136" width="128.0" height="46" rx="4" fill="#cbd5e1"/><text x="310.0" y="154" font-size="10" fill="#0f172a" text-anchor="middle">Graymail + spam</text><text x="310.0" y="172" font-size="13" font-weight="700" fill="#0f172a" text-anchor="middle">2 <tspan font-size="10" font-weight="400">(50%)</tspan></text><rect x="378.0" y="136" width="128.0" height="46" rx="4" fill="#dc2626"/><text x="442.0" y="154" font-size="10" fill="#ffffff" text-anchor="middle">Phishing + malware</text><text x="442.0" y="172" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">1 <tspan font-size="10" font-weight="400">(25%)</tspan></text><rect x="510.0" y="136" width="128.0" height="46" rx="4" fill="#d97706"/><text x="574.0" y="154" font-size="10" fill="#0f172a" text-anchor="middle">Suspicious</text><text x="574.0" y="172" font-size="13" font-weight="700" fill="#0f172a" text-anchor="middle">0 <tspan font-size="10" font-weight="400">(0.0%)</tspan></text><text x="376.0" y="197" font-size="10" fill="#64748b" text-anchor="middle">&#8595; 1 delivered &#8595;</text><text x="0" y="231.0" font-size="10" font-weight="700" fill="#64748b">END USERS</text><rect x="114.0" y="204" width="524.0" height="46" rx="4" fill="#cbd5e1"/><text x="376.0" y="222" font-size="10" fill="#0f172a" text-anchor="middle">Delivered to users</text><text x="376.0" y="240" font-size="13" font-weight="700" fill="#0f172a" text-anchor="middle">1 <tspan font-size="10" font-weight="400">(25%)</tspan></text></svg>
+<p class="legend-row">Admin actions: 0 restore requests, 1 emails released from quarantine, 0 requests declined.</p>
 
 <h2>Email traffic by direction (this period)</h2>
 <svg viewBox="0 0 640 36" width="100%" style="max-width:640px"><rect x="0.0" y="0" width="640.0" height="36" fill="#0ea5e9"><title>Inbound: 1 (100%)</title></rect></svg><div class="legend-row"><span class="legend-dot" style="background:#0ea5e9"></span>Inbound <b>1</b></div>
@@ -157,43 +209,83 @@ Arrows on current counts compare the daily snapshot at the start of the period w
   </div>
 </div>
 
-<h2>Inbound mail volume by type (this period)</h2>
-<table><tr><th>Type</th><th class="num">Events</th><th class="num">% of total</th></tr><tr><td>phishing</td><td class="num">1</td><td class="num">100%</td></tr></table><p class="legend-row">1 total events this period</p>
 
-<footer>Page 3 of 4 &mdash; secops-dashboard. Figures for Riverside Health only; Check Point Harmony Email &amp; Collaboration
-security events for the report period (events, not emails -- one email can raise several).
+
+<footer>Page 4 of 6 &mdash; secops-dashboard. Figures for Riverside Health only; Check Point Harmony Email &amp; Collaboration.
+Mail flow counts emails (Microsoft's spam verdict: junk = SCL 5-6, quarantined = SCL 7-9; then Check Point's
+verdict); "inbound" includes internal mail, as Check Point's console counts it. "Phishing + malware" is Check
+Point's per-email verdict -- broader than the console's "Malicious" box. Threat tables count security events (one
+email can raise several). Site = recipient domain.
 Arrows on current counts compare the daily snapshot at the start of the period with the one at its end (or the earliest available, if history is shorter); arrows on period counts compare with the previous 7 days.</footer>
 </div>
 <div class="page">
 <header>
   <div><h1>Security Posture Report &mdash; Riverside Health</h1>
-       <div class="period">2026-10-01 to 2026-10-07 &middot; Page 4 of 4 &mdash; Alerts &amp; Identity</div></div>
-  <div class="meta">Generated 2026-10-07 08:36<br>secops-dashboard</div>
+       <div class="period">2026-10-07 to 2026-10-13 &middot; Page 5 of 6 &mdash; Alerts &amp; Identity</div></div>
+  <div class="meta">Generated 2026-10-13 11:56<br>secops-dashboard</div>
 </header>
 
 <h2>Headline</h2>
 <div class="tiles tiles-3">
-  <div class="tile"><div class="tile-value" style="color:#0f172a">1 / 0</div><div class="tile-label">Alerts opened vs closed</div><div class="tile-sub">1 crit/high open now</div><div class="tile-trend" style="color:#94a3b8">No full previous 7 days to compare yet</div></div>
+  <div class="tile"><div class="tile-value" style="color:#0f172a">2 / 0</div><div class="tile-label">Alerts opened vs closed</div><div class="tile-sub">1 crit/high open now</div><div class="tile-trend" style="color:#94a3b8">No full previous 7 days to compare yet</div></div>
   <div class="tile"><div class="tile-value" style="color:#0f172a">n/a / n/a</div><div class="tile-label">True / false positive rate</div><div class="tile-sub">0 alerts closed with a verdict</div></div>
-  <div class="tile"><div class="tile-value" style="color:#ea580c">1</div><div class="tile-label">Open alerts now</div><div class="tile-sub">1 crit/high</div><div class="tile-trend" style="color:#94a3b8">No earlier snapshot to compare yet</div></div>
-  <div class="tile"><div class="tile-value" style="color:#d97706">1</div><div class="tile-label">Stale accounts</div><div class="tile-trend" style="color:#94a3b8">No earlier snapshot to compare yet</div></div>
-  <div class="tile"><div class="tile-value" style="color:#ea580c">1</div><div class="tile-label">Weak / compromised passwords</div><div class="tile-trend" style="color:#94a3b8">No earlier snapshot to compare yet</div></div>
-  <div class="tile"><div class="tile-value" style="color:#ea580c">1</div><div class="tile-label">High-risk identities (current)</div><div class="tile-trend" style="color:#94a3b8">No earlier snapshot to compare yet</div></div>
+  <div class="tile"><div class="tile-value" style="color:#ea580c">2</div><div class="tile-label">Open alerts now</div><div class="tile-sub">1 crit/high</div><div class="tile-trend" style="color:#94a3b8">No earlier snapshot to compare yet</div></div>
+  <div class="tile"><div class="tile-value" style="color:#16a34a">0</div><div class="tile-label">Accounts showing signs of compromise</div><div class="tile-sub">stolen credentials, password attacks, suspicious sign-ins, attacker techniques</div><div class="tile-trend" style="color:#94a3b8">No earlier snapshot to compare yet</div></div>
+  <div class="tile"><div class="tile-value" style="color:#d97706">1</div><div class="tile-label">Stale accounts still enabled</div><div class="tile-sub">50% of 2 enabled accounts</div><div class="tile-trend" style="color:#94a3b8">No earlier snapshot to compare yet</div></div>
+  <div class="tile"><div class="tile-value" style="color:#16a34a">0</div><div class="tile-label">Reused passwords</div><div class="tile-sub">accounts sharing a password with another</div><div class="tile-trend" style="color:#94a3b8">No earlier snapshot to compare yet</div></div>
 </div>
 
 <h2>Alerts &mdash; volume by week</h2>
-<svg viewBox="0 0 640 166" width="100%" style="max-width:640px"><g transform="translate(0,16)"><rect x="70.9" y="126.0" width="122.7" height="0.0" fill="#0ea5e9" rx="1.5"><title>New alerts 2026-10-01: 0</title></rect><rect x="370.9" y="10.0" width="122.7" height="116.0" fill="#0ea5e9" rx="1.5"><title>New alerts 2026-10-05: 1</title></rect><text x="180.0" y="144" font-size="9" fill="#64748b" text-anchor="middle">01 Oct</text><text x="480.0" y="144" font-size="9" fill="#64748b" text-anchor="middle">05 Oct</text></g><rect x="30" y="0" width="10" height="10" fill="#0ea5e9" rx="2"/><text x="44" y="9" font-size="10" fill="#0f172a">New alerts</text></svg>
+<svg viewBox="0 0 640 166" width="100%" style="max-width:640px"><g transform="translate(0,16)"><rect x="70.9" y="126.0" width="122.7" height="0.0" fill="#0ea5e9" rx="1.5"><title>New alerts 2026-10-07: 0</title></rect><rect x="370.9" y="22.0" width="122.7" height="104.0" fill="#0ea5e9" rx="1.5"><title>New alerts 2026-10-12: 2</title></rect><text x="432.3" y="19.0" font-size="8" fill="#0f172a" text-anchor="middle">2</text><text x="180.0" y="144" font-size="9" fill="#64748b" text-anchor="middle">07 Oct</text><text x="480.0" y="144" font-size="9" fill="#64748b" text-anchor="middle">12 Oct</text></g><rect x="30" y="0" width="10" height="10" fill="#0ea5e9" rx="2"/><text x="44" y="9" font-size="10" fill="#0f172a">New alerts</text></svg>
 
 <h2>Alert disposition (closed this period)</h2>
 <p class="empty">No alerts closed this period.</p>
 
-<h2>Identity risk (current)</h2>
-<p class="legend-row"><span class="legend-dot" style="background:#ea580c"></span>High <b>1</b></p>
-<table><tr><th>Risk factor</th><th class="num">Accounts</th></tr>
-<tr><td>STALE_ACCOUNT</td><td class="num">1</td></tr><tr><td>WEAK_PASSWORD</td><td class="num">1</td></tr></table>
+<h2>Signs of compromise or attack -- act now</h2><table><tr><th>Category</th><th class="num">Accounts</th><th class="num">Change</th></tr><tr><td><b>Stolen credentials</b><div class="tile-sub">Reset the password and revoke sessions; check recent sign-ins and the device it was taken from.</div></td><td class="num">0</td><td class="num"><span style="color:#94a3b8">&ndash;</span></td></tr><tr><td><b>Targeted by password attacks</b><div class="tile-sub">Confirm MFA is on and the password is strong; block the source if it&#x27;s ongoing.</div></td><td class="num">0</td><td class="num"><span style="color:#94a3b8">&ndash;</span></td></tr><tr><td><b>Suspicious sign-ins</b><div class="tile-sub">Check with the user; reset and revoke sessions if they don&#x27;t recognise it.</div></td><td class="num">0</td><td class="num"><span style="color:#94a3b8">&ndash;</span></td></tr><tr><td><b>Dormant account suddenly in use</b><div class="tile-sub">Confirm who&#x27;s using it -- a long-unused account waking up is a classic takeover sign.</div></td><td class="num">0</td><td class="num"><span style="color:#94a3b8">&ndash;</span></td></tr><tr><td><b>Attacker techniques detected</b><div class="tile-sub">Treat as a possible incident: escalate to the cyber team.</div></td><td class="num">0</td><td class="num"><span style="color:#94a3b8">&ndash;</span></td></tr></table>
+<h2>Exposure -- fix to reduce risk</h2><table><tr><th>Category</th><th class="num">Accounts</th><th class="num">Change</th></tr><tr><td><b>People without MFA</b><div class="tile-sub">Enrol the user. Service accounts and mailboxes are excluded here -- they&#x27;re a separate review list in the action pack (often accounts that shouldn&#x27;t be cloud-synced at all).</div></td><td class="num">0</td><td class="num"><span style="color:#94a3b8">&ndash;</span></td></tr><tr><td><b>Weak passwords</b><div class="tile-sub">Have the user set a stronger password (passphrase).</div></td><td class="num">1</td><td class="num"><span style="color:#94a3b8">&ndash;</span></td></tr><tr><td><b>Reused passwords</b><div class="tile-sub">Accounts sharing a password with another account -- often legacy setup or technician shortcuts. Reset each to a unique password.</div></td><td class="num">0</td><td class="num"><span style="color:#94a3b8">&ndash;</span></td></tr><tr><td><b>Stale accounts</b><div class="tile-sub">Disable or remove accounts no longer needed (these are still enabled).</div></td><td class="num">1</td><td class="num"><span style="color:#94a3b8">&ndash;</span></td></tr><tr><td><b>Path to admin rights or hidden privileges</b><div class="tile-sub">Remove unneeded group memberships and delegated rights.</div></td><td class="num">0</td><td class="num"><span style="color:#94a3b8">&ndash;</span></td></tr><tr><td><b>Generic accounts still enabled</b><div class="tile-sub">Shared logons nobody is accountable for: replace with named accounts, or disable.</div></td><td class="num">0</td><td class="num"><span style="color:#94a3b8">&ndash;</span></td></tr><tr><td><b>Extra VPN / remote-app accounts in the shared domain</b><div class="tile-sub">Second accounts in the shared domain that exist only for VPN or remote apps (MANAD). Disable the unused ones now; the rest go when VPN moves to Azure authentication.</div></td><td class="num">1</td><td class="num"><span style="color:#94a3b8">&ndash;</span></td></tr></table>
+<p class="legend-row">2 enabled accounts, of which 0 are people's main
+accounts (excluding service, mailbox and generic accounts and shared-domain VPN / remote-app accounts) &mdash;
+n/a of those are stale.</p>
 
-<footer>Page 4 of 4 &mdash; secops-dashboard. Figures for Riverside Health only; alert counts and the bar chart cover the report
-period only and exclude informational-severity alerts; identity risk is current as of generation time.
+<footer>Page 5 of 6 &mdash; secops-dashboard. Figures for Riverside Health only; alert counts and the bar chart cover the report
+period only and exclude informational-severity alerts. Identity risk (Falcon Identity Protection) is current as of
+generation time and counts enabled accounts (or unknown status), grouped into actionable categories; the full
+risk-factor list is on the SecOps dashboards and in the site action packs.
+Arrows on current counts compare the daily snapshot at the start of the period with the one at its end (or the earliest available, if history is shorter); arrows on period counts compare with the previous 7 days.</footer>
+</div>
+<div class="page">
+<header>
+  <div><h1>Security Posture Report &mdash; Riverside Health</h1>
+       <div class="period">2026-10-07 to 2026-10-13 &middot; Page 6 of 6 &mdash; Removable Media (USB)</div></div>
+  <div class="meta">Generated 2026-10-13 11:56<br>secops-dashboard</div>
+</header>
+
+<h2>Headline</h2>
+<div class="tiles tiles-3">
+  <div class="tile"><div class="tile-value" style="color:#0f172a">5</div><div class="tile-label">Files written to USB</div><div class="tile-sub">2.0 GB by 2 people on 1 PCs</div><div class="tile-trend" style="color:#94a3b8">No full previous 7 days to compare yet</div></div>
+  <div class="tile"><div class="tile-value" style="color:#d97706">3</div><div class="tile-label">Business data written</div><div class="tile-sub">2.0 GB by 2 people -- documents, spreadsheets, email, medical images, archives</div><div class="tile-trend" style="color:#94a3b8">No full previous 7 days to compare yet</div></div>
+  <div class="tile"><div class="tile-value" style="color:#ea580c">1</div><div class="tile-label">Email &amp; medical images written</div><div class="tile-sub">1 people -- mailbox exports, messages, DICOM</div></div>
+  <div class="tile"><div class="tile-value" style="color:#0f172a">1</div><div class="tile-label">USB drives used</div><div class="tile-sub">across all PCs</div></div>
+  <div class="tile"><div class="tile-value" style="color:#0f172a">1</div><div class="tile-label">USB insertions scanned</div><div class="tile-sub">0 didn&#x27;t finish (usually the drive was removed)</div><div class="tile-trend" style="color:#94a3b8">No full previous 7 days to compare yet</div></div>
+  <div class="tile"><div class="tile-value" style="color:#dc2626">1</div><div class="tile-label">Malware found on USB drives</div><div class="tile-sub">1 quarantined; found on 1 insertions</div><div class="tile-trend" style="color:#94a3b8">No full previous 7 days to compare yet</div></div>
+</div>
+
+<h2>Files written &mdash; by week</h2>
+<svg viewBox="0 0 640 166" width="100%" style="max-width:640px"><g transform="translate(0,16)"><rect x="86.2" y="22.0" width="168.8" height="104.0" fill="#94a3b8" rx="1.5"><title>All files 2026-10-12: 5</title></rect><text x="170.6" y="19.0" font-size="8" fill="#0f172a" text-anchor="middle">5</text><rect x="273.8" y="63.6" width="168.8" height="62.4" fill="#d97706" rx="1.5"><title>Business data 2026-10-12: 3</title></rect><text x="358.1" y="60.6" font-size="8" fill="#0f172a" text-anchor="middle">3</text><text x="330.0" y="144" font-size="9" fill="#64748b" text-anchor="middle">12 Oct</text></g><rect x="30" y="0" width="10" height="10" fill="#94a3b8" rx="2"/><text x="44" y="9" font-size="10" fill="#0f172a">All files</text><rect x="120" y="0" width="10" height="10" fill="#d97706" rx="2"/><text x="134" y="9" font-size="10" fill="#0f172a">Business data</text></svg>
+
+<h2>What was written</h2>
+<svg viewBox="0 0 640 36" width="100%" style="max-width:640px"><rect x="0.0" y="0" width="128.0" height="36" fill="#2563eb"><title>Documents: 1 (20%)</title></rect><rect x="128.0" y="0" width="128.0" height="36" fill="#0891b2"><title>Spreadsheets &amp; data: 1 (20%)</title></rect><rect x="256.0" y="0" width="128.0" height="36" fill="#7c3aed"><title>Email: 1 (20%)</title></rect><rect x="384.0" y="0" width="256.0" height="36" fill="#f59e0b"><title>Images &amp; media: 2 (40%)</title></rect></svg><div class="legend-row"><span class="legend-dot" style="background:#2563eb"></span>Documents <b>1</b> &nbsp;&nbsp; <span class="legend-dot" style="background:#0891b2"></span>Spreadsheets &amp; data <b>1</b> &nbsp;&nbsp; <span class="legend-dot" style="background:#7c3aed"></span>Email <b>1</b> &nbsp;&nbsp; <span class="legend-dot" style="background:#f59e0b"></span>Images &amp; media <b>2</b></div>
+<table><tr><th>File category</th><th class="num">Files</th><th class="num">Volume</th><th class="num">People</th></tr><tr><td title="PDF, Word, PowerPoint, Visio, RTF, text"><span class="legend-dot" style="background:#2563eb"></span><b>Documents</b> <span style=color:#d97706>&#9679; business data</span></td><td class="num">1</td><td class="num">19.5 KB</td><td class="num">1</td></tr><tr><td title="Excel, CSV, Access and other database files"><span class="legend-dot" style="background:#0891b2"></span><b>Spreadsheets &amp; data</b> <span style=color:#d97706>&#9679; business data</span></td><td class="num">1</td><td class="num">48.8 KB</td><td class="num">1</td></tr><tr><td title="Outlook messages and mailbox exports (.msg, .eml, .pst)"><span class="legend-dot" style="background:#7c3aed"></span><b>Email</b> <span style=color:#d97706>&#9679; business data</span></td><td class="num">1</td><td class="num">2.0 GB</td><td class="num">1</td></tr><tr><td title="photos, screenshots, audio, video"><span class="legend-dot" style="background:#f59e0b"></span><b>Images &amp; media</b></td><td class="num">2</td><td class="num">6.8 KB</td><td class="num">1</td></tr></table>
+
+
+<h2>Most business data written &mdash; top 2 people</h2><table><tr><th>Person</th><th>Department</th><th class="num">PCs</th><th class="num">USB drives</th><th class="num">Files</th><th class="num">Volume</th><th>Mostly</th></tr><tr><td>j*****</td><td>Ward 3</td><td class="num">1</td><td class="num">1</td><td class="num">2</td><td class="num">2.0 GB</td><td>Spreadsheets &amp; data</td></tr><tr><td>b*****</td><td></td><td class="num">1</td><td class="num">1</td><td class="num">1</td><td class="num">19.5 KB</td><td>Documents</td></tr></table>
+
+<footer>Page 6 of 6 &mdash; secops-dashboard. Figures for Riverside Health only. Files written to any removable drive (USB sticks and
+disks, SD cards) seen by the Falcon sensor; Office lock and temp files are left out. Category comes from the file
+extension, or Falcon's file-type detection when there isn't one. Business data = documents, spreadsheets and data
+files, email, medical images and archives (an archive's contents are unknown). Insertions scanned = the on-demand scan
+Falcon starts automatically when a drive is plugged in; malware found = detections from those scans. People are
+masked here (site reports only); names, PCs, drives and file names are in the monthly site action pack.
 Arrows on current counts compare the daily snapshot at the start of the period with the one at its end (or the earliest available, if history is shorter); arrows on period counts compare with the previous 7 days.</footer>
 </div>
 </body></html>
