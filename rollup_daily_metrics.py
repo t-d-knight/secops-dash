@@ -646,9 +646,11 @@ def rollup_identity_metrics(cur, snapshot_date: dt.date) -> None:
     )
     # The stakeholder categories (identity_categories.py): distinct enabled
     # accounts per category ("cat:<key>") and per group ("catgroup:<group>",
-    # so an account in two compromise categories counts once).
+    # so an account in two compromise categories counts once), plus the
+    # enabled-account denominators ("total:<key>").
     cur.execute(ic.counts_sql(by_site=True))
-    keys = [f"cat:{c.key}" for c in ic.CATEGORIES] + [f"catgroup:{g}" for g in ic.GROUPS]
+    keys = ([f"cat:{c.key}" for c in ic.CATEGORIES] + [f"catgroup:{g}" for g in ic.GROUPS]
+            + [f"total:{k}" for k, _ in ic.TOTALS])
     rows = [(snapshot_date, r[0], k, int(v)) for r in cur.fetchall() for k, v in zip(keys, r[1:])]
     if rows:
         from psycopg2.extras import execute_values

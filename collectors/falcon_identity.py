@@ -51,6 +51,13 @@ def run(ctx: RunContext) -> Dict[str, Any]:
         block = (j.get("data") or {}).get("entities") or {}
         for n in block.get("nodes") or []:
             ad = next((a for a in as_list(n.get("accounts")) if a and a.get("samAccountName")), {}) or {}
+            # AD is authoritative for synced accounts; the Entra account fills in
+            # enabled/created for cloud-only ones.
+            cloud = next((a for a in as_list(n.get("accounts"))
+                          if a and a.get("__typename") == "AzureSsoUserAccountDescriptor"), {}) or {}
+            enabled = ad.get("enabled") if ad.get("enabled") is not None else cloud.get("enabled")
+            activity = [t for t in (parse_ts(ad.get("mostRecentActivity")), parse_ts(cloud.get("mostRecentActivity")))
+                        if t]
             upn = n.get("secondaryDisplayName")
             # ou is a path that starts with the AD domain ("corp.example.org/SITE-B/
             # Users"): match site rules against the OU segments only, or a rule
@@ -82,12 +89,13 @@ def run(ctx: RunContext) -> Dict[str, Any]:
                 "domain": ad.get("domain"),
                 "sam_account_name": ad.get("samAccountName"),
                 "ou": ad.get("ou"),
-                "enabled": ad.get("enabled"),
+                "enabled": enabled,
                 "entity_type": n.get("type"),
                 "risk_score": n.get("riskScore"),
                 "risk_severity": (n.get("riskScoreSeverity") or "").lower() or None,
                 "password_last_change": parse_ts((ad.get("passwordAttributes") or {}).get("lastChange")),
-                "account_created": parse_ts(ad.get("creationTime")),
+                "account_created": parse_ts(ad.get("creationTime") or cloud.get("creationTime")),
+                "last_activity": max(activity) if activity else None,
                 "site_label": m.label,
                 "site_tag": m.key,
                 "site_matched_by": m.matched_by,

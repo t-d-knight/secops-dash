@@ -87,6 +87,11 @@ IDENTITY_PAGES = [
          "type": "USER", "riskScore": 0.2, "riskScoreSeverity": "LOW", "riskFactors": [],
          "accounts": [{"domain": "SHARED.LOCAL", "samAccountName": "ann.vpn", "ou": "shared.local/RVH/Users",
                        "enabled": True, "containingGroupEntities": [{"primaryDisplayName": "SSL-VPN-Standard-User"}]}]},
+        # cloud-only (Entra) account, disabled there: no AD descriptor at all
+        {"entityId": "e5", "primaryDisplayName": "Pat Cloud", "secondaryDisplayName": "pat@lakesidehealth.test",
+         "type": "USER", "riskScore": 0.1, "riskScoreSeverity": "LOW", "riskFactors": [],
+         "accounts": [{"__typename": "AzureSsoUserAccountDescriptor", "enabled": False,
+                       "creationTime": iso(400), "mostRecentActivity": iso(120)}]},
     ], "pageInfo": {"hasNextPage": False, "endCursor": None}},
 ]
 

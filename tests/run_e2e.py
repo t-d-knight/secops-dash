@@ -215,8 +215,11 @@ def main() -> int:
     check(al2d == ("closed", "false_positive"),
           f"disposition preserved under collapsed status: {al2d}")
     ids = dict(q(cur, "SELECT entity_id, site_label FROM identity_entities"))
-    check(ids == {"e1": "Riverside Health", "e2": "Lakeside Health", "e3": "Ungrouped", "e4": "Riverside Health"},
-          f"identity sites {ids}")
+    check(ids == {"e1": "Riverside Health", "e2": "Lakeside Health", "e3": "Ungrouped", "e4": "Riverside Health",
+                  "e5": "Lakeside Health"}, f"identity sites {ids}")
+    en = dict(q(cur, "SELECT entity_id, (enabled, last_activity IS NOT NULL) FROM identity_entities "
+                     "WHERE entity_id IN ('e3', 'e5')"))
+    check(en == {"e3": "(,f)", "e5": "(f,t)"}, f"cloud-only account takes enabled/activity from Entra: {en}")
     acc = dict(q(cur, "SELECT entity_id, access_account FROM identity_entities WHERE access_account IS NOT NULL"))
     check(acc == {"e4": "vpn"}, f"shared-domain VPN-only account tagged: {acc}")
     kinds = dict(q(cur, "SELECT entity_id, account_kind FROM identity_entities"))
@@ -274,6 +277,8 @@ def main() -> int:
     check((idm.get("cat:stale_accounts"), idm.get("cat:weak_passwords"), idm.get("cat:access_accounts"),
            idm.get("catgroup:exposure")) == (1, 1, 1, 2),
           "identity categories count distinct enabled accounts (stale + weak on one account = 1 in the group)")
+    check((idm.get("total:enabled_accounts"), idm.get("total:enabled_people")) == (2, 0),
+          f"enabled-account totals: service + VPN account, neither a person's main account: {idm}")
 
     print("== reports")
     out = os.path.join(tmp, "out")

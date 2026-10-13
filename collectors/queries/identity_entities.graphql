@@ -20,18 +20,27 @@ query ($after: Cursor) {
         type
       }
       accounts {
+        __typename
         ... on ActiveDirectoryAccountDescriptor {
           domain
           samAccountName
           ou
           enabled
           creationTime
+          mostRecentActivity
           passwordAttributes {
             lastChange
           }
           containingGroupEntities {
             primaryDisplayName
           }
+        }
+        # Cloud-only (Entra) accounts have no AD descriptor; without this their
+        # enabled status came back blank and they counted as enabled.
+        ... on AzureSsoUserAccountDescriptor {
+          enabled
+          creationTime
+          mostRecentActivity
         }
       }
     }

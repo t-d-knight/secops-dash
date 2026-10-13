@@ -383,6 +383,8 @@ DDL_STATEMENTS = [
     # VPN / remote-app second accounts in the shared domain
     # (identity_categories.classify_access): vpn | rds | vpn+rds | legacy | NULL
     "ALTER TABLE identity_entities ADD COLUMN IF NOT EXISTS access_account TEXT;",
+    # Falcon's mostRecentActivity, latest of the AD and Entra accounts.
+    "ALTER TABLE identity_entities ADD COLUMN IF NOT EXISTS last_activity TIMESTAMPTZ;",
     """
     CREATE TABLE IF NOT EXISTS identity_risk_factors (
         source           TEXT NOT NULL,

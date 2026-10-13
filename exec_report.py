@@ -306,8 +306,10 @@ def fetch_identity(cur, site: Optional[str]) -> dict:
           AND {SITE.replace("site_label", "e.site_label")}
           AND EXISTS (SELECT 1 FROM identity_risk_factors f WHERE f.source = e.source AND f.entity_id = e.entity_id
                       AND f.factor_type = 'STALE_ACCOUNT')""", site=site)[0]
+    ng = len(ic.GROUPS)
     return {"cats": {c.key: int(row[i]) for i, c in enumerate(ic.CATEGORIES)},
             "groups": {g: int(row[n + i]) for i, g in enumerate(ic.GROUPS)},
+            "totals": {k: int(row[n + ng + i]) for i, (k, _) in enumerate(ic.TOTALS)},
             "stale_access": int(stale_access)}
 
 
@@ -692,7 +694,8 @@ def fetch_trends(cur, p: Period, site: Optional[str], hist: Dict[str, Optional[d
                                       "open_total IS NOT NULL"),
         "idcat": {k: snapshot_trend(cur, "daily_identity_metrics", "value", p, site, f"metric = '{m}'")
                   for k, m in [(c.key, f"cat:{c.key}") for c in ic.CATEGORIES]
-                  + [(f"group:{g}", f"catgroup:{g}") for g in ic.GROUPS]},
+                  + [(f"group:{g}", f"catgroup:{g}") for g in ic.GROUPS]
+                  + [(f"total:{k}", f"total:{k}") for k, _ in ic.TOTALS]},
         "prev_word": p.prev_word,
         "vuln_history_start": hist.get("vulns"),
         "prev_opened": pv and pv["opened"], "prev_fixed": pv and pv["fixed"],
@@ -1275,7 +1278,7 @@ def build_page2(p: Period, scope: str, site: Optional[str], a: dict, idn: dict, 
     closed_with_verdict = tp + fp
     alerts_opened = a["new_crit"] + a["new_high"] + a["new_med"] + a["new_low"]
 
-    cats, groups, idt = idn["cats"], idn["groups"], tr["idcat"]
+    cats, groups, idt, tot = idn["cats"], idn["groups"], tr["idcat"], idn["totals"]
 
     def change_cell(t: Optional[dict]) -> str:
         if t is None:
@@ -1309,8 +1312,9 @@ def build_page2(p: Period, scope: str, site: Optional[str], a: dict, idn: dict, 
         trend_line(idt.get("group:compromise")))}
   {tile("Stale accounts still enabled", f"{cats['stale_accounts']:,}",
         SEVERITY_COLOR["medium"] if cats["stale_accounts"] else GOOD,
-        f"incl. {idn['stale_access']:,} unused VPN / remote-app accounts in the shared domain"
-        if idn["stale_access"] else "", trend_line(idt.get("stale_accounts")))}
+        f"{pct(cats['stale_accounts'], tot['enabled_accounts'])} of {tot['enabled_accounts']:,} enabled accounts"
+        + (f"; incl. {idn['stale_access']:,} unused VPN / remote-app accounts in the shared domain"
+           if idn["stale_access"] else ""), trend_line(idt.get("stale_accounts")))}
   {tile("Reused passwords", f"{cats['reused_passwords']:,}",
         SEVERITY_COLOR["high"] if cats["reused_passwords"] else GOOD, "accounts sharing a password with another",
         trend_line(idt.get("reused_passwords")))}
@@ -1324,6 +1328,9 @@ def build_page2(p: Period, scope: str, site: Optional[str], a: dict, idn: dict, 
 
 {cat_table("compromise")}
 {cat_table("exposure")}
+<p class="legend-row">{tot['enabled_accounts']:,} enabled accounts, of which {tot['enabled_people']:,} are people's main
+accounts (excluding service, mailbox and generic accounts and shared-domain VPN / remote-app accounts) &mdash;
+{pct(tot['stale_people'], tot['enabled_people'])} of those are stale.</p>
 
 <footer>Page 5 of 6 &mdash; secops-dashboard. {scope_note}; alert counts and the bar chart cover the report
 period only and exclude informational-severity alerts. Identity risk (Falcon Identity Protection) is current as of

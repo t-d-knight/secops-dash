@@ -162,6 +162,17 @@ def classify_account(rules, ou_path: Optional[str], groups: Iterable[str], name:
 ENABLED_FILTER = "e.enabled IS NOT FALSE"
 
 
+# Denominators for the categories: the same population counts_sql counts
+# from. "people" = human accounts minus the shared-domain access accounts,
+# i.e. one main account per person.
+PEOPLE = "account_kind = 'human' AND access_account IS NULL"
+TOTALS = [
+    ("enabled_accounts", "TRUE"),
+    ("enabled_people", PEOPLE),
+    ("stale_people", f"{PEOPLE} AND 'STALE_ACCOUNT' = ANY(facs)"),
+]
+
+
 def sql_in(values) -> str:
     return "(" + ", ".join("'%s'" % v.replace("'", "''") for v in values) + ")"
 
@@ -183,11 +194,12 @@ def counts_sql(site_condition: str = "TRUE", by_site: bool = False) -> str:
     """One query counting every category and group: distinct enabled (or
     unknown-status) accounts. `site_condition` filters e.site_label;
     by_site adds a leading site_label column. Columns follow CATEGORIES,
-    then GROUPS. Shared by rollup_daily_metrics.py and exec_report.py so
+    then GROUPS, then TOTALS. Shared by rollup_daily_metrics.py and exec_report.py so
     the history and the report count the same way."""
     cols = [f"count(*) FILTER (WHERE {_cond(c)})" for c in CATEGORIES]
     cols += ["count(*) FILTER (WHERE " + " OR ".join(f"({_cond(c)})" for c in CATEGORIES if c.group == g) + ")"
              for g in GROUPS]
+    cols += [f"count(*) FILTER (WHERE {cond})" for _, cond in TOTALS]
     lead = "site_label, " if by_site else ""
     return f"""
         WITH ent AS (
