@@ -88,11 +88,11 @@
         "x": 0,
         "y": 0,
         "w": 24,
-        "h": 4
+        "h": 2
       },
       "options": {
         "mode": "markdown",
-        "content": "### SecOps Overview\nOne row per site across every feed. **Vulns** = Falcon Exposure Management (endpoints) + Hadrian (external), open and seen in the last 30 days. **Alerts** = Falcon detections not yet closed. **Identity** = Falcon Identity Protection high-risk accounts + Entra ID users at risk. **Email** = Check Point HEC threats in the selected range. **DMARC** = share of mail claiming the site's domains that passed DMARC. Drill into the linked dashboards (top right) for detail. If a number looks too good, check **Data freshness** at the bottom first."
+        "content": "Every feed, per site. Drill into the linked dashboards (top right) for detail. If a number looks too good, check **Data freshness** at the bottom first. Hover the **i** on any panel for exactly what it counts."
       }
     },
     {
@@ -102,7 +102,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 4,
+        "y": 2,
         "w": 24,
         "h": 1
       },
@@ -110,6 +110,21 @@
     },
     {
       "id": 4,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**Vulns** = Falcon Exposure Management (endpoints) + Hadrian (external), open and seen in the last 30 days, as at the last nightly run. **Alerts** = Falcon detections not yet closed. **Email** and **DMARC** follow the time picker."
+      }
+    },
+    {
+      "id": 5,
       "type": "stat",
       "title": "Open Crit + High vulns",
       "gridPos": {
@@ -169,7 +184,7 @@
       "description": "As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
     },
     {
-      "id": 5,
+      "id": 6,
       "type": "stat",
       "title": "Open KEV findings",
       "gridPos": {
@@ -229,7 +244,7 @@
       "description": "As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
     },
     {
-      "id": 6,
+      "id": 7,
       "type": "stat",
       "title": "Open Crit/High alerts",
       "gridPos": {
@@ -285,10 +300,11 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM security_alerts WHERE site_label IN ($site) AND status <> 'closed' AND severity IN ('critical','high')"
         }
-      ]
+      ],
+      "description": "Falcon detections of critical or high severity not yet closed."
     },
     {
-      "id": 7,
+      "id": 8,
       "type": "stat",
       "title": "High-risk identities",
       "gridPos": {
@@ -348,7 +364,7 @@
       "description": "Falcon Identity Protection HIGH-risk accounts + Entra ID users at HIGH risk."
     },
     {
-      "id": 8,
+      "id": 9,
       "type": "stat",
       "title": "Email threats (range)",
       "gridPos": {
@@ -396,10 +412,11 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM email_events WHERE site_label IN ($site) AND created_at >= '${__from:date}'::date AND created_at < '${__to:date}'::date + 1 AND event_type IN ('phishing','malware','suspicious_phishing','suspicious_malware')"
         }
-      ]
+      ],
+      "description": "Phishing and malware emails Check Point flagged in the selected range (including suspected), by recipient site."
     },
     {
-      "id": 9,
+      "id": 10,
       "type": "stat",
       "title": "DMARC pass (range)",
       "gridPos": {
@@ -456,10 +473,11 @@
           "editorMode": "code",
           "rawSql": "SELECT round(100.0 * sum(dmarc_pass) / NULLIF(sum(messages),0), 1) FROM dmarc_daily WHERE site_label IN ($site) AND report_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date"
         }
-      ]
+      ],
+      "description": "Share of mail claiming to be from our domains that passed DMARC, from receiving servers' aggregate reports in the selected range."
     },
     {
-      "id": 10,
+      "id": 11,
       "type": "row",
       "title": "Site scorecard",
       "collapsed": false,
@@ -472,12 +490,27 @@
       "panels": []
     },
     {
-      "id": 11,
+      "id": 12,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "One row per site, worst KEV exposure first. Vulnerability columns are as at the last nightly run; email and DMARC follow the time picker; the rest are live."
+      }
+    },
+    {
+      "id": 13,
       "type": "table",
       "title": "Site scorecard",
       "gridPos": {
         "x": 0,
-        "y": 10,
+        "y": 12,
         "w": 24,
         "h": 10
       },
@@ -844,28 +877,44 @@
           "editorMode": "code",
           "rawSql": "WITH v AS ( SELECT site_label, sum(n) FILTER (WHERE severity IN ('critical','high') AND source <> 'hadrian') AS ep_ch, sum(n) FILTER (WHERE severity IN ('critical','high') AND source = 'hadrian') AS ext_ch, sum(n) FILTER (WHERE has_kev) AS kev, sum(n) FILTER (WHERE sla_breach) AS sla FROM dash_vuln_site_summary WHERE seen_30d GROUP BY 1), a AS (SELECT site_label, count(*) FILTER (WHERE status <> 'closed' AND severity IN ('critical','high')) AS al FROM security_alerts GROUP BY 1), i AS (SELECT site_label, count(*) FILTER (WHERE risk_severity = 'high') AS hi FROM identity_entities WHERE NOT retired GROUP BY 1), r AS (SELECT site_label, count(*) AS ru FROM entra_risky_users GROUP BY 1), m AS (SELECT site_label, round(100.0 * count(*) FILTER (WHERE is_mfa_registered) / NULLIF(count(*),0), 1) AS mfa FROM entra_mfa_registration GROUP BY 1), e AS (SELECT site_label, count(*) AS em FROM email_events WHERE created_at >= '${__from:date}'::date AND created_at < '${__to:date}'::date + 1 AND event_type IN ('phishing','malware','suspicious_phishing','suspicious_malware') GROUP BY 1), d AS (SELECT site_label, round(100.0 * sum(dmarc_pass) / NULLIF(sum(messages),0), 1) AS dm FROM dmarc_daily WHERE report_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1), h AS (SELECT site_label, count(*) FILTER (WHERE source = 'falcon' AND last_seen < now() - interval '7 days') AS stale, count(*) FILTER (WHERE source = 'falcon_unmanaged') AS unm FROM assets WHERE NOT retired GROUP BY 1) SELECT s.site_label AS \"Site\", COALESCE(v.ep_ch,0) AS \"Endpoint C+H\", COALESCE(v.ext_ch,0) AS \"External C+H\", COALESCE(v.kev,0) AS \"KEV\", COALESCE(v.sla,0) AS \"SLA breaches\", COALESCE(a.al,0) AS \"Open C+H alerts\", COALESCE(i.hi,0) AS \"High-risk IDs\", COALESCE(r.ru,0) AS \"Entra risky users\", m.mfa AS \"MFA registered %\", COALESCE(e.em,0) AS \"Email threats\", d.dm AS \"DMARC pass %\", COALESCE(h.stale,0) AS \"Stale sensors\", COALESCE(h.unm,0) AS \"Unmanaged\" FROM sites s LEFT JOIN v ON v.site_label = s.site_label LEFT JOIN a ON a.site_label = s.site_label LEFT JOIN i ON i.site_label = s.site_label LEFT JOIN r ON r.site_label = s.site_label LEFT JOIN m ON m.site_label = s.site_label LEFT JOIN e ON e.site_label = s.site_label LEFT JOIN d ON d.site_label = s.site_label LEFT JOIN h ON h.site_label = s.site_label WHERE s.site_label IN ($site) ORDER BY s.site_label = 'Ungrouped', COALESCE(v.kev,0) DESC, COALESCE(v.ep_ch,0) DESC"
         }
-      ]
+      ],
+      "description": "Per site: open critical/high endpoint and external vulns, KEV findings and SLA breaches (seen in 30 days, as at the last nightly run); open critical/high alerts; high-risk accounts; Entra risky users and MFA %; email threats and DMARC pass % in range; stale sensors and unmanaged devices."
     },
     {
-      "id": 12,
+      "id": 14,
       "type": "row",
       "title": "Trends",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 20,
+        "y": 22,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 13,
+      "id": 15,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "From the nightly snapshots. A step change usually means coverage changed (more hosts assessed, a feed added) rather than risk -- check before reading it as a trend."
+      }
+    },
+    {
+      "id": 16,
       "type": "timeseries",
       "title": "Open vulns by source",
       "gridPos": {
         "x": 0,
-        "y": 21,
+        "y": 25,
         "w": 12,
         "h": 8
       },
@@ -912,15 +961,16 @@
           "editorMode": "code",
           "rawSql": "SELECT snapshot_date::timestamp AS time, sum(total) FILTER (WHERE source = 'falcon_spotlight') AS \"Endpoint (Falcon)\", sum(total) FILTER (WHERE source = 'hadrian') AS \"External (Hadrian)\", sum(kev) AS \"KEV\" FROM daily_source_metrics WHERE site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1 ORDER BY 1"
         }
-      ]
+      ],
+      "description": "Open findings per day from the nightly snapshot, split endpoint (Falcon) vs external (Hadrian)."
     },
     {
-      "id": 14,
+      "id": 17,
       "type": "timeseries",
       "title": "New alerts per day by severity",
       "gridPos": {
         "x": 12,
-        "y": 21,
+        "y": 25,
         "w": 12,
         "h": 8
       },
@@ -1091,15 +1141,16 @@
           "editorMode": "code",
           "rawSql": "SELECT snapshot_date::timestamp AS time, sum(new_critical) AS \"Critical\", sum(new_high) AS \"High\", sum(new_medium) AS \"Medium\", sum(new_low) AS \"Low\" FROM daily_alert_metrics WHERE site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1 ORDER BY 1"
         }
-      ]
+      ],
+      "description": "Falcon detections by the day they were raised."
     },
     {
-      "id": 15,
+      "id": 18,
       "type": "timeseries",
       "title": "Identity risk",
       "gridPos": {
         "x": 0,
-        "y": 29,
+        "y": 33,
         "w": 12,
         "h": 8
       },
@@ -1161,15 +1212,16 @@
           "editorMode": "code",
           "rawSql": "SELECT snapshot_date::timestamp AS time, sum(value) FILTER (WHERE metric = 'risk:high') AS \"Falcon high-risk\", sum(value) FILTER (WHERE metric = 'risk:medium') AS \"Falcon medium-risk\", sum(value) FILTER (WHERE metric LIKE 'entra_risky:%') AS \"Entra risky users\" FROM daily_identity_metrics WHERE site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1 ORDER BY 1"
         }
-      ]
+      ],
+      "description": "High-risk accounts per day: Falcon Identity Protection and Entra ID Protection."
     },
     {
-      "id": 16,
+      "id": 19,
       "type": "timeseries",
       "title": "Email threats per day",
       "gridPos": {
         "x": 12,
-        "y": 29,
+        "y": 33,
         "w": 12,
         "h": 8
       },
@@ -1204,28 +1256,44 @@
           "editorMode": "code",
           "rawSql": "SELECT snapshot_date::timestamp AS time, sum(events) FILTER (WHERE event_type LIKE '%phishing%') AS \"Phishing\", sum(events) FILTER (WHERE event_type LIKE '%malware%') AS \"Malware\", sum(events) FILTER (WHERE event_type NOT LIKE '%phishing%' AND event_type NOT LIKE '%malware%') AS \"Other\" FROM daily_email_metrics WHERE site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1 ORDER BY 1"
         }
-      ]
+      ],
+      "description": "Check Point email security events per day, by type."
     },
     {
-      "id": 17,
+      "id": 20,
       "type": "row",
       "title": "Data freshness & site mapping",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 37,
+        "y": 41,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 18,
+      "id": 21,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 42,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "If a feed's last success is old, every panel built on it is stale. Anything that landed in **Ungrouped** needs a site rule in config.yaml."
+      }
+    },
+    {
+      "id": 22,
       "type": "table",
       "title": "Data freshness (latest run per feed)",
       "gridPos": {
         "x": 0,
-        "y": 38,
+        "y": 44,
         "w": 12,
         "h": 9
       },
@@ -1336,12 +1404,12 @@
       "description": "A feed that hasn't succeeded in 26h+ is stale -- its numbers on every dashboard are old."
     },
     {
-      "id": 19,
+      "id": 23,
       "type": "table",
       "title": "Site mapping gaps (what landed in Ungrouped)",
       "gridPos": {
         "x": 12,
-        "y": 38,
+        "y": 44,
         "w": 12,
         "h": 9
       },
@@ -1392,12 +1460,12 @@
       "description": "Rows here need a matcher in config.yaml sites:. The next table shows examples to map."
     },
     {
-      "id": 20,
+      "id": 24,
       "type": "table",
       "title": "Unmapped examples (add these to config.yaml)",
       "gridPos": {
         "x": 0,
-        "y": 47,
+        "y": 53,
         "w": 24,
         "h": 9
       },
@@ -1423,7 +1491,8 @@
           "editorMode": "code",
           "rawSql": "SELECT * FROM ( (SELECT 'host' AS \"Kind\", hostname AS \"Name\", concat_ws(' | ', 'domain=' || domain, 'ad_site=' || ad_site, 'groups=' || array_to_string(groups, ','), 'tags=' || array_to_string(tags, ',')) AS \"Signals available\" FROM assets WHERE source = 'falcon' AND NOT retired AND site_matched_by = 'none' LIMIT 25) UNION ALL (SELECT 'identity', coalesce(upn, sam_account_name, display_name), concat_ws(' | ', 'domain=' || domain, 'ou=' || ou) FROM identity_entities WHERE NOT retired AND site_matched_by = 'none' LIMIT 25) UNION ALL (SELECT 'dmarc domain', header_from, 'email_domains' FROM dmarc_daily WHERE site_matched_by = 'none' GROUP BY header_from LIMIT 25) UNION ALL (SELECT 'external asset', name, 'ips=' || array_to_string(ips, ',') FROM external_assets WHERE NOT retired AND site_matched_by = 'none' LIMIT 25) ) x"
         }
-      ]
+      ],
+      "description": "Hosts and accounts no site rule matched, with the attributes a rule could use (domain, OU, groups, email domain)."
     }
   ]
 }

@@ -82,24 +82,54 @@
   "panels": [
     {
       "id": 2,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Falcon sensor coverage and detections, identity risk (Falcon Identity Protection) and Entra ID. Hover the **i** on any panel for exactly what it counts."
+      }
+    },
+    {
+      "id": 3,
       "type": "row",
       "title": "Endpoint coverage (Falcon)",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 0,
+        "y": 2,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 3,
+      "id": 4,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "A **stale** sensor hasn't checked in for 7+ days: the host is unprotected and unassessed, or decommissioned but not removed from Falcon."
+      }
+    },
+    {
+      "id": 5,
       "type": "stat",
       "title": "Managed hosts",
       "gridPos": {
         "x": 0,
-        "y": 1,
+        "y": 5,
         "w": 4,
         "h": 4
       },
@@ -142,15 +172,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM assets WHERE source = 'falcon' AND NOT retired AND site_label IN ($site)"
         }
-      ]
+      ],
+      "description": "Devices with a Falcon sensor (not retired), whatever their last check-in."
     },
     {
-      "id": 4,
+      "id": 6,
       "type": "stat",
       "title": "Stale sensors (7d+)",
       "gridPos": {
         "x": 4,
-        "y": 1,
+        "y": 5,
         "w": 4,
         "h": 4
       },
@@ -201,15 +232,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM assets WHERE source = 'falcon' AND NOT retired AND site_label IN ($site) AND last_seen < now() - interval '7 days'"
         }
-      ]
+      ],
+      "description": "Managed hosts whose sensor hasn't checked in for 7+ days."
     },
     {
-      "id": 5,
+      "id": 7,
       "type": "stat",
       "title": "Reduced functionality mode",
       "gridPos": {
         "x": 8,
-        "y": 1,
+        "y": 5,
         "w": 4,
         "h": 4
       },
@@ -264,12 +296,12 @@
       "description": "Sensors in RFM -- usually an unsupported kernel/OS build. Protection is degraded."
     },
     {
-      "id": 6,
+      "id": 8,
       "type": "stat",
       "title": "Unmanaged assets seen",
       "gridPos": {
         "x": 12,
-        "y": 1,
+        "y": 5,
         "w": 4,
         "h": 4
       },
@@ -324,12 +356,12 @@
       "description": "Devices Falcon sensors saw on the network that have no sensor themselves."
     },
     {
-      "id": 7,
+      "id": 9,
       "type": "stat",
       "title": "Sensor coverage",
       "gridPos": {
         "x": 16,
-        "y": 1,
+        "y": 5,
         "w": 4,
         "h": 4
       },
@@ -385,12 +417,12 @@
       "description": "Managed / (managed + unmanaged-but-seen). Only as complete as Discover's visibility."
     },
     {
-      "id": 8,
+      "id": 10,
       "type": "stat",
       "title": "Contained hosts",
       "gridPos": {
         "x": 20,
-        "y": 1,
+        "y": 5,
         "w": 4,
         "h": 4
       },
@@ -441,15 +473,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM assets WHERE source = 'falcon' AND NOT retired AND site_label IN ($site) AND containment ILIKE 'contain%'"
         }
-      ]
+      ],
+      "description": "Hosts currently network-contained from the Falcon console."
     },
     {
-      "id": 9,
+      "id": 11,
       "type": "timeseries",
       "title": "Coverage trend",
       "gridPos": {
         "x": 0,
-        "y": 5,
+        "y": 9,
         "w": 12,
         "h": 8
       },
@@ -526,15 +559,16 @@
           "editorMode": "code",
           "rawSql": "SELECT snapshot_date::timestamp AS time, sum(managed_hosts) AS \"Managed\", sum(unmanaged_assets) AS \"Unmanaged\", sum(stale_sensors) AS \"Stale sensors\" FROM daily_asset_metrics WHERE site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1 ORDER BY 1"
         }
-      ]
+      ],
+      "description": "Managed, unmanaged and stale-sensor counts per day from the nightly snapshot."
     },
     {
-      "id": 10,
+      "id": 12,
       "type": "table",
       "title": "Stale / degraded sensors",
       "gridPos": {
         "x": 12,
-        "y": 5,
+        "y": 9,
         "w": 12,
         "h": 8
       },
@@ -581,15 +615,16 @@
           "editorMode": "code",
           "rawSql": "SELECT hostname AS \"Host\", site_label AS \"Site\", product_type AS \"Type\", os_version AS \"OS\", sensor_version AS \"Sensor\", rfm AS \"RFM\", last_seen AS \"Last seen\", round(EXTRACT(EPOCH FROM now() - last_seen) / 86400.0, 1) AS \"Days silent\" FROM assets WHERE source = 'falcon' AND NOT retired AND site_label IN ($site) AND (last_seen < now() - interval '7 days' OR lower(rfm) = 'yes') ORDER BY last_seen LIMIT 200"
         }
-      ]
+      ],
+      "description": "Hosts silent 7+ days or in reduced-functionality mode, longest-silent first."
     },
     {
-      "id": 11,
+      "id": 13,
       "type": "table",
       "title": "Unmanaged assets",
       "gridPos": {
         "x": 0,
-        "y": 13,
+        "y": 17,
         "w": 24,
         "h": 8
       },
@@ -615,28 +650,44 @@
           "editorMode": "code",
           "rawSql": "SELECT coalesce(hostname, array_to_string(ips, ', ')) AS \"Asset\", site_label AS \"Site\", platform AS \"Platform\", os_version AS \"OS\", last_seen AS \"Last seen\", site_matched_by AS \"Site matched by\" FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND site_label IN ($site) ORDER BY last_seen DESC LIMIT 200"
         }
-      ]
+      ],
+      "description": "Devices Falcon saw on the network or in AD that have no sensor, most recently seen first."
     },
     {
-      "id": 12,
+      "id": 14,
       "type": "row",
       "title": "Detections (Falcon alerts)",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 21,
+        "y": 25,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 13,
+      "id": 15,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Falcon endpoint and identity detections. Informational-severity alerts are counted here but excluded from the exec reports."
+      }
+    },
+    {
+      "id": 16,
       "type": "stat",
       "title": "Open alerts",
       "gridPos": {
         "x": 0,
-        "y": 22,
+        "y": 28,
         "w": 4,
         "h": 4
       },
@@ -687,15 +738,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM security_alerts WHERE status <> 'closed' AND site_label IN ($site)"
         }
-      ]
+      ],
+      "description": "Falcon detections not yet closed (any severity, including informational)."
     },
     {
-      "id": 14,
+      "id": 17,
       "type": "stat",
       "title": "Open Critical",
       "gridPos": {
         "x": 4,
-        "y": 22,
+        "y": 28,
         "w": 4,
         "h": 4
       },
@@ -746,15 +798,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM security_alerts WHERE status <> 'closed' AND severity = 'critical' AND site_label IN ($site)"
         }
-      ]
+      ],
+      "description": "Critical-severity Falcon detections not yet closed."
     },
     {
-      "id": 15,
+      "id": 18,
       "type": "stat",
       "title": "New in range",
       "gridPos": {
         "x": 8,
-        "y": 22,
+        "y": 28,
         "w": 4,
         "h": 4
       },
@@ -797,15 +850,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM security_alerts WHERE site_label IN ($site) AND created_at >= '${__from:date}'::date AND created_at < '${__to:date}'::date + 1"
         }
-      ]
+      ],
+      "description": "Falcon detections raised in the selected range."
     },
     {
-      "id": 16,
+      "id": 19,
       "type": "stat",
       "title": "Median time to close (range)",
       "gridPos": {
         "x": 12,
-        "y": 22,
+        "y": 28,
         "w": 4,
         "h": 4
       },
@@ -856,15 +910,16 @@
           "editorMode": "code",
           "rawSql": "SELECT round((percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM closed_at - created_at) / 3600.0))::numeric, 1) FROM security_alerts WHERE closed_at IS NOT NULL AND site_label IN ($site) AND closed_at >= '${__from:date}'::date AND closed_at < '${__to:date}'::date + 1"
         }
-      ]
+      ],
+      "description": "Median hours from raised to closed, for detections closed in the range."
     },
     {
-      "id": 17,
+      "id": 20,
       "type": "stat",
       "title": "Unassigned > 24h",
       "gridPos": {
         "x": 16,
-        "y": 22,
+        "y": 28,
         "w": 8,
         "h": 4
       },
@@ -915,15 +970,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM security_alerts WHERE status = 'new' AND created_at < now() - interval '24 hours' AND site_label IN ($site)"
         }
-      ]
+      ],
+      "description": "Detections still 'new' (not picked up) a day after being raised."
     },
     {
-      "id": 18,
+      "id": 21,
       "type": "timeseries",
       "title": "New alerts per day",
       "gridPos": {
         "x": 0,
-        "y": 26,
+        "y": 32,
         "w": 16,
         "h": 8
       },
@@ -1094,15 +1150,16 @@
           "editorMode": "code",
           "rawSql": "SELECT date_trunc('day', created_at) AS time, count(*) FILTER (WHERE severity = 'critical') AS \"Critical\", count(*) FILTER (WHERE severity = 'high') AS \"High\", count(*) FILTER (WHERE severity = 'medium') AS \"Medium\", count(*) FILTER (WHERE severity = 'low') AS \"Low\" FROM security_alerts WHERE site_label IN ($site) AND created_at >= '${__from:date}'::date AND created_at < '${__to:date}'::date + 1 GROUP BY 1 ORDER BY 1"
         }
-      ]
+      ],
+      "description": "Falcon detections per day, stacked by severity."
     },
     {
-      "id": 19,
+      "id": 22,
       "type": "table",
       "title": "Top tactics (range)",
       "gridPos": {
         "x": 16,
-        "y": 26,
+        "y": 32,
         "w": 8,
         "h": 8
       },
@@ -1128,15 +1185,16 @@
           "editorMode": "code",
           "rawSql": "SELECT coalesce(tactic, '(none)') AS \"Tactic\", count(*) AS \"Alerts\", count(*) FILTER (WHERE severity IN ('critical','high')) AS \"Crit/High\" FROM security_alerts WHERE site_label IN ($site) AND created_at >= '${__from:date}'::date AND created_at < '${__to:date}'::date + 1 GROUP BY 1 ORDER BY 2 DESC LIMIT 12"
         }
-      ]
+      ],
+      "description": "MITRE ATT&CK tactic of the detections raised in the range."
     },
     {
-      "id": 20,
+      "id": 23,
       "type": "table",
       "title": "Open alerts",
       "gridPos": {
         "x": 0,
-        "y": 34,
+        "y": 40,
         "w": 24,
         "h": 9
       },
@@ -1241,28 +1299,44 @@
           "editorMode": "code",
           "rawSql": "SELECT created_at AS \"Created\", severity AS \"Severity\", status AS \"Status\", name AS \"Alert\", coalesce(hostname, user_name) AS \"Host / user\", site_label AS \"Site\", tactic AS \"Tactic\", product AS \"Product\", link AS \"Link\" FROM security_alerts WHERE status <> 'closed' AND site_label IN ($site) ORDER BY CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END, created_at LIMIT 200"
         }
-      ]
+      ],
+      "description": "Falcon detections not yet closed (any severity, including informational)."
     },
     {
-      "id": 21,
+      "id": 24,
       "type": "row",
       "title": "Identity risk (Falcon Identity Protection)",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 43,
+        "y": 49,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 22,
+      "id": 25,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 50,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Current state from the latest Identity Protection pull; trends from the nightly snapshot. **Enabled** includes accounts whose status is unknown."
+      }
+    },
+    {
+      "id": 26,
       "type": "stat",
       "title": "High-risk accounts",
       "gridPos": {
         "x": 0,
-        "y": 44,
+        "y": 52,
         "w": 4,
         "h": 4
       },
@@ -1313,15 +1387,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM identity_entities WHERE NOT retired AND risk_severity = 'high' AND site_label IN ($site)"
         }
-      ]
+      ],
+      "description": "Accounts Falcon Identity Protection currently rates high risk."
     },
     {
-      "id": 23,
+      "id": 27,
       "type": "stat",
       "title": "Medium-risk accounts",
       "gridPos": {
         "x": 4,
-        "y": 44,
+        "y": 52,
         "w": 4,
         "h": 4
       },
@@ -1364,15 +1439,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM identity_entities WHERE NOT retired AND risk_severity = 'medium' AND site_label IN ($site)"
         }
-      ]
+      ],
+      "description": "Accounts Falcon Identity Protection currently rates medium risk."
     },
     {
-      "id": 24,
+      "id": 28,
       "type": "stat",
       "title": "Enabled, password > 1 year",
       "gridPos": {
         "x": 8,
-        "y": 44,
+        "y": 52,
         "w": 4,
         "h": 4
       },
@@ -1423,15 +1499,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM identity_entities WHERE NOT retired AND enabled AND password_last_change < now() - interval '365 days' AND site_label IN ($site)"
         }
-      ]
+      ],
+      "description": "Enabled accounts whose password was last changed over a year ago."
     },
     {
-      "id": 25,
+      "id": 29,
       "type": "stat",
       "title": "Enabled accounts",
       "gridPos": {
         "x": 12,
-        "y": 44,
+        "y": 52,
         "w": 4,
         "h": 4
       },
@@ -1478,12 +1555,12 @@
       "description": "Enabled (or unknown-status) accounts, all kinds: people, service, mailbox, generic, VPN / remote-app. The denominator for the stale percentages."
     },
     {
-      "id": 26,
+      "id": 30,
       "type": "stat",
       "title": "Stale: all enabled accounts",
       "gridPos": {
         "x": 16,
-        "y": 44,
+        "y": 52,
         "w": 4,
         "h": 4
       },
@@ -1539,12 +1616,12 @@
       "description": "Enabled accounts Falcon Identity flags STALE_ACCOUNT (no recent activity). Disable or confirm still needed."
     },
     {
-      "id": 27,
+      "id": 31,
       "type": "stat",
       "title": "Stale: people's main accounts",
       "gridPos": {
         "x": 20,
-        "y": 44,
+        "y": 52,
         "w": 4,
         "h": 4
       },
@@ -1600,12 +1677,12 @@
       "description": "As left, for human accounts only, excluding service / mailbox / generic accounts and shared-domain VPN / remote-app second accounts: roughly, staff who've left or moved on."
     },
     {
-      "id": 28,
+      "id": 32,
       "type": "bargauge",
       "title": "Accounts by risk factor",
       "gridPos": {
         "x": 0,
-        "y": 48,
+        "y": 56,
         "w": 12,
         "h": 8
       },
@@ -1649,15 +1726,16 @@
           "editorMode": "code",
           "rawSql": "SELECT f.factor_type AS \"Factor\", count(DISTINCT f.entity_id) AS \"Accounts\" FROM identity_risk_factors f JOIN identity_entities e ON e.source = f.source AND e.entity_id = f.entity_id WHERE NOT e.retired AND e.site_label IN ($site) GROUP BY 1 ORDER BY 2 DESC LIMIT 15"
         }
-      ]
+      ],
+      "description": "Accounts carrying each Falcon Identity risk factor right now (one account can have several)."
     },
     {
-      "id": 29,
+      "id": 33,
       "type": "timeseries",
       "title": "Risk factor trend",
       "gridPos": {
         "x": 12,
-        "y": 48,
+        "y": 56,
         "w": 12,
         "h": 8
       },
@@ -1688,15 +1766,16 @@
           "editorMode": "code",
           "rawSql": "SELECT snapshot_date::timestamp AS time, replace(metric, 'factor:', '') AS metric, sum(value) AS value FROM daily_identity_metrics WHERE metric LIKE 'factor:%' AND site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1, 2 ORDER BY 1"
         }
-      ]
+      ],
+      "description": "Accounts per risk factor per day, from the nightly snapshot."
     },
     {
-      "id": 30,
+      "id": 34,
       "type": "timeseries",
       "title": "Stale accounts, % of enabled",
       "gridPos": {
         "x": 0,
-        "y": 56,
+        "y": 64,
         "w": 24,
         "h": 7
       },
@@ -1762,12 +1841,12 @@
       "description": "From the nightly identity snapshot (history from 14 Oct 2026, when the enabled-account totals started being recorded)."
     },
     {
-      "id": 31,
+      "id": 35,
       "type": "table",
       "title": "Identity remediation list",
       "gridPos": {
         "x": 0,
-        "y": 63,
+        "y": 71,
         "w": 24,
         "h": 10
       },
@@ -1878,25 +1957,40 @@
       "description": "Work list for the service desk (users) and cyber/systems (privileged/service accounts)."
     },
     {
-      "id": 32,
+      "id": 36,
       "type": "row",
       "title": "Entra ID",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 73,
+        "y": 81,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 33,
+      "id": 37,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 82,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Entra ID Protection risk and MFA registration (needs the Entra app registration; empty until the **entra** collector is enabled)."
+      }
+    },
+    {
+      "id": 38,
       "type": "stat",
       "title": "Users at risk",
       "gridPos": {
         "x": 0,
-        "y": 74,
+        "y": 84,
         "w": 4,
         "h": 4
       },
@@ -1947,15 +2041,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM entra_risky_users WHERE site_label IN ($site)"
         }
-      ]
+      ],
+      "description": "Users Entra ID Protection currently flags at risk."
     },
     {
-      "id": 34,
+      "id": 39,
       "type": "stat",
       "title": "Confirmed compromised",
       "gridPos": {
         "x": 4,
-        "y": 74,
+        "y": 84,
         "w": 4,
         "h": 4
       },
@@ -2006,15 +2101,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM entra_risky_users WHERE risk_state = 'confirmedCompromised' AND site_label IN ($site)"
         }
-      ]
+      ],
+      "description": "Users an admin marked confirmed compromised in Entra ID Protection."
     },
     {
-      "id": 35,
+      "id": 40,
       "type": "stat",
       "title": "Risk detections (range)",
       "gridPos": {
         "x": 8,
-        "y": 74,
+        "y": 84,
         "w": 4,
         "h": 4
       },
@@ -2057,15 +2153,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM entra_risk_detections WHERE site_label IN ($site) AND detected_at >= '${__from:date}'::date AND detected_at < '${__to:date}'::date + 1"
         }
-      ]
+      ],
+      "description": "Entra ID Protection risk detections (unfamiliar sign-in, leaked credentials, ...) in the range."
     },
     {
-      "id": 36,
+      "id": 41,
       "type": "stat",
       "title": "MFA registered",
       "gridPos": {
         "x": 12,
-        "y": 74,
+        "y": 84,
         "w": 4,
         "h": 4
       },
@@ -2117,15 +2214,16 @@
           "editorMode": "code",
           "rawSql": "SELECT round(100.0 * count(*) FILTER (WHERE is_mfa_registered) / NULLIF(count(*),0), 1) FROM entra_mfa_registration WHERE site_label IN ($site)"
         }
-      ]
+      ],
+      "description": "Share of member users with an MFA method registered (guests excluded)."
     },
     {
-      "id": 37,
+      "id": 42,
       "type": "stat",
       "title": "Admins without MFA",
       "gridPos": {
         "x": 16,
-        "y": 74,
+        "y": 84,
         "w": 8,
         "h": 4
       },
@@ -2172,15 +2270,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM entra_mfa_registration WHERE is_admin AND NOT is_mfa_registered AND site_label IN ($site)"
         }
-      ]
+      ],
+      "description": "Users holding an admin role with no MFA method registered. Should be zero."
     },
     {
-      "id": 38,
+      "id": 43,
       "type": "bargauge",
       "title": "MFA registration by site",
       "gridPos": {
         "x": 0,
-        "y": 78,
+        "y": 88,
         "w": 8,
         "h": 8
       },
@@ -2234,15 +2333,16 @@
           "editorMode": "code",
           "rawSql": "SELECT site_label AS \"Site\", round(100.0 * count(*) FILTER (WHERE is_mfa_registered) / NULLIF(count(*),0), 1) AS \"MFA %\" FROM entra_mfa_registration WHERE site_label IN ($site) GROUP BY 1 ORDER BY 2"
         }
-      ]
+      ],
+      "description": "Share of member users with MFA registered, per site."
     },
     {
-      "id": 39,
+      "id": 44,
       "type": "table",
       "title": "Risky users",
       "gridPos": {
         "x": 8,
-        "y": 78,
+        "y": 88,
         "w": 16,
         "h": 8
       },
@@ -2329,15 +2429,16 @@
           "editorMode": "code",
           "rawSql": "SELECT upn AS \"User\", site_label AS \"Site\", risk_level AS \"Risk\", risk_state AS \"State\", risk_detail AS \"Detail\", risk_last_updated AS \"Updated\", tenant AS \"Tenant\" FROM entra_risky_users WHERE site_label IN ($site) ORDER BY CASE risk_level WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, risk_last_updated DESC"
         }
-      ]
+      ],
+      "description": "Entra ID Protection's current risky-user list."
     },
     {
-      "id": 40,
+      "id": 45,
       "type": "table",
       "title": "Recent risk detections",
       "gridPos": {
         "x": 0,
-        "y": 86,
+        "y": 96,
         "w": 24,
         "h": 8
       },
@@ -2424,27 +2525,28 @@
           "editorMode": "code",
           "rawSql": "SELECT detected_at AS \"Detected\", upn AS \"User\", site_label AS \"Site\", risk_event_type AS \"Type\", risk_level AS \"Risk\", risk_state AS \"State\", ip_address AS \"IP\", concat_ws(', ', city, country) AS \"Location\" FROM entra_risk_detections WHERE site_label IN ($site) AND detected_at >= '${__from:date}'::date AND detected_at < '${__to:date}'::date + 1 ORDER BY detected_at DESC LIMIT 200"
         }
-      ]
+      ],
+      "description": "Entra ID Protection risk detections in the range, newest first."
     },
     {
-      "id": 41,
+      "id": 46,
       "type": "row",
       "title": "Sign-in activity (Log Analytics)",
       "collapsed": true,
       "gridPos": {
         "x": 0,
-        "y": 94,
+        "y": 104,
         "w": 24,
         "h": 1
       },
       "panels": [
         {
-          "id": 42,
+          "id": 47,
           "type": "timeseries",
           "title": "Sign-ins: success vs failure",
           "gridPos": {
             "x": 0,
-            "y": 95,
+            "y": 105,
             "w": 12,
             "h": 8
           },
@@ -2536,15 +2638,16 @@
               "editorMode": "code",
               "rawSql": "SELECT snapshot_date::timestamp AS time, dimension AS metric, sum(value) AS value FROM azure_log_metrics WHERE query_name = 'signins' AND site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1, 2 ORDER BY 1"
             }
-          ]
+          ],
+          "description": "Entra sign-ins per day from Log Analytics."
         },
         {
-          "id": 43,
+          "id": 48,
           "type": "timeseries",
           "title": "MFA denied",
           "gridPos": {
             "x": 12,
-            "y": 95,
+            "y": 105,
             "w": 12,
             "h": 8
           },
@@ -2636,15 +2739,16 @@
               "editorMode": "code",
               "rawSql": "SELECT snapshot_date::timestamp AS time, dimension AS metric, sum(value) AS value FROM azure_log_metrics WHERE query_name = 'mfa_failures' AND site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1, 2 ORDER BY 1"
             }
-          ]
+          ],
+          "description": "Sign-ins where the user denied or failed the MFA prompt, per day."
         },
         {
-          "id": 44,
+          "id": 49,
           "type": "timeseries",
           "title": "Legacy authentication by client",
           "gridPos": {
             "x": 0,
-            "y": 103,
+            "y": 113,
             "w": 12,
             "h": 8
           },
@@ -2736,15 +2840,16 @@
               "editorMode": "code",
               "rawSql": "SELECT snapshot_date::timestamp AS time, dimension AS metric, sum(value) AS value FROM azure_log_metrics WHERE query_name = 'legacy_auth' AND site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1, 2 ORDER BY 1"
             }
-          ]
+          ],
+          "description": "Sign-ins using legacy protocols (IMAP, POP, SMTP auth, ...) that can't do MFA, per day."
         },
         {
-          "id": 45,
+          "id": 50,
           "type": "timeseries",
           "title": "Risky sign-ins",
           "gridPos": {
             "x": 12,
-            "y": 103,
+            "y": 113,
             "w": 12,
             "h": 8
           },
@@ -2836,15 +2941,16 @@
               "editorMode": "code",
               "rawSql": "SELECT snapshot_date::timestamp AS time, dimension AS metric, sum(value) AS value FROM azure_log_metrics WHERE query_name = 'risky_signins' AND site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1, 2 ORDER BY 1"
             }
-          ]
+          ],
+          "description": "Sign-ins Entra rated risky, per day by risk level."
         },
         {
-          "id": 46,
+          "id": 51,
           "type": "timeseries",
           "title": "Conditional Access blocks",
           "gridPos": {
             "x": 0,
-            "y": 111,
+            "y": 121,
             "w": 12,
             "h": 8
           },
@@ -2936,7 +3042,8 @@
               "editorMode": "code",
               "rawSql": "SELECT snapshot_date::timestamp AS time, dimension AS metric, sum(value) AS value FROM azure_log_metrics WHERE query_name = 'ca_failures' AND site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1, 2 ORDER BY 1"
             }
-          ]
+          ],
+          "description": "Sign-ins blocked by a Conditional Access policy, per day."
         }
       ]
     }

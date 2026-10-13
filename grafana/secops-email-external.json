@@ -82,24 +82,54 @@
   "panels": [
     {
       "id": 2,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Check Point HEC email threats, DMARC alignment and the Hadrian external attack surface. Hover the **i** on any panel for exactly what it counts."
+      }
+    },
+    {
+      "id": 3,
       "type": "row",
       "title": "Email threats (Check Point HEC)",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 0,
+        "y": 2,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 3,
+      "id": 4,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Security events Check Point raised on mail in the selected range: one email can raise more than one. Site = the recipient's domain."
+      }
+    },
+    {
+      "id": 5,
       "type": "stat",
       "title": "Phishing (range)",
       "gridPos": {
         "x": 0,
-        "y": 1,
+        "y": 5,
         "w": 4,
         "h": 4
       },
@@ -142,15 +172,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM email_events WHERE site_label IN ($site) AND event_type LIKE '%phishing%' AND created_at >= '${__from:date}'::date AND created_at < '${__to:date}'::date + 1"
         }
-      ]
+      ],
+      "description": "Check Point phishing events (including suspected) in the range."
     },
     {
-      "id": 4,
+      "id": 6,
       "type": "stat",
       "title": "Malware (range)",
       "gridPos": {
         "x": 4,
-        "y": 1,
+        "y": 5,
         "w": 4,
         "h": 4
       },
@@ -193,15 +224,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM email_events WHERE site_label IN ($site) AND event_type LIKE '%malware%' AND created_at >= '${__from:date}'::date AND created_at < '${__to:date}'::date + 1"
         }
-      ]
+      ],
+      "description": "Check Point malware events (including suspected) in the range."
     },
     {
-      "id": 5,
+      "id": 7,
       "type": "stat",
       "title": "Suspicious (range)",
       "gridPos": {
         "x": 8,
-        "y": 1,
+        "y": 5,
         "w": 4,
         "h": 4
       },
@@ -244,15 +276,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM email_events WHERE site_label IN ($site) AND event_type LIKE '%suspicious%' AND created_at >= '${__from:date}'::date AND created_at < '${__to:date}'::date + 1"
         }
-      ]
+      ],
+      "description": "Events Check Point marked suspicious rather than confirmed, in the range."
     },
     {
-      "id": 6,
+      "id": 8,
       "type": "stat",
       "title": "DLP (range)",
       "gridPos": {
         "x": 12,
-        "y": 1,
+        "y": 5,
         "w": 4,
         "h": 4
       },
@@ -295,15 +328,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM email_events WHERE site_label IN ($site) AND event_type LIKE '%dlp%' AND created_at >= '${__from:date}'::date AND created_at < '${__to:date}'::date + 1"
         }
-      ]
+      ],
+      "description": "Outbound data-loss-prevention matches in the range."
     },
     {
-      "id": 7,
+      "id": 9,
       "type": "stat",
       "title": "Anomaly (range)",
       "gridPos": {
         "x": 16,
-        "y": 1,
+        "y": 5,
         "w": 4,
         "h": 4
       },
@@ -346,15 +380,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM email_events WHERE site_label IN ($site) AND event_type LIKE '%anomaly%' AND created_at >= '${__from:date}'::date AND created_at < '${__to:date}'::date + 1"
         }
-      ]
+      ],
+      "description": "Check Point anomaly events (unusual sending behaviour) in the range."
     },
     {
-      "id": 8,
+      "id": 10,
       "type": "stat",
       "title": "High+ severity (range)",
       "gridPos": {
         "x": 20,
-        "y": 1,
+        "y": 5,
         "w": 4,
         "h": 4
       },
@@ -405,15 +440,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM email_events WHERE site_label IN ($site) AND severity IN ('critical','high') AND created_at >= '${__from:date}'::date AND created_at < '${__to:date}'::date + 1"
         }
-      ]
+      ],
+      "description": "Email events Check Point rated high or critical, in the range."
     },
     {
-      "id": 9,
+      "id": 11,
       "type": "stat",
       "title": "Not remediated",
       "gridPos": {
         "x": 0,
-        "y": 5,
+        "y": 9,
         "w": 4,
         "h": 8
       },
@@ -468,12 +504,12 @@
       "description": "Threat events (not bulk/graymail) still in a detected/pending state -- not quarantined or otherwise actioned."
     },
     {
-      "id": 10,
+      "id": 12,
       "type": "timeseries",
       "title": "Email events per day by type",
       "gridPos": {
         "x": 4,
-        "y": 5,
+        "y": 9,
         "w": 20,
         "h": 8
       },
@@ -512,12 +548,12 @@
       "description": "Every HEC event type, including bulk mail classification (graymail/spam) -- see the Top sending domains panels below for threats and bulk mail split apart."
     },
     {
-      "id": 11,
+      "id": 13,
       "type": "table",
       "title": "Top sending domains (threats)",
       "gridPos": {
         "x": 0,
-        "y": 13,
+        "y": 17,
         "w": 12,
         "h": 8
       },
@@ -543,15 +579,16 @@
           "editorMode": "code",
           "rawSql": "SELECT sender_domain AS \"Sender domain\", count(*) AS \"Events\", count(DISTINCT site_label) AS \"Sites hit\" FROM email_events WHERE site_label IN ($site) AND created_at >= '${__from:date}'::date AND created_at < '${__to:date}'::date + 1 AND sender_domain IS NOT NULL AND event_type IN ('phishing', 'suspicious_phishing', 'malware', 'dlp', 'anomaly') GROUP BY 1 ORDER BY 2 DESC LIMIT 15"
         }
-      ]
+      ],
+      "description": "Sender domains behind the most threat events, and how many sites they hit."
     },
     {
-      "id": 12,
+      "id": 14,
       "type": "table",
       "title": "Top sending domains (bulk / graymail)",
       "gridPos": {
         "x": 12,
-        "y": 13,
+        "y": 17,
         "w": 12,
         "h": 8
       },
@@ -581,12 +618,12 @@
       "description": "Bulk mail classification and SaaS-usage visibility (graymail/spam/shadow IT) -- real volume, not inherently malicious. Kept visible so it isn't just dropped from the data."
     },
     {
-      "id": 13,
+      "id": 15,
       "type": "table",
       "title": "Recent High+ email events",
       "gridPos": {
         "x": 0,
-        "y": 21,
+        "y": 25,
         "w": 24,
         "h": 9
       },
@@ -691,28 +728,44 @@
           "editorMode": "code",
           "rawSql": "SELECT created_at AS \"Time\", event_type AS \"Type\", severity AS \"Severity\", state AS \"State\", site_label AS \"Site\", sender AS \"Sender\", recipient_domain AS \"Recipient domain\", action_taken AS \"Action\", link AS \"Link\" FROM email_events WHERE site_label IN ($site) AND severity IN ('critical','high') AND created_at >= '${__from:date}'::date AND created_at < '${__to:date}'::date + 1 ORDER BY created_at DESC LIMIT 200"
         }
-      ]
+      ],
+      "description": "High and critical email events in the range, newest first."
     },
     {
-      "id": 14,
+      "id": 16,
       "type": "row",
       "title": "DMARC (parsedmarc)",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 30,
+        "y": 34,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 15,
+      "id": 17,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 35,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Aggregate reports from receiving mail servers about mail claiming to be from our domains. Low pass rates are usually a misconfigured legitimate sender, not spoofing."
+      }
+    },
+    {
+      "id": 18,
       "type": "stat",
       "title": "Messages reported (range)",
       "gridPos": {
         "x": 0,
-        "y": 31,
+        "y": 37,
         "w": 4,
         "h": 4
       },
@@ -755,15 +808,16 @@
           "editorMode": "code",
           "rawSql": "SELECT sum(messages) FROM dmarc_daily WHERE site_label IN ($site) AND report_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date"
         }
-      ]
+      ],
+      "description": "Messages covered by DMARC aggregate reports in the range."
     },
     {
-      "id": 16,
+      "id": 19,
       "type": "stat",
       "title": "DMARC pass",
       "gridPos": {
         "x": 4,
-        "y": 31,
+        "y": 37,
         "w": 4,
         "h": 4
       },
@@ -815,15 +869,16 @@
           "editorMode": "code",
           "rawSql": "SELECT round(100.0 * sum(dmarc_pass) / NULLIF(sum(messages),0), 1) FROM dmarc_daily WHERE site_label IN ($site) AND report_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date"
         }
-      ]
+      ],
+      "description": "Share of reported messages that passed DMARC."
     },
     {
-      "id": 17,
+      "id": 20,
       "type": "stat",
       "title": "SPF aligned",
       "gridPos": {
         "x": 8,
-        "y": 31,
+        "y": 37,
         "w": 4,
         "h": 4
       },
@@ -875,15 +930,16 @@
           "editorMode": "code",
           "rawSql": "SELECT round(100.0 * sum(spf_aligned) / NULLIF(sum(messages),0), 1) FROM dmarc_daily WHERE site_label IN ($site) AND report_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date"
         }
-      ]
+      ],
+      "description": "Share of reported messages whose SPF result aligned with the From domain."
     },
     {
-      "id": 18,
+      "id": 21,
       "type": "stat",
       "title": "DKIM aligned",
       "gridPos": {
         "x": 12,
-        "y": 31,
+        "y": 37,
         "w": 4,
         "h": 4
       },
@@ -935,15 +991,16 @@
           "editorMode": "code",
           "rawSql": "SELECT round(100.0 * sum(dkim_aligned) / NULLIF(sum(messages),0), 1) FROM dmarc_daily WHERE site_label IN ($site) AND report_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date"
         }
-      ]
+      ],
+      "description": "Share of reported messages with an aligned DKIM signature."
     },
     {
-      "id": 19,
+      "id": 22,
       "type": "stat",
       "title": "Failed DMARC (range)",
       "gridPos": {
         "x": 16,
-        "y": 31,
+        "y": 37,
         "w": 4,
         "h": 4
       },
@@ -990,12 +1047,12 @@
       "description": "Spoofing attempts AND your own misconfigured senders -- the source table below separates them."
     },
     {
-      "id": 20,
+      "id": 23,
       "type": "stat",
       "title": "Rejected / quarantined",
       "gridPos": {
         "x": 20,
-        "y": 31,
+        "y": 37,
         "w": 4,
         "h": 4
       },
@@ -1038,15 +1095,16 @@
           "editorMode": "code",
           "rawSql": "SELECT sum(rejected + quarantined) FROM dmarc_daily WHERE site_label IN ($site) AND report_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date"
         }
-      ]
+      ],
+      "description": "Messages receivers rejected or quarantined because of our DMARC policy."
     },
     {
-      "id": 21,
+      "id": 24,
       "type": "timeseries",
       "title": "DMARC pass rate by domain",
       "gridPos": {
         "x": 0,
-        "y": 35,
+        "y": 41,
         "w": 12,
         "h": 8
       },
@@ -1077,15 +1135,16 @@
           "editorMode": "code",
           "rawSql": "SELECT report_date::timestamp AS time, header_from AS metric, round(100.0 * sum(dmarc_pass) / NULLIF(sum(messages),0), 1) AS value FROM dmarc_daily WHERE site_label IN ($site) AND report_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1, 2 ORDER BY 1"
         }
-      ]
+      ],
+      "description": "DMARC pass rate per day, per From domain."
     },
     {
-      "id": 22,
+      "id": 25,
       "type": "table",
       "title": "Domains",
       "gridPos": {
         "x": 12,
-        "y": 35,
+        "y": 41,
         "w": 12,
         "h": 8
       },
@@ -1232,15 +1291,16 @@
           "editorMode": "code",
           "rawSql": "SELECT header_from AS \"Domain\", site_label AS \"Site\", sum(messages) AS \"Messages\", round(100.0 * sum(dmarc_pass) / NULLIF(sum(messages),0), 1) AS \"DMARC %\", round(100.0 * sum(spf_aligned) / NULLIF(sum(messages),0), 1) AS \"SPF %\", round(100.0 * sum(dkim_aligned) / NULLIF(sum(messages),0), 1) AS \"DKIM %\", sum(rejected) AS \"Rejected\", sum(quarantined) AS \"Quarantined\", count(DISTINCT source_ip) AS \"Sources\" FROM dmarc_daily WHERE site_label IN ($site) AND report_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1, 2 ORDER BY 3 DESC"
         }
-      ]
+      ],
+      "description": "Per From domain: volume, pass rates and what receivers did with failures."
     },
     {
-      "id": 23,
+      "id": 26,
       "type": "table",
       "title": "Top failing sources",
       "gridPos": {
         "x": 0,
-        "y": 43,
+        "y": 49,
         "w": 12,
         "h": 8
       },
@@ -1270,25 +1330,40 @@
       "description": "'Partly aligned' sources are usually legitimate senders missing SPF/DKIM setup, not spoofers."
     },
     {
-      "id": 24,
+      "id": 27,
       "type": "row",
       "title": "External attack surface (Hadrian)",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 51,
+        "y": 57,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 25,
+      "id": 28,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 58,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "What Hadrian sees from the internet. **Confirmed** = verified, unpatched-technology or infected-device risks; the rest are unverified detections."
+      }
+    },
+    {
+      "id": 29,
       "type": "stat",
       "title": "External assets",
       "gridPos": {
         "x": 0,
-        "y": 52,
+        "y": 60,
         "w": 4,
         "h": 4
       },
@@ -1331,15 +1406,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM external_assets WHERE NOT retired AND site_label IN ($site)"
         }
-      ]
+      ],
+      "description": "Internet-facing assets Hadrian monitors (domains, IPs, services), excluding archived ones."
     },
     {
-      "id": 26,
+      "id": 30,
       "type": "stat",
       "title": "Open external risks",
       "gridPos": {
         "x": 4,
-        "y": 52,
+        "y": 60,
         "w": 4,
         "h": 4
       },
@@ -1382,15 +1458,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM fact_vuln_findings_current WHERE source = 'hadrian' AND site_label IN ($site)"
         }
-      ]
+      ],
+      "description": "Risks Hadrian currently has open against our assets."
     },
     {
-      "id": 27,
+      "id": 31,
       "type": "stat",
       "title": "Critical + High",
       "gridPos": {
         "x": 8,
-        "y": 52,
+        "y": 60,
         "w": 4,
         "h": 4
       },
@@ -1441,15 +1518,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM fact_vuln_findings_current WHERE source = 'hadrian' AND severity IN ('critical','high') AND site_label IN ($site)"
         }
-      ]
+      ],
+      "description": "Open external risks rated critical or high."
     },
     {
-      "id": 28,
+      "id": 32,
       "type": "stat",
       "title": "KEV on the internet",
       "gridPos": {
         "x": 12,
-        "y": 52,
+        "y": 60,
         "w": 4,
         "h": 4
       },
@@ -1496,15 +1574,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM fact_vuln_findings_current WHERE source = 'hadrian' AND has_kev AND site_label IN ($site)"
         }
-      ]
+      ],
+      "description": "Open external risks with a CVE on CISA's Known Exploited list."
     },
     {
-      "id": 29,
+      "id": 33,
       "type": "stat",
       "title": "SLA breaches",
       "gridPos": {
         "x": 16,
-        "y": 52,
+        "y": 60,
         "w": 4,
         "h": 4
       },
@@ -1555,15 +1634,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM fact_vuln_findings_current WHERE source = 'hadrian' AND sla_breach AND site_label IN ($site)"
         }
-      ]
+      ],
+      "description": "Open external risks older than their severity's SLA."
     },
     {
-      "id": 30,
+      "id": 34,
       "type": "stat",
       "title": "Fixed (range)",
       "gridPos": {
         "x": 20,
-        "y": 52,
+        "y": 60,
         "w": 4,
         "h": 4
       },
@@ -1606,15 +1686,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM vuln_findings WHERE source = 'hadrian' AND state = 'FIXED' AND site_label IN ($site) AND last_fixed >= '${__from:date}'::date AND last_fixed < '${__to:date}'::date + 1"
         }
-      ]
+      ],
+      "description": "External risks Hadrian closed in the range (fixed, or no longer found)."
     },
     {
-      "id": 31,
+      "id": 35,
       "type": "timeseries",
       "title": "External risks trend",
       "gridPos": {
         "x": 0,
-        "y": 56,
+        "y": 64,
         "w": 12,
         "h": 8
       },
@@ -1784,15 +1865,16 @@
           "editorMode": "code",
           "rawSql": "SELECT snapshot_date::timestamp AS time, sum(crit) AS \"Critical\", sum(high) AS \"High\", sum(medium) AS \"Medium\", sum(low) AS \"Low\" FROM daily_source_metrics WHERE source = 'hadrian' AND site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1 ORDER BY 1"
         }
-      ]
+      ],
+      "description": "Open external risks per day by severity, from the nightly snapshot."
     },
     {
-      "id": 32,
+      "id": 36,
       "type": "table",
       "title": "Open external risks",
       "gridPos": {
         "x": 12,
-        "y": 56,
+        "y": 64,
         "w": 12,
         "h": 8
       },
@@ -1899,15 +1981,16 @@
           "editorMode": "code",
           "rawSql": "SELECT severity AS \"Severity\", title AS \"Risk\", hostname AS \"Asset\", site_label AS \"Site\", plugin_family AS \"Category\", CASE WHEN has_kev THEN 'KEV' END AS \"KEV\", round(age_days::numeric, 0) AS \"Age (days)\", sla_breach AS \"SLA breach\", solution AS \"Fix\" FROM fact_vuln_findings_current WHERE source = 'hadrian' AND site_label IN ($site) ORDER BY CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END, age_days DESC LIMIT 300"
         }
-      ]
+      ],
+      "description": "Risks Hadrian currently has open against our assets."
     },
     {
-      "id": 33,
+      "id": 37,
       "type": "table",
       "title": "External asset inventory",
       "gridPos": {
         "x": 0,
-        "y": 64,
+        "y": 72,
         "w": 24,
         "h": 9
       },
@@ -1954,7 +2037,8 @@
           "editorMode": "code",
           "rawSql": "SELECT name AS \"Asset\", site_label AS \"Site\", asset_type AS \"Type\", array_to_string(ips, ', ') AS \"IPs\", array_to_string(ports, ', ') AS \"Ports\", array_to_string(technologies, ', ') AS \"Technologies\", last_seen AS \"Last seen\", (SELECT count(*) FROM fact_vuln_findings_current f WHERE f.source = 'hadrian' AND f.source_asset_id = external_assets.asset_id) AS \"Open risks\" FROM external_assets WHERE NOT retired AND site_label IN ($site) ORDER BY \"Open risks\" DESC, name LIMIT 500"
         }
-      ]
+      ],
+      "description": "Every monitored internet-facing asset with its IPs, ports and technologies."
     }
   ]
 }

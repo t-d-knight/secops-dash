@@ -21,36 +21,6 @@
       "id": "postgres",
       "name": "PostgreSQL",
       "version": "1.0.0"
-    },
-    {
-      "type": "panel",
-      "id": "stat",
-      "name": "Stat",
-      "version": ""
-    },
-    {
-      "type": "panel",
-      "id": "table",
-      "name": "Table",
-      "version": ""
-    },
-    {
-      "type": "panel",
-      "id": "timeseries",
-      "name": "Time series",
-      "version": ""
-    },
-    {
-      "type": "panel",
-      "id": "bargauge",
-      "name": "Bar gauge",
-      "version": ""
-    },
-    {
-      "type": "panel",
-      "id": "row",
-      "name": "Row",
-      "version": ""
     }
   ],
   "id": null,
@@ -58,10 +28,9 @@
   "title": "Vulnerability Management",
   "description": "Site/severity trending, SLA compliance, CISA KEV exposure, worst-devices hit list and MTTR across every vulnerability source in vuln_findings (Falcon Exposure Management endpoints + Hadrian external).",
   "tags": [
+    "secops",
     "kev",
     "mttr",
-    "secops",
-    "tenable",
     "vuln-management"
   ],
   "timezone": "browser",
@@ -74,16 +43,22 @@
     "from": "now-90d",
     "to": "now"
   },
-  "timepicker": {
-    "refresh_intervals": [
-      "1h",
-      "12h",
-      "1d"
-    ]
-  },
+  "timepicker": {},
   "annotations": {
     "list": []
   },
+  "links": [
+    {
+      "type": "dashboards",
+      "tags": [
+        "secops"
+      ],
+      "asDropdown": false,
+      "title": "SecOps",
+      "includeVars": true,
+      "keepTime": true
+    }
+  ],
   "templating": {
     "list": [
       {
@@ -95,8 +70,9 @@
           "uid": "${DS_POSTGRESQL}"
         },
         "query": "SELECT site_label FROM dim_site ORDER BY site_label = 'Ungrouped', site_label",
-        "refresh": 2,
-        "sort": 1,
+        "definition": "SELECT site_label FROM dim_site",
+        "refresh": 1,
+        "sort": 0,
         "multi": true,
         "includeAll": true,
         "current": {
@@ -108,82 +84,55 @@
   },
   "panels": [
     {
-      "id": 200,
+      "id": 2,
       "type": "text",
       "title": "",
       "gridPos": {
         "x": 0,
         "y": 0,
         "w": 24,
-        "h": 10
+        "h": 2
       },
       "options": {
         "mode": "markdown",
-        "content": "### How to read this dashboard\n\n**Severity** is colored red (Critical) to orange (High) to amber (Medium) to yellow (Low) everywhere it appears as a category -- deliberately no green, since even a Low-severity finding is not good news. Green is reserved for genuinely positive signals: improving trend deltas and daily remediation counts.\n\n**SLA Breach** -- a finding is a breach once its age (from first detected) exceeds its severity's threshold. Current thresholds are shown in the \"Current SLA Policy\" panel below -- these can change over time, so check that panel rather than assuming.\n\n**CISA KEV** -- Known Exploited Vulnerabilities. CISA has *confirmed* this CVE is being actively exploited in the wild right now. Binary, reactive, and the single highest-priority signal here.\n\n**EPSS** -- Exploit Prediction Scoring System (FIRST.org). A daily-updated probability (0-100%) a CVE will be exploited in the wild in the next 30 days. Predictive rather than confirmed -- the complement to KEV, not a replacement for it. \"High EPSS, not yet KEV\" findings are the ones most likely to become KEV-listed soon.\n\n**Risk Score** (Worst Devices) -- a weighted composite per asset: severity counts plus a KEV bonus plus a remote/no-auth bonus. Higher is worse. A relative ranking tool, not an absolute unit.\n\n**Priority Score** (Top Patches to Deploy) -- a weighted composite per remediation (one Falcon remediation action, e.g. a single browser update, or one Hadrian risk): affected-asset count plus severity plus remote/no-auth plus KEV plus EPSS. Answers \"which single fix closes the most, worst risk\" -- not the same thing as raw finding count alone.\n\n**Remote + No-Auth** -- exploitable over the network with no credentials required (CVSS Attack Vector: Network/Adjacent, Privileges Required: None). The subset of Critical/High findings actually reachable by an attacker starting from zero access."
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
+        "content": "Endpoint (Falcon Exposure Management) and external (Hadrian) vulnerabilities. Current figures are as at the last nightly run; trends come from the daily snapshots. Hover the **i** on any panel for exactly what it counts."
       }
     },
     {
-      "id": 100,
+      "id": 3,
       "type": "row",
-      "title": "Executive Summary",
+      "title": "Executive summary",
+      "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 10,
+        "y": 2,
         "w": 24,
         "h": 1
       },
-      "collapsed": false,
       "panels": []
     },
     {
-      "id": 1,
-      "type": "stat",
-      "title": "Open Findings",
+      "id": 4,
+      "type": "text",
+      "title": "",
       "gridPos": {
         "x": 0,
-        "y": 11,
-        "w": 6,
-        "h": 4
-      },
-      "datasource": {
-        "type": "postgres",
-        "uid": "${DS_POSTGRESQL}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": []
+        "y": 3,
+        "w": 24,
+        "h": 2
       },
       "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "value",
-        "graphMode": "none"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "format": "table",
-          "rawSql": "SELECT COALESCE(sum(n), 0) AS \"Open Findings\" FROM dash_vuln_site_summary WHERE site_label IN ($site)"
-        }
-      ],
-      "description": "As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
+        "mode": "markdown",
+        "content": "Severity runs red (critical) to orange (high) to amber (medium) to yellow (low); green only ever means good news. A coverage jump raises counts and lowers rates for a few weeks."
+      }
     },
     {
-      "id": 2,
+      "id": 5,
       "type": "stat",
-      "title": "Critical + High Open",
+      "title": "Open findings",
       "gridPos": {
-        "x": 6,
-        "y": 11,
+        "x": 0,
+        "y": 5,
         "w": 6,
         "h": 4
       },
@@ -194,24 +143,17 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "color": {
-            "mode": "thresholds"
-          },
           "thresholds": {
+            "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "text",
                 "value": null
-              },
-              {
-                "color": "orange",
-                "value": 1
-              },
-              {
-                "color": "red",
-                "value": 25
               }
             ]
+          },
+          "color": {
+            "mode": "thresholds"
           }
         },
         "overrides": []
@@ -229,18 +171,80 @@
         {
           "refId": "A",
           "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT COALESCE(sum(n), 0) AS \"Open Findings\" FROM dash_vuln_site_summary WHERE site_label IN ($site)"
+        }
+      ],
+      "description": "Open vulnerability findings (one per CVE per device, plus Hadrian's external risks). As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Critical + high open",
+      "gridPos": {
+        "x": 6,
+        "y": 5,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 25
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
           "rawSql": "SELECT COALESCE(sum(n) FILTER (WHERE severity IN ('critical','high')), 0) AS \"Critical + High\" FROM dash_vuln_site_summary WHERE site_label IN ($site)"
         }
       ],
-      "description": "As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
+      "description": "Open findings rated critical or high. As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
     },
     {
-      "id": 3,
+      "id": 7,
       "type": "stat",
-      "title": "SLA Breach Rate",
+      "title": "SLA breach rate",
       "gridPos": {
         "x": 12,
-        "y": 11,
+        "y": 5,
         "w": 6,
         "h": 4
       },
@@ -251,10 +255,8 @@
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
-          "color": {
-            "mode": "thresholds"
-          },
           "thresholds": {
+            "mode": "absolute",
             "steps": [
               {
                 "color": "green",
@@ -269,6 +271,9 @@
                 "value": 25
               }
             ]
+          },
+          "color": {
+            "mode": "thresholds"
           }
         },
         "overrides": []
@@ -286,18 +291,20 @@
         {
           "refId": "A",
           "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
           "rawSql": "SELECT round(100.0 * sum(n) FILTER (WHERE sla_breach) / NULLIF(sum(n),0), 1) AS \"SLA Breach Rate\" FROM dash_vuln_site_summary WHERE site_label IN ($site)"
         }
       ],
-      "description": "As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
+      "description": "Share of open findings older than their severity's SLA. Drops sharply whenever coverage expands, because new findings start at age zero -- read it with the breach count. As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
     },
     {
-      "id": 4,
+      "id": 8,
       "type": "stat",
-      "title": "% Findings with Active KEV",
+      "title": "Share on CISA KEV",
       "gridPos": {
         "x": 18,
-        "y": 11,
+        "y": 5,
         "w": 6,
         "h": 4
       },
@@ -308,10 +315,9 @@
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
-          "color": {
-            "mode": "thresholds"
-          },
+          "decimals": 2,
           "thresholds": {
+            "mode": "absolute",
             "steps": [
               {
                 "color": "green",
@@ -326,6 +332,9 @@
                 "value": 15
               }
             ]
+          },
+          "color": {
+            "mode": "thresholds"
           }
         },
         "overrides": []
@@ -343,18 +352,20 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT round(100.0 * sum(n) FILTER (WHERE has_kev) / NULLIF(sum(n),0), 1) AS \"Active KEV %\" FROM dash_vuln_site_summary WHERE site_label IN ($site)"
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT round(100.0 * sum(n) FILTER (WHERE has_kev) / NULLIF(sum(n),0), 2) AS \"Active KEV %\" FROM dash_vuln_site_summary WHERE site_label IN ($site)"
         }
       ],
-      "description": "As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
+      "description": "Share of open findings whose CVE CISA lists as actively exploited. As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
     },
     {
-      "id": 23,
+      "id": 9,
       "type": "stat",
-      "title": "Remote + No-Auth Crit/High Open",
+      "title": "Remote + no-auth critical/high",
       "gridPos": {
         "x": 0,
-        "y": 15,
+        "y": 9,
         "w": 6,
         "h": 8
       },
@@ -365,10 +376,8 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "color": {
-            "mode": "thresholds"
-          },
           "thresholds": {
+            "mode": "absolute",
             "steps": [
               {
                 "color": "green",
@@ -383,6 +392,9 @@
                 "value": 25
               }
             ]
+          },
+          "color": {
+            "mode": "thresholds"
           }
         },
         "overrides": []
@@ -400,18 +412,20 @@
         {
           "refId": "A",
           "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
           "rawSql": "SELECT COALESCE(sum(n) FILTER (WHERE severity IN ('critical','high') AND is_remote_no_auth), 0) AS \"Remote+NoAuth Crit/High\" FROM dash_vuln_site_summary WHERE site_label IN ($site)"
         }
       ],
-      "description": "As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
+      "description": "Open critical/high findings exploitable over the network with no credentials and no user interaction: reachable by an attacker starting from nothing. As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
     },
     {
-      "id": 24,
+      "id": 10,
       "type": "timeseries",
-      "title": "Remote + No-Auth Crit/High Trend",
+      "title": "Remote + no-auth critical/high trend",
       "gridPos": {
         "x": 6,
-        "y": 15,
+        "y": 9,
         "w": 18,
         "h": 8
       },
@@ -469,17 +483,20 @@
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT snapshot_date::timestamp AS time, sum(remote_crit) AS \"Remote Critical\", sum(remote_high) AS \"Remote High\" FROM daily_site_metrics WHERE site_label IN ($site) AND snapshot_date::date BETWEEN '${__from:date}' AND '${__to:date}' GROUP BY snapshot_date ORDER BY time"
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT snapshot_date::timestamp AS time, sum(remote_crit) AS \"Remote Critical\", sum(remote_high) AS \"Remote High\" FROM daily_site_metrics WHERE site_label IN ($site) AND snapshot_date::date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY snapshot_date ORDER BY time"
         }
-      ]
+      ],
+      "description": "The same count per day, from the nightly snapshot."
     },
     {
-      "id": 5,
+      "id": 11,
       "type": "timeseries",
-      "title": "Open Findings by Severity",
+      "title": "Open findings by severity",
       "gridPos": {
         "x": 0,
-        "y": 23,
+        "y": 17,
         "w": 24,
         "h": 8
       },
@@ -491,7 +508,7 @@
         "defaults": {
           "unit": "short",
           "custom": {
-            "fillOpacity": 20,
+            "fillOpacity": 15,
             "stacking": {
               "mode": "normal"
             }
@@ -570,18 +587,20 @@
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT snapshot_date::timestamp AS time, sum(crit) AS \"Critical\", sum(high) AS \"High\", sum(medium) AS \"Medium\", sum(low) AS \"Low\" FROM daily_site_metrics WHERE site_label IN ($site) AND snapshot_date::date BETWEEN '${__from:date}' AND '${__to:date}' GROUP BY snapshot_date ORDER BY time"
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT snapshot_date::timestamp AS time, sum(crit) AS \"Critical\", sum(high) AS \"High\", sum(medium) AS \"Medium\", sum(low) AS \"Low\" FROM daily_site_metrics WHERE site_label IN ($site) AND snapshot_date::date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY snapshot_date ORDER BY time"
         }
-      ]
+      ],
+      "description": "Open findings per day by severity, from the nightly snapshot. Step changes are usually coverage (more devices assessed), not risk."
     },
     {
-      "id": 212,
+      "id": 12,
       "type": "stat",
-      "title": "Net Change (Opened − Closed)",
-      "description": "Findings opened minus fixed over the selected time range (per day of the event, as the exec reports count them; expired records aren't counted as opened). Positive = backlog growing.",
+      "title": "Net change (opened \u2212 fixed)",
       "gridPos": {
         "x": 0,
-        "y": 31,
+        "y": 25,
         "w": 6,
         "h": 8
       },
@@ -592,10 +611,8 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "color": {
-            "mode": "thresholds"
-          },
           "thresholds": {
+            "mode": "absolute",
             "steps": [
               {
                 "color": "green",
@@ -607,7 +624,9 @@
               }
             ]
           },
-          "mappings": []
+          "color": {
+            "mode": "thresholds"
+          }
         },
         "overrides": []
       },
@@ -618,25 +637,26 @@
           ]
         },
         "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "textMode": "auto"
+        "graphMode": "none"
       },
       "targets": [
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT (COALESCE(sum(opened),0) - COALESCE(sum(fixed),0))::int AS \"Net Change\" FROM daily_vuln_flow_metrics WHERE site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}' AND '${__to:date}'"
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT (COALESCE(sum(opened),0) - COALESCE(sum(fixed),0))::int AS \"Net Change\" FROM daily_vuln_flow_metrics WHERE site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date"
         }
-      ]
+      ],
+      "description": "Findings opened minus fixed in the selected range, by the day each happened (as the exec reports count them; expired records aren't 'opened'). Positive = backlog growing."
     },
     {
-      "id": 22,
+      "id": 13,
       "type": "timeseries",
-      "title": "Opened vs. Remediated per Day",
+      "title": "Opened vs remediated per day",
       "gridPos": {
         "x": 6,
-        "y": 31,
+        "y": 25,
         "w": 18,
         "h": 8
       },
@@ -648,8 +668,8 @@
         "defaults": {
           "unit": "short",
           "custom": {
-            "drawStyle": "bars",
-            "fillOpacity": 70
+            "fillOpacity": 80,
+            "drawStyle": "bars"
           }
         },
         "overrides": [
@@ -695,31 +715,48 @@
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT snapshot_date::timestamp AS time, sum(opened) AS \"Opened\", -sum(fixed) AS \"Closed\" FROM daily_vuln_flow_metrics WHERE site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}' AND '${__to:date}' GROUP BY 1 ORDER BY 1"
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT snapshot_date::timestamp AS time, sum(opened) AS \"Opened\", -sum(fixed) AS \"Closed\" FROM daily_vuln_flow_metrics WHERE site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1 ORDER BY 1"
         }
       ],
-      "description": "Per day of the event, from the nightly rollup (daily_vuln_flow_metrics) -- the same figures as the exec reports' opened/fixed. Expired records (vanished without a fix) aren't counted as opened."
+      "description": "Findings first detected (up) and fixed (down) per day, from the nightly rollup."
     },
     {
-      "id": 106,
+      "id": 14,
       "type": "row",
-      "title": "Trend (7-Day Change)",
+      "title": "Change over 7 days",
+      "collapsed": true,
       "gridPos": {
         "x": 0,
-        "y": 39,
+        "y": 33,
         "w": 24,
         "h": 1
       },
-      "collapsed": true,
       "panels": [
         {
-          "id": 18,
-          "type": "stat",
-          "title": "Open Findings Δ (7d)",
+          "id": 15,
+          "type": "text",
+          "title": "",
           "gridPos": {
             "x": 0,
-            "y": 40,
-            "w": 6,
+            "y": 34,
+            "w": 24,
+            "h": 2
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "Today's figure minus the figure 7 days ago. Rates are in percentage points (**pts**): 10% -> 12% is +2 pts, not +20%. Any rise is red. Straight after a coverage jump, trust the counts over the rates."
+          }
+        },
+        {
+          "id": 16,
+          "type": "stat",
+          "title": "Open findings: change over 7 days",
+          "gridPos": {
+            "x": 0,
+            "y": 36,
+            "w": 5,
             "h": 4
           },
           "datasource": {
@@ -729,10 +766,9 @@
           "fieldConfig": {
             "defaults": {
               "unit": "short",
-              "color": {
-                "mode": "thresholds"
-              },
+              "decimals": 0,
               "thresholds": {
+                "mode": "absolute",
                 "steps": [
                   {
                     "color": "green",
@@ -740,11 +776,13 @@
                   },
                   {
                     "color": "red",
-                    "value": 1
+                    "value": 1e-06
                   }
                 ]
               },
-              "mappings": []
+              "color": {
+                "mode": "thresholds"
+              }
             },
             "overrides": []
           },
@@ -761,18 +799,135 @@
             {
               "refId": "A",
               "format": "table",
-              "rawSql": "WITH latest AS (\n  SELECT max(snapshot_date) AS d FROM daily_site_metrics\n),\nhist AS (\n  SELECT max(snapshot_date) AS d FROM daily_site_metrics, latest\n  WHERE snapshot_date::date <= latest.d::date - 7\n),\nnow_v AS (\n  SELECT coalesce(sum(total),0) AS v FROM daily_site_metrics, latest\n  WHERE site_label IN ($site) AND snapshot_date = latest.d\n),\nthen_v AS (\n  SELECT coalesce(sum(total),0) AS v FROM daily_site_metrics, hist\n  WHERE site_label IN ($site) AND snapshot_date = hist.d\n)\nSELECT (now_v.v - then_v.v) AS delta FROM now_v, then_v;"
+              "rawQuery": true,
+              "editorMode": "code",
+              "rawSql": "WITH latest AS (SELECT max(snapshot_date) AS d FROM daily_site_metrics), hist AS (SELECT max(snapshot_date) AS d FROM daily_site_metrics, latest WHERE snapshot_date::date <= latest.d::date - 7), now_v AS (SELECT coalesce(sum(total),0) AS v FROM daily_site_metrics, latest WHERE site_label IN ($site) AND snapshot_date = latest.d), then_v AS (SELECT coalesce(sum(total),0) AS v FROM daily_site_metrics, hist WHERE site_label IN ($site) AND snapshot_date = hist.d) SELECT (now_v.v - then_v.v) AS delta FROM now_v, then_v"
             }
-          ]
+          ],
+          "description": "Open findings now minus 7 days ago. Any rise is red."
+        },
+        {
+          "id": 17,
+          "type": "stat",
+          "title": "Critical + high: change over 7 days",
+          "gridPos": {
+            "x": 5,
+            "y": 36,
+            "w": 5,
+            "h": 4
+          },
+          "datasource": {
+            "type": "postgres",
+            "uid": "${DS_POSTGRESQL}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1e-06
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "value",
+            "graphMode": "none"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "format": "table",
+              "rawQuery": true,
+              "editorMode": "code",
+              "rawSql": "WITH latest AS (SELECT max(snapshot_date) AS d FROM daily_site_metrics), hist AS (SELECT max(snapshot_date) AS d FROM daily_site_metrics, latest WHERE snapshot_date::date <= latest.d::date - 7), now_v AS (SELECT coalesce(sum(crit)+sum(high),0) AS v FROM daily_site_metrics, latest WHERE site_label IN ($site) AND snapshot_date = latest.d), then_v AS (SELECT coalesce(sum(crit)+sum(high),0) AS v FROM daily_site_metrics, hist WHERE site_label IN ($site) AND snapshot_date = hist.d) SELECT (now_v.v - then_v.v) AS delta FROM now_v, then_v"
+            }
+          ],
+          "description": "Open critical + high findings now minus 7 days ago."
+        },
+        {
+          "id": 18,
+          "type": "stat",
+          "title": "SLA breaches: change over 7 days",
+          "gridPos": {
+            "x": 10,
+            "y": 36,
+            "w": 5,
+            "h": 4
+          },
+          "datasource": {
+            "type": "postgres",
+            "uid": "${DS_POSTGRESQL}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1e-06
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "value",
+            "graphMode": "none"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "format": "table",
+              "rawQuery": true,
+              "editorMode": "code",
+              "rawSql": "WITH latest AS (SELECT max(snapshot_date) AS d FROM daily_sla_metrics), hist AS (SELECT max(snapshot_date) AS d FROM daily_sla_metrics, latest WHERE snapshot_date::date <= latest.d::date - 7), now_v AS (SELECT coalesce(sum(sla_breaches),0) AS v FROM daily_sla_metrics, latest WHERE site_label IN ($site) AND snapshot_date = latest.d), then_v AS (SELECT coalesce(sum(sla_breaches),0) AS v FROM daily_sla_metrics, hist WHERE site_label IN ($site) AND snapshot_date = hist.d) SELECT (now_v.v - then_v.v) AS delta FROM now_v, then_v"
+            }
+          ],
+          "description": "Findings past SLA now minus 7 days ago: the count behind the rate, which can fall while breaches rise when coverage grows."
         },
         {
           "id": 19,
           "type": "stat",
-          "title": "Crit + High Δ (7d)",
+          "title": "SLA breach rate: change over 7 days",
           "gridPos": {
-            "x": 6,
-            "y": 40,
-            "w": 6,
+            "x": 15,
+            "y": 36,
+            "w": 5,
             "h": 4
           },
           "datasource": {
@@ -781,11 +936,10 @@
           },
           "fieldConfig": {
             "defaults": {
-              "unit": "short",
-              "color": {
-                "mode": "thresholds"
-              },
+              "unit": "suffix: pts",
+              "decimals": 1,
               "thresholds": {
+                "mode": "absolute",
                 "steps": [
                   {
                     "color": "green",
@@ -793,11 +947,13 @@
                   },
                   {
                     "color": "red",
-                    "value": 1
+                    "value": 1e-06
                   }
                 ]
               },
-              "mappings": []
+              "color": {
+                "mode": "thresholds"
+              }
             },
             "overrides": []
           },
@@ -814,18 +970,21 @@
             {
               "refId": "A",
               "format": "table",
-              "rawSql": "WITH latest AS (\n  SELECT max(snapshot_date) AS d FROM daily_site_metrics\n),\nhist AS (\n  SELECT max(snapshot_date) AS d FROM daily_site_metrics, latest\n  WHERE snapshot_date::date <= latest.d::date - 7\n),\nnow_v AS (\n  SELECT coalesce(sum(crit)+sum(high),0) AS v FROM daily_site_metrics, latest\n  WHERE site_label IN ($site) AND snapshot_date = latest.d\n),\nthen_v AS (\n  SELECT coalesce(sum(crit)+sum(high),0) AS v FROM daily_site_metrics, hist\n  WHERE site_label IN ($site) AND snapshot_date = hist.d\n)\nSELECT (now_v.v - then_v.v) AS delta FROM now_v, then_v;"
+              "rawQuery": true,
+              "editorMode": "code",
+              "rawSql": "WITH latest AS (SELECT max(snapshot_date) AS d FROM daily_sla_metrics), hist AS (SELECT max(snapshot_date) AS d FROM daily_sla_metrics, latest WHERE snapshot_date::date <= latest.d::date - 7), now_v AS (SELECT round(100.0*sum(sla_breaches)/NULLIF(sum(total_vulns),0),1) AS v FROM daily_sla_metrics, latest WHERE site_label IN ($site) AND snapshot_date = latest.d), then_v AS (SELECT round(100.0*sum(sla_breaches)/NULLIF(sum(total_vulns),0),1) AS v FROM daily_sla_metrics, hist WHERE site_label IN ($site) AND snapshot_date = hist.d) SELECT (now_v.v - then_v.v) AS delta FROM now_v, then_v"
             }
-          ]
+          ],
+          "description": "Breach rate now minus 7 days ago, in percentage points: 10% -> 12% is +2 pts (not +20%)."
         },
         {
           "id": 20,
           "type": "stat",
-          "title": "SLA Breach Rate Δ (7d, pts)",
+          "title": "KEV share: change over 7 days",
           "gridPos": {
-            "x": 12,
-            "y": 40,
-            "w": 6,
+            "x": 20,
+            "y": 36,
+            "w": 4,
             "h": 4
           },
           "datasource": {
@@ -834,11 +993,10 @@
           },
           "fieldConfig": {
             "defaults": {
-              "unit": "none",
-              "color": {
-                "mode": "thresholds"
-              },
+              "unit": "suffix: pts",
+              "decimals": 2,
               "thresholds": {
+                "mode": "absolute",
                 "steps": [
                   {
                     "color": "green",
@@ -846,11 +1004,13 @@
                   },
                   {
                     "color": "red",
-                    "value": 1
+                    "value": 1e-06
                   }
                 ]
               },
-              "mappings": []
+              "color": {
+                "mode": "thresholds"
+              }
             },
             "overrides": []
           },
@@ -867,84 +1027,49 @@
             {
               "refId": "A",
               "format": "table",
-              "rawSql": "WITH latest AS (\n  SELECT max(snapshot_date) AS d FROM daily_sla_metrics\n),\nhist AS (\n  SELECT max(snapshot_date) AS d FROM daily_sla_metrics, latest\n  WHERE snapshot_date::date <= latest.d::date - 7\n),\nnow_v AS (\n  SELECT round(100.0*sum(sla_breaches)/NULLIF(sum(total_vulns),0),1) AS v FROM daily_sla_metrics, latest\n  WHERE site_label IN ($site) AND snapshot_date = latest.d\n),\nthen_v AS (\n  SELECT round(100.0*sum(sla_breaches)/NULLIF(sum(total_vulns),0),1) AS v FROM daily_sla_metrics, hist\n  WHERE site_label IN ($site) AND snapshot_date = hist.d\n)\nSELECT (now_v.v - then_v.v) AS delta FROM now_v, then_v;"
+              "rawQuery": true,
+              "editorMode": "code",
+              "rawSql": "WITH latest AS (SELECT max(snapshot_date) AS d FROM daily_kev_metrics), hist AS (SELECT max(snapshot_date) AS d FROM daily_kev_metrics, latest WHERE snapshot_date::date <= latest.d::date - 7), now_v AS (SELECT round(100.0*sum(kev_open_total)/NULLIF(sum(kev_open_total)+sum(non_kev_open_total),0),2) AS v FROM daily_kev_metrics, latest WHERE site_label IN ($site) AND snapshot_date = latest.d), then_v AS (SELECT round(100.0*sum(kev_open_total)/NULLIF(sum(kev_open_total)+sum(non_kev_open_total),0),2) AS v FROM daily_kev_metrics, hist WHERE site_label IN ($site) AND snapshot_date = hist.d) SELECT (now_v.v - then_v.v) AS delta FROM now_v, then_v"
             }
-          ]
-        },
-        {
-          "id": 21,
-          "type": "stat",
-          "title": "Active KEV % Δ (7d, pts)",
-          "gridPos": {
-            "x": 18,
-            "y": 40,
-            "w": 6,
-            "h": 4
-          },
-          "datasource": {
-            "type": "postgres",
-            "uid": "${DS_POSTGRESQL}"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "none",
-              "color": {
-                "mode": "thresholds"
-              },
-              "thresholds": {
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  },
-                  {
-                    "color": "red",
-                    "value": 1
-                  }
-                ]
-              },
-              "mappings": []
-            },
-            "overrides": []
-          },
-          "options": {
-            "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ]
-            },
-            "colorMode": "value",
-            "graphMode": "none"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "format": "table",
-              "rawSql": "WITH latest AS (\n  SELECT max(snapshot_date) AS d FROM daily_kev_metrics\n),\nhist AS (\n  SELECT max(snapshot_date) AS d FROM daily_kev_metrics, latest\n  WHERE snapshot_date::date <= latest.d::date - 7\n),\nnow_v AS (\n  SELECT round(100.0*sum(kev_open_total)/NULLIF(sum(kev_open_total)+sum(non_kev_open_total),0),1) AS v FROM daily_kev_metrics, latest\n  WHERE site_label IN ($site) AND snapshot_date = latest.d\n),\nthen_v AS (\n  SELECT round(100.0*sum(kev_open_total)/NULLIF(sum(kev_open_total)+sum(non_kev_open_total),0),1) AS v FROM daily_kev_metrics, hist\n  WHERE site_label IN ($site) AND snapshot_date = hist.d\n)\nSELECT (now_v.v - then_v.v) AS delta FROM now_v, then_v;"
-            }
-          ]
+          ],
+          "description": "Share of open findings on CISA KEV now minus 7 days ago, in percentage points."
         }
       ]
     },
     {
-      "id": 101,
+      "id": 21,
       "type": "row",
-      "title": "SLA Compliance",
+      "title": "SLA compliance",
+      "collapsed": true,
       "gridPos": {
         "x": 0,
         "y": 40,
         "w": 24,
         "h": 1
       },
-      "collapsed": true,
       "panels": [
         {
-          "id": 208,
+          "id": 22,
+          "type": "text",
+          "title": "",
+          "gridPos": {
+            "x": 0,
+            "y": 41,
+            "w": 24,
+            "h": 2
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "A finding breaches once its age since first detected exceeds its severity's SLA -- the policy is in the four tiles below, so check them rather than assuming."
+          }
+        },
+        {
+          "id": 23,
           "type": "stat",
           "title": "Critical SLA (days)",
           "gridPos": {
             "x": 0,
-            "y": 45,
+            "y": 43,
             "w": 6,
             "h": 3
           },
@@ -975,17 +1100,20 @@
             {
               "refId": "A",
               "format": "table",
+              "rawQuery": true,
+              "editorMode": "code",
               "rawSql": "SELECT threshold_days AS \"SLA (days)\" FROM sla_policy WHERE severity = 'critical'"
             }
-          ]
+          ],
+          "description": "Days a critical finding may stay open before it breaches (current policy)."
         },
         {
-          "id": 209,
+          "id": 24,
           "type": "stat",
           "title": "High SLA (days)",
           "gridPos": {
             "x": 6,
-            "y": 45,
+            "y": 43,
             "w": 6,
             "h": 3
           },
@@ -1016,17 +1144,20 @@
             {
               "refId": "A",
               "format": "table",
+              "rawQuery": true,
+              "editorMode": "code",
               "rawSql": "SELECT threshold_days AS \"SLA (days)\" FROM sla_policy WHERE severity = 'high'"
             }
-          ]
+          ],
+          "description": "Days a high finding may stay open before it breaches."
         },
         {
-          "id": 210,
+          "id": 25,
           "type": "stat",
           "title": "Medium SLA (days)",
           "gridPos": {
             "x": 12,
-            "y": 45,
+            "y": 43,
             "w": 6,
             "h": 3
           },
@@ -1057,17 +1188,20 @@
             {
               "refId": "A",
               "format": "table",
+              "rawQuery": true,
+              "editorMode": "code",
               "rawSql": "SELECT threshold_days AS \"SLA (days)\" FROM sla_policy WHERE severity = 'medium'"
             }
-          ]
+          ],
+          "description": "Days a medium finding may stay open before it breaches."
         },
         {
-          "id": 211,
+          "id": 26,
           "type": "stat",
           "title": "Low SLA (days)",
           "gridPos": {
             "x": 18,
-            "y": 45,
+            "y": 43,
             "w": 6,
             "h": 3
           },
@@ -1098,17 +1232,20 @@
             {
               "refId": "A",
               "format": "table",
+              "rawQuery": true,
+              "editorMode": "code",
               "rawSql": "SELECT threshold_days AS \"SLA (days)\" FROM sla_policy WHERE severity = 'low'"
             }
-          ]
+          ],
+          "description": "Days a low finding may stay open before it breaches."
         },
         {
-          "id": 6,
+          "id": 27,
           "type": "table",
-          "title": "SLA Breach by Site & Risk (latest snapshot)",
+          "title": "SLA breaches by site and risk (latest snapshot)",
           "gridPos": {
             "x": 0,
-            "y": 48,
+            "y": 46,
             "w": 12,
             "h": 8
           },
@@ -1120,22 +1257,30 @@
             "defaults": {},
             "overrides": []
           },
-          "options": {},
+          "options": {
+            "showHeader": true,
+            "footer": {
+              "show": false
+            }
+          },
           "targets": [
             {
               "refId": "A",
               "format": "table",
+              "rawQuery": true,
+              "editorMode": "code",
               "rawSql": "SELECT site_label AS \"Site\", risk AS \"Risk\", total_vulns AS \"Total\", sla_breaches AS \"Breaches\", round(100.0 * sla_breaches / NULLIF(total_vulns,0), 1) AS \"Breach Rate %\" FROM daily_sla_metrics WHERE site_label IN ($site) AND snapshot_date = (SELECT max(snapshot_date) FROM daily_sla_metrics) ORDER BY \"Breach Rate %\" DESC"
             }
-          ]
+          ],
+          "description": "Per site and risk band: open findings, how many are past SLA, and the rate. Worst rate first."
         },
         {
-          "id": 7,
+          "id": 28,
           "type": "timeseries",
-          "title": "SLA Breach Rate Trend by Risk Band",
+          "title": "SLA breach rate by risk band",
           "gridPos": {
             "x": 12,
-            "y": 48,
+            "y": 46,
             "w": 12,
             "h": 8
           },
@@ -1145,7 +1290,10 @@
           },
           "fieldConfig": {
             "defaults": {
-              "unit": "percent"
+              "unit": "percent",
+              "custom": {
+                "fillOpacity": 15
+              }
             },
             "overrides": [
               {
@@ -1220,28 +1368,46 @@
             {
               "refId": "A",
               "format": "time_series",
-              "rawSql": "SELECT snapshot_date::timestamp AS time, risk AS metric, round(100.0 * sum(sla_breaches) / NULLIF(sum(total_vulns),0), 1) AS value FROM daily_sla_metrics WHERE site_label IN ($site) AND snapshot_date::date BETWEEN '${__from:date}' AND '${__to:date}' GROUP BY snapshot_date, risk ORDER BY time"
+              "rawQuery": true,
+              "editorMode": "code",
+              "rawSql": "SELECT snapshot_date::timestamp AS time, risk AS metric, round(100.0 * sum(sla_breaches) / NULLIF(sum(total_vulns),0), 1) AS value FROM daily_sla_metrics WHERE site_label IN ($site) AND snapshot_date::date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY snapshot_date, risk ORDER BY time"
             }
-          ]
+          ],
+          "description": "Breach rate per day for each risk band, from the nightly snapshot."
         }
       ]
     },
     {
-      "id": 102,
+      "id": 29,
       "type": "row",
-      "title": "CISA KEV Exposure",
+      "title": "CISA KEV exposure",
+      "collapsed": true,
       "gridPos": {
         "x": 0,
-        "y": 41,
+        "y": 54,
         "w": 24,
         "h": 1
       },
-      "collapsed": true,
       "panels": [
         {
-          "id": 8,
+          "id": 30,
+          "type": "text",
+          "title": "",
+          "gridPos": {
+            "x": 0,
+            "y": 55,
+            "w": 24,
+            "h": 2
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "**KEV** = CISA has confirmed the CVE is being exploited in the wild right now: the highest-priority signal here. **Past due** = beyond the fix-by date CISA set."
+          }
+        },
+        {
+          "id": 31,
           "type": "stat",
-          "title": "Open KEV Count",
+          "title": "Open KEV findings",
           "gridPos": {
             "x": 0,
             "y": 57,
@@ -1255,10 +1421,8 @@
           "fieldConfig": {
             "defaults": {
               "unit": "short",
-              "color": {
-                "mode": "thresholds"
-              },
               "thresholds": {
+                "mode": "absolute",
                 "steps": [
                   {
                     "color": "green",
@@ -1269,6 +1433,9 @@
                     "value": 1
                   }
                 ]
+              },
+              "color": {
+                "mode": "thresholds"
               }
             },
             "overrides": []
@@ -1286,14 +1453,17 @@
             {
               "refId": "A",
               "format": "table",
+              "rawQuery": true,
+              "editorMode": "code",
               "rawSql": "SELECT sum(kev_open_total) AS \"Open KEV\" FROM daily_kev_metrics WHERE site_label IN ($site) AND snapshot_date = (SELECT max(snapshot_date) FROM daily_kev_metrics)"
             }
-          ]
+          ],
+          "description": "Open findings whose CVE is on CISA's Known Exploited list (latest snapshot)."
         },
         {
-          "id": 9,
+          "id": 32,
           "type": "stat",
-          "title": "Ransomware-Flagged",
+          "title": "Ransomware-linked",
           "gridPos": {
             "x": 8,
             "y": 57,
@@ -1307,10 +1477,8 @@
           "fieldConfig": {
             "defaults": {
               "unit": "short",
-              "color": {
-                "mode": "thresholds"
-              },
               "thresholds": {
+                "mode": "absolute",
                 "steps": [
                   {
                     "color": "green",
@@ -1321,6 +1489,9 @@
                     "value": 1
                   }
                 ]
+              },
+              "color": {
+                "mode": "thresholds"
               }
             },
             "overrides": []
@@ -1338,14 +1509,17 @@
             {
               "refId": "A",
               "format": "table",
+              "rawQuery": true,
+              "editorMode": "code",
               "rawSql": "SELECT sum(kev_ransomware_total) AS \"Ransomware-Flagged\" FROM daily_kev_metrics WHERE site_label IN ($site) AND snapshot_date = (SELECT max(snapshot_date) FROM daily_kev_metrics)"
             }
-          ]
+          ],
+          "description": "Open KEV findings CISA notes are used in ransomware campaigns."
         },
         {
-          "id": 10,
+          "id": 33,
           "type": "stat",
-          "title": "Past-Due (KEV due_date)",
+          "title": "Past CISA due date",
           "gridPos": {
             "x": 16,
             "y": 57,
@@ -1359,10 +1533,8 @@
           "fieldConfig": {
             "defaults": {
               "unit": "short",
-              "color": {
-                "mode": "thresholds"
-              },
               "thresholds": {
+                "mode": "absolute",
                 "steps": [
                   {
                     "color": "green",
@@ -1373,6 +1545,9 @@
                     "value": 1
                   }
                 ]
+              },
+              "color": {
+                "mode": "thresholds"
               }
             },
             "overrides": []
@@ -1390,14 +1565,17 @@
             {
               "refId": "A",
               "format": "table",
+              "rawQuery": true,
+              "editorMode": "code",
               "rawSql": "SELECT sum(kev_past_due_total) AS \"Past Due\" FROM daily_kev_metrics WHERE site_label IN ($site) AND snapshot_date = (SELECT max(snapshot_date) FROM daily_kev_metrics)"
             }
-          ]
+          ],
+          "description": "Open KEV findings past the remediation date CISA set when listing them."
         },
         {
-          "id": 11,
+          "id": 34,
           "type": "timeseries",
-          "title": "Open KEV Trend",
+          "title": "Open KEV trend",
           "gridPos": {
             "x": 0,
             "y": 61,
@@ -1410,9 +1588,43 @@
           },
           "fieldConfig": {
             "defaults": {
-              "unit": "short"
+              "unit": "short",
+              "custom": {
+                "fillOpacity": 15
+              }
             },
-            "overrides": []
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Open KEV"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "red"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Ransomware-Flagged"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "dark-red"
+                    }
+                  }
+                ]
+              }
+            ]
           },
           "options": {
             "legend": {
@@ -1424,14 +1636,17 @@
             {
               "refId": "A",
               "format": "time_series",
-              "rawSql": "SELECT snapshot_date::timestamp AS time, sum(kev_open_total) AS \"Open KEV\", sum(kev_ransomware_total) AS \"Ransomware-Flagged\" FROM daily_kev_metrics WHERE site_label IN ($site) AND snapshot_date::date BETWEEN '${__from:date}' AND '${__to:date}' GROUP BY snapshot_date ORDER BY time"
+              "rawQuery": true,
+              "editorMode": "code",
+              "rawSql": "SELECT snapshot_date::timestamp AS time, sum(kev_open_total) AS \"Open KEV\", sum(kev_ransomware_total) AS \"Ransomware-Flagged\" FROM daily_kev_metrics WHERE site_label IN ($site) AND snapshot_date::date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY snapshot_date ORDER BY time"
             }
-          ]
+          ],
+          "description": "Open KEV and ransomware-linked findings per day."
         },
         {
-          "id": 12,
+          "id": 35,
           "type": "table",
-          "title": "Open KEV Findings (by CVE, soonest due first)",
+          "title": "Open KEV findings by CVE (soonest due first)",
           "gridPos": {
             "x": 0,
             "y": 69,
@@ -1448,24 +1663,6 @@
               {
                 "matcher": {
                   "id": "byName",
-                  "options": "CVE"
-                },
-                "properties": [
-                  {
-                    "id": "links",
-                    "value": [
-                      {
-                        "title": "View on NVD",
-                        "url": "https://nvd.nist.gov/vuln/detail/${__value.text}",
-                        "targetBlank": true
-                      }
-                    ]
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
                   "options": "CVSS"
                 },
                 "properties": [
@@ -1476,14 +1673,9 @@
                     }
                   },
                   {
-                    "id": "color",
-                    "value": {
-                      "mode": "thresholds"
-                    }
-                  },
-                  {
                     "id": "thresholds",
                     "value": {
+                      "mode": "absolute",
                       "steps": [
                         {
                           "color": "yellow",
@@ -1503,42 +1695,88 @@
                         }
                       ]
                     }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CVE"
+                },
+                "properties": [
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open",
+                        "url": "https://nvd.nist.gov/vuln/detail/${__value.text}",
+                        "targetBlank": true
+                      }
+                    ]
                   }
                 ]
               }
             ]
           },
-          "options": {},
+          "options": {
+            "showHeader": true,
+            "footer": {
+              "show": false
+            }
+          },
           "targets": [
             {
               "refId": "A",
               "format": "table",
+              "rawQuery": true,
+              "editorMode": "code",
               "rawSql": "SELECT kev_cve_id AS \"CVE\", mode() WITHIN GROUP (ORDER BY product_family) FILTER (WHERE product_family IS NOT NULL) AS \"Application\", round(max(cvss_score)::numeric,1) AS \"CVSS\", max(kev_due_date) AS \"KEV Due\", max(kev_ransomware_use) AS \"Ransomware Use\", count(*) AS \"Findings\", count(DISTINCT source_asset_id) AS \"Assets\", count(DISTINCT site_label) AS \"Sites\", count(*) FILTER (WHERE severity='critical') AS \"Crit\", count(*) FILTER (WHERE severity='high') AS \"High\", count(*) FILTER (WHERE severity='medium') AS \"Med\", count(*) FILTER (WHERE severity='low') AS \"Low\", round(max(age_days)::numeric,1) AS \"Oldest (days)\" FROM dash_vuln_kev_epss WHERE has_kev AND site_label IN ($site) GROUP BY kev_cve_id ORDER BY \"KEV Due\" ASC NULLS LAST, \"Crit\" DESC LIMIT 100"
             }
           ],
-          "description": "As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
+          "description": "One row per KEV CVE: what it's in, how many findings, devices and sites, and the oldest. CVE links to NVD. As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
         }
       ]
     },
     {
-      "id": 201,
+      "id": 36,
       "type": "row",
-      "title": "Predictive Risk (EPSS)",
+      "title": "Predictive risk (EPSS)",
+      "collapsed": true,
       "gridPos": {
         "x": 0,
-        "y": 42,
+        "y": 79,
         "w": 24,
         "h": 1
       },
-      "collapsed": true,
       "panels": [
         {
-          "id": 202,
-          "type": "stat",
-          "title": "High-EPSS, Not-Yet-KEV",
+          "id": 37,
+          "type": "text",
+          "title": "",
           "gridPos": {
             "x": 0,
             "y": 80,
+            "w": 24,
+            "h": 2
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "**EPSS** (FIRST.org) = the probability a CVE is exploited in the next 30 days, updated daily. Predictive, the complement to KEV: high EPSS but not yet KEV is the 'likely next' list."
+          }
+        },
+        {
+          "id": 38,
+          "type": "stat",
+          "title": "High EPSS, not yet KEV",
+          "gridPos": {
+            "x": 0,
+            "y": 82,
             "w": 6,
             "h": 8
           },
@@ -1549,10 +1787,8 @@
           "fieldConfig": {
             "defaults": {
               "unit": "short",
-              "color": {
-                "mode": "thresholds"
-              },
               "thresholds": {
+                "mode": "absolute",
                 "steps": [
                   {
                     "color": "green",
@@ -1567,6 +1803,9 @@
                     "value": 25
                   }
                 ]
+              },
+              "color": {
+                "mode": "thresholds"
               }
             },
             "overrides": []
@@ -1584,17 +1823,20 @@
             {
               "refId": "A",
               "format": "table",
+              "rawQuery": true,
+              "editorMode": "code",
               "rawSql": "SELECT sum(high_epss_non_kev_total) AS \"High-EPSS Not Yet KEV\" FROM daily_epss_metrics WHERE site_label IN ($site) AND snapshot_date = (SELECT max(snapshot_date) FROM daily_epss_metrics)"
             }
-          ]
+          ],
+          "description": "Open findings with EPSS of 50% or more (likely to be exploited within 30 days) that aren't on KEV yet (latest snapshot)."
         },
         {
-          "id": 203,
+          "id": 39,
           "type": "timeseries",
-          "title": "Avg / Max EPSS Trend",
+          "title": "Average / max EPSS",
           "gridPos": {
             "x": 6,
-            "y": 80,
+            "y": 82,
             "w": 18,
             "h": 8
           },
@@ -1605,11 +1847,11 @@
           "fieldConfig": {
             "defaults": {
               "unit": "percentunit",
-              "max": 1,
-              "min": 0,
               "custom": {
                 "fillOpacity": 15
-              }
+              },
+              "min": 0,
+              "max": 1
             },
             "overrides": []
           },
@@ -1623,17 +1865,20 @@
             {
               "refId": "A",
               "format": "time_series",
-              "rawSql": "SELECT snapshot_date::timestamp AS time, avg(avg_epss) AS \"Avg EPSS\", max(max_epss) AS \"Max EPSS\" FROM daily_epss_metrics WHERE site_label IN ($site) AND snapshot_date::date BETWEEN '${__from:date}' AND '${__to:date}' GROUP BY snapshot_date ORDER BY time"
+              "rawQuery": true,
+              "editorMode": "code",
+              "rawSql": "SELECT snapshot_date::timestamp AS time, avg(avg_epss) AS \"Avg EPSS\", max(max_epss) AS \"Max EPSS\" FROM daily_epss_metrics WHERE site_label IN ($site) AND snapshot_date::date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY snapshot_date ORDER BY time"
             }
-          ]
+          ],
+          "description": "Average and highest EPSS across open findings per day."
         },
         {
-          "id": 204,
+          "id": 40,
           "type": "table",
-          "title": "NVD Enrichment Coverage",
+          "title": "NVD enrichment coverage",
           "gridPos": {
             "x": 0,
-            "y": 85,
+            "y": 90,
             "w": 24,
             "h": 4
           },
@@ -1645,23 +1890,30 @@
             "defaults": {},
             "overrides": []
           },
-          "options": {},
+          "options": {
+            "showHeader": true,
+            "footer": {
+              "show": false
+            }
+          },
           "targets": [
             {
               "refId": "A",
               "format": "table",
+              "rawQuery": true,
+              "editorMode": "code",
               "rawSql": "SELECT * FROM dash_nvd_coverage"
             }
           ],
-          "description": "As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
+          "description": "Open CVE-backed findings with a CVSS vector (from the vendor, or looked up from NVD when the vendor gave none). As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
         },
         {
-          "id": 205,
+          "id": 41,
           "type": "table",
-          "title": "Likely Next (High EPSS, Not Yet KEV) - by CVE",
+          "title": "Likely next: high EPSS, not yet KEV (by CVE)",
           "gridPos": {
             "x": 0,
-            "y": 92,
+            "y": 94,
             "w": 24,
             "h": 10
           },
@@ -1675,24 +1927,6 @@
               {
                 "matcher": {
                   "id": "byName",
-                  "options": "CVE"
-                },
-                "properties": [
-                  {
-                    "id": "links",
-                    "value": [
-                      {
-                        "title": "View on NVD",
-                        "url": "https://nvd.nist.gov/vuln/detail/${__value.text}",
-                        "targetBlank": true
-                      }
-                    ]
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
                   "options": "CVSS"
                 },
                 "properties": [
@@ -1703,14 +1937,9 @@
                     }
                   },
                   {
-                    "id": "color",
-                    "value": {
-                      "mode": "thresholds"
-                    }
-                  },
-                  {
                     "id": "thresholds",
                     "value": {
+                      "mode": "absolute",
                       "steps": [
                         {
                           "color": "yellow",
@@ -1730,42 +1959,88 @@
                         }
                       ]
                     }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CVE"
+                },
+                "properties": [
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open",
+                        "url": "https://nvd.nist.gov/vuln/detail/${__value.text}",
+                        "targetBlank": true
+                      }
+                    ]
                   }
                 ]
               }
             ]
           },
-          "options": {},
+          "options": {
+            "showHeader": true,
+            "footer": {
+              "show": false
+            }
+          },
           "targets": [
             {
               "refId": "A",
               "format": "table",
+              "rawQuery": true,
+              "editorMode": "code",
               "rawSql": "SELECT epss_cve_id AS \"CVE\", mode() WITHIN GROUP (ORDER BY product_family) FILTER (WHERE product_family IS NOT NULL) AS \"Application\", round(max(cvss_score)::numeric,1) AS \"CVSS\", round((epss_score*100)::numeric,1) AS \"EPSS %\", round((epss_percentile*100)::numeric,1) AS \"Percentile\", count(*) AS \"Findings\", count(DISTINCT source_asset_id) AS \"Assets\", count(DISTINCT site_label) AS \"Sites\", count(*) FILTER (WHERE severity='critical') AS \"Crit\", count(*) FILTER (WHERE severity='high') AS \"High\", count(*) FILTER (WHERE severity='medium') AS \"Med\", count(*) FILTER (WHERE severity='low') AS \"Low\", count(*) FILTER (WHERE is_remote_no_auth) AS \"Remote/No-Auth\", round(max(age_days)::numeric,1) AS \"Oldest (days)\", ((count(*) FILTER (WHERE severity='critical')*10 + count(*) FILTER (WHERE severity='high')*5 + count(*) FILTER (WHERE severity='medium')*2 + count(*) FILTER (WHERE severity='low')*1) + ROUND((count(*) FILTER (WHERE severity='critical')*10 + count(*) FILTER (WHERE severity='high')*5 + count(*) FILTER (WHERE severity='medium')*2 + count(*) FILTER (WHERE severity='low')*1) * epss_score) + (count(*) FILTER (WHERE is_remote_no_auth) * 5))::int AS \"Priority\" FROM dash_vuln_kev_epss WHERE site_label IN ($site) AND epss_score >= 0.5 AND NOT has_kev GROUP BY epss_cve_id, epss_score, epss_percentile ORDER BY \"Priority\" DESC LIMIT 100"
             }
           ],
-          "description": "As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
+          "description": "One row per CVE with EPSS 50%+ not yet on KEV. Priority = severity-weighted findings, scaled up by EPSS, plus remote/no-auth exposure. As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
         }
       ]
     },
     {
-      "id": 103,
+      "id": 42,
       "type": "row",
-      "title": "Worst Devices",
+      "title": "Worst devices",
+      "collapsed": true,
       "gridPos": {
         "x": 0,
-        "y": 43,
+        "y": 104,
         "w": 24,
         "h": 1
       },
-      "collapsed": true,
       "panels": [
         {
-          "id": 13,
-          "type": "table",
-          "title": "Worst Devices (by risk score)",
+          "id": 43,
+          "type": "text",
+          "title": "",
           "gridPos": {
             "x": 0,
-            "y": 103,
+            "y": 105,
+            "w": 24,
+            "h": 2
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "Devices ranked by risk score: severity counts plus a KEV bonus plus a remote/no-auth bonus. A ranking tool, not an absolute unit."
+          }
+        },
+        {
+          "id": 44,
+          "type": "table",
+          "title": "Worst devices (by risk score)",
+          "gridPos": {
+            "x": 0,
+            "y": 107,
             "w": 24,
             "h": 10
           },
@@ -1798,37 +2073,59 @@
               }
             ]
           },
-          "options": {},
+          "options": {
+            "showHeader": true,
+            "footer": {
+              "show": false
+            }
+          },
           "targets": [
             {
               "refId": "A",
               "format": "table",
+              "rawQuery": true,
+              "editorMode": "code",
               "rawSql": "SELECT hostname AS \"Host\", site_label AS \"Site\", CASE source WHEN 'hadrian' THEN 'External' ELSE 'Endpoint' END AS \"Source\", asset_type AS \"Type\", open_critical AS \"Crit\", open_high AS \"High\", open_medium AS \"Med\", open_low AS \"Low\", open_kev_count AS \"KEV\", open_remote_no_auth AS \"Remote/No-Auth\", round(oldest_open_finding_age_days::numeric,1) AS \"Oldest (days)\", risk_score AS \"Risk Score\" FROM dash_asset_risk WHERE site_label IN ($site) ORDER BY risk_score DESC LIMIT 25"
             }
           ],
-          "description": "As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
+          "description": "Devices ranked by severity counts plus KEV and remote/no-auth bonuses. A ranking, not a unit. As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
         }
       ]
     },
     {
-      "id": 206,
+      "id": 45,
       "type": "row",
-      "title": "Top Patches to Deploy",
+      "title": "Top patches to deploy",
+      "collapsed": true,
       "gridPos": {
         "x": 0,
-        "y": 44,
+        "y": 117,
         "w": 24,
         "h": 1
       },
-      "collapsed": true,
       "panels": [
         {
-          "id": 207,
-          "type": "table",
-          "title": "Top 10 Patches to Deploy (org-wide, not filtered by $site)",
+          "id": 46,
+          "type": "text",
+          "title": "",
           "gridPos": {
             "x": 0,
-            "y": 114,
+            "y": 118,
+            "w": 24,
+            "h": 2
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "Which single fixes close the most, worst risk across the region -- not the same as the biggest raw counts. Not filtered by Site."
+          }
+        },
+        {
+          "id": 47,
+          "type": "table",
+          "title": "Top 10 patches to deploy (all sites)",
+          "gridPos": {
+            "x": 0,
+            "y": 120,
             "w": 24,
             "h": 10
           },
@@ -1861,37 +2158,59 @@
               }
             ]
           },
-          "options": {},
+          "options": {
+            "showHeader": true,
+            "footer": {
+              "show": false
+            }
+          },
           "targets": [
             {
               "refId": "A",
               "format": "table",
+              "rawQuery": true,
+              "editorMode": "code",
               "rawSql": "SELECT title AS \"Fix\", CASE source WHEN 'hadrian' THEN 'External' ELSE 'Endpoint' END AS \"Source\", affected_sites AS \"Sites\", product_family AS \"Product Family\", affected_assets AS \"Assets\", open_findings AS \"Findings\", crit AS \"Crit\", high AS \"High\", medium AS \"Med\", low AS \"Low\", remote_no_auth_count AS \"Remote/No-Auth\", CASE WHEN has_kev THEN 'Yes' ELSE 'No' END AS \"KEV\", round((COALESCE(max_epss,0)*100)::numeric,1) AS \"Max EPSS %\", priority_score AS \"Priority\" FROM dash_patch_impact ORDER BY priority_score DESC LIMIT 10"
             }
           ],
-          "description": "As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
+          "description": "One row per fix (e.g. one browser update, or one Hadrian risk). Priority = devices affected + severity + remote/no-auth + KEV + EPSS: the single fixes that close the most, worst risk. Not filtered by Site. As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
         }
       ]
     },
     {
-      "id": 104,
+      "id": 48,
       "type": "row",
-      "title": "MTTR & SLA Tracking",
+      "title": "Time to remediate",
+      "collapsed": true,
       "gridPos": {
         "x": 0,
-        "y": 45,
+        "y": 130,
         "w": 24,
         "h": 1
       },
-      "collapsed": true,
       "panels": [
         {
-          "id": 14,
-          "type": "timeseries",
-          "title": "Avg Remediation Time by Severity",
+          "id": 49,
+          "type": "text",
+          "title": "",
           "gridPos": {
             "x": 0,
-            "y": 125,
+            "y": 131,
+            "w": 24,
+            "h": 2
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "How long fixes take: days from first detected to fixed, for findings fixed in the period, and the share fixed inside their SLA."
+          }
+        },
+        {
+          "id": 50,
+          "type": "timeseries",
+          "title": "Average days to remediate by severity",
+          "gridPos": {
+            "x": 0,
+            "y": 133,
             "w": 14,
             "h": 8
           },
@@ -1901,7 +2220,10 @@
           },
           "fieldConfig": {
             "defaults": {
-              "unit": "d"
+              "unit": "d",
+              "custom": {
+                "fillOpacity": 15
+              }
             },
             "overrides": [
               {
@@ -1976,17 +2298,20 @@
             {
               "refId": "A",
               "format": "time_series",
-              "rawSql": "SELECT snapshot_date::timestamp AS time, severity AS metric, avg(avg_remediation_days) AS value FROM daily_mttr_metrics WHERE site_label IN ($site) AND snapshot_date::date BETWEEN '${__from:date}' AND '${__to:date}' GROUP BY snapshot_date, severity ORDER BY time"
+              "rawQuery": true,
+              "editorMode": "code",
+              "rawSql": "SELECT snapshot_date::timestamp AS time, severity AS metric, avg(avg_remediation_days) AS value FROM daily_mttr_metrics WHERE site_label IN ($site) AND snapshot_date::date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY snapshot_date, severity ORDER BY time"
             }
-          ]
+          ],
+          "description": "Average days from first detected to fixed, for findings fixed each day."
         },
         {
-          "id": 15,
+          "id": 51,
           "type": "bargauge",
-          "title": "SLA Compliance Rate by Severity (selected period)",
+          "title": "Fixed within SLA by severity (range)",
           "gridPos": {
             "x": 14,
-            "y": 125,
+            "y": 133,
             "w": 10,
             "h": 8
           },
@@ -2000,6 +2325,7 @@
               "min": 0,
               "max": 100,
               "thresholds": {
+                "mode": "absolute",
                 "steps": [
                   {
                     "color": "red",
@@ -2014,6 +2340,9 @@
                     "value": 85
                   }
                 ]
+              },
+              "color": {
+                "mode": "thresholds"
               }
             },
             "overrides": []
@@ -2021,42 +2350,60 @@
           "options": {
             "displayMode": "gradient",
             "orientation": "horizontal",
+            "showUnfilled": true,
             "reduceOptions": {
               "values": true,
               "calcs": [],
               "fields": ""
-            },
-            "showUnfilled": true
+            }
           },
           "targets": [
             {
               "refId": "A",
               "format": "table",
-              "rawSql": "SELECT severity AS \"Severity\", round(100.0 * sum(sla_compliant_count) / NULLIF(sum(fixed_count),0), 1) AS \"SLA Compliance %\" FROM daily_mttr_metrics WHERE site_label IN ($site) AND snapshot_date::date BETWEEN '${__from:date}' AND '${__to:date}' GROUP BY severity ORDER BY CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END"
+              "rawQuery": true,
+              "editorMode": "code",
+              "rawSql": "SELECT severity AS \"Severity\", round(100.0 * sum(sla_compliant_count) / NULLIF(sum(fixed_count),0), 1) AS \"SLA Compliance %\" FROM daily_mttr_metrics WHERE site_label IN ($site) AND snapshot_date::date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY severity ORDER BY CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END"
             }
-          ]
+          ],
+          "description": "Share of findings fixed in the range that were fixed within their SLA."
         }
       ]
     },
     {
-      "id": 105,
+      "id": 52,
       "type": "row",
-      "title": "Product / Vendor Drilldown",
+      "title": "Products",
+      "collapsed": true,
       "gridPos": {
         "x": 0,
-        "y": 46,
+        "y": 141,
         "w": 24,
         "h": 1
       },
-      "collapsed": true,
       "panels": [
         {
-          "id": 16,
-          "type": "table",
-          "title": "Top Products by Open Findings (latest snapshot)",
+          "id": 53,
+          "type": "text",
+          "title": "",
           "gridPos": {
             "x": 0,
-            "y": 134,
+            "y": 142,
+            "w": 24,
+            "h": 2
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "Open findings by product from the latest snapshot -- where the backlog actually sits."
+          }
+        },
+        {
+          "id": 54,
+          "type": "table",
+          "title": "Top products by open findings (latest snapshot)",
+          "gridPos": {
+            "x": 0,
+            "y": 144,
             "w": 24,
             "h": 10
           },
@@ -2068,28 +2415,24 @@
             "defaults": {},
             "overrides": []
           },
-          "options": {},
+          "options": {
+            "showHeader": true,
+            "footer": {
+              "show": false
+            }
+          },
           "targets": [
             {
               "refId": "A",
               "format": "table",
+              "rawQuery": true,
+              "editorMode": "code",
               "rawSql": "SELECT product AS \"Product\", vendor AS \"Vendor\", product_family AS \"Family\", sum(open_crit) AS \"Crit\", sum(open_high) AS \"High\", sum(open_medium) AS \"Med\", sum(open_low) AS \"Low\", sum(open_total) AS \"Total\" FROM daily_product_metrics WHERE site_label IN ($site) AND snapshot_date = (SELECT max(snapshot_date) FROM daily_product_metrics) GROUP BY product, vendor, product_family ORDER BY \"Total\" DESC LIMIT 15"
             }
-          ]
+          ],
+          "description": "Open findings per product, by severity."
         }
       ]
-    }
-  ],
-  "links": [
-    {
-      "type": "dashboards",
-      "tags": [
-        "secops"
-      ],
-      "asDropdown": false,
-      "title": "SecOps",
-      "includeVars": true,
-      "keepTime": true
     }
   ]
 }

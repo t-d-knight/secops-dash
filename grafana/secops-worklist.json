@@ -88,11 +88,11 @@
         "x": 0,
         "y": 0,
         "w": 24,
-        "h": 3
+        "h": 2
       },
       "options": {
         "mode": "markdown",
-        "content": "### Cyber Team Worklist\nCoverage gaps, data-quality problems and triage queues -- the things to fix so every other dashboard and report is telling the truth. Point-in-time (the time picker doesn't apply), filtered by **Site**. Start with **Feed health**: a failing feed makes everything downstream stale."
+        "content": "Coverage gaps, data-quality problems and triage queues: the things to fix so every other dashboard and report tells the truth. Point-in-time (the time picker doesn't apply). Start with **Feed health**. Hover the **i** on any panel for exactly what it counts."
       }
     },
     {
@@ -102,7 +102,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 3,
+        "y": 2,
         "w": 24,
         "h": 1
       },
@@ -114,7 +114,7 @@
       "title": "Collectors (latest run each)",
       "gridPos": {
         "x": 0,
-        "y": 4,
+        "y": 3,
         "w": 24,
         "h": 7
       },
@@ -191,7 +191,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 11,
+        "y": 10,
         "w": 24,
         "h": 1
       },
@@ -199,11 +199,26 @@
     },
     {
       "id": 6,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**Active** = sensor seen in the last 7 days. **Assessed** = Falcon has returned vulnerability data for it. The gap is estate the vulnerability figures can't see."
+      }
+    },
+    {
+      "id": 7,
       "type": "stat",
       "title": "Active managed hosts (7d)",
       "gridPos": {
         "x": 0,
-        "y": 12,
+        "y": 13,
         "w": 4,
         "h": 4
       },
@@ -246,15 +261,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM (SELECT * FROM assets WHERE source = 'falcon' AND NOT retired AND last_seen > now() - interval '7 days') a WHERE site_label IN ($site)"
         }
-      ]
+      ],
+      "description": "Hosts with a Falcon sensor that checked in within 7 days."
     },
     {
-      "id": 7,
+      "id": 8,
       "type": "stat",
       "title": "Vulnerability assessment coverage",
       "gridPos": {
         "x": 4,
-        "y": 12,
+        "y": 13,
         "w": 4,
         "h": 4
       },
@@ -310,12 +326,12 @@
       "description": "Active managed hosts Falcon has returned vulnerability data for. Everything below 100% is estate the vuln figures can't see."
     },
     {
-      "id": 8,
+      "id": 9,
       "type": "stat",
       "title": "Active hosts not assessed",
       "gridPos": {
         "x": 8,
-        "y": 12,
+        "y": 13,
         "w": 4,
         "h": 4
       },
@@ -366,15 +382,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM (SELECT * FROM assets WHERE source = 'falcon' AND NOT retired AND last_seen > now() - interval '7 days') a WHERE a.site_label IN ($site) AND NOT EXISTS (SELECT 1 FROM vuln_findings v WHERE v.source = 'falcon_spotlight' AND v.source_asset_id = a.source_asset_id)"
         }
-      ]
+      ],
+      "description": "Active hosts Falcon has returned no vulnerability data for: blind spots in the vulnerability figures."
     },
     {
-      "id": 9,
+      "id": 10,
       "type": "stat",
       "title": "Stale sensors",
       "gridPos": {
         "x": 12,
-        "y": 12,
+        "y": 13,
         "w": 4,
         "h": 4
       },
@@ -429,12 +446,12 @@
       "description": "Managed hosts silent for 7+ days: unprotected, unassessed, or decommissioned but not removed from Falcon."
     },
     {
-      "id": 10,
+      "id": 11,
       "type": "stat",
       "title": "Named machines missing a sensor",
       "gridPos": {
         "x": 16,
-        "y": 12,
+        "y": 13,
         "w": 4,
         "h": 4
       },
@@ -489,12 +506,12 @@
       "description": "AD computer accounts in active use (servers, workstations, DCs) with no Falcon sensor -- Discover's unmanaged list minus duplicates, service accounts, appliances and stale objects. Network-only devices are counted separately below."
     },
     {
-      "id": 11,
+      "id": 12,
       "type": "stat",
       "title": "Hosts in Ungrouped",
       "gridPos": {
         "x": 20,
-        "y": 12,
+        "y": 13,
         "w": 4,
         "h": 4
       },
@@ -549,12 +566,12 @@
       "description": "Managed + unmanaged hosts no site rule matched (ignores the Site filter). Fix with falcon_groups / ou_contains / hostname_regex in config.yaml."
     },
     {
-      "id": 12,
+      "id": 13,
       "type": "table",
       "title": "Coverage by site",
       "gridPos": {
         "x": 0,
-        "y": 16,
+        "y": 17,
         "w": 10,
         "h": 10
       },
@@ -621,15 +638,16 @@
           "editorMode": "code",
           "rawSql": "SELECT s.site_label AS \"Site\", COALESCE(a.active,0) AS \"Active hosts\", COALESCE(a.assessed,0) AS \"Assessed\", round(100.0 * COALESCE(a.assessed,0) / NULLIF(a.active,0), 1) AS \"% assessed\", COALESCE(st.n,0) AS \"Stale sensors\", COALESCE(u.n,0) AS \"Missing a sensor\" FROM dim_site s LEFT JOIN (SELECT site_label, count(*) AS active, count(*) FILTER (WHERE EXISTS (SELECT 1 FROM vuln_findings v WHERE v.source = 'falcon_spotlight' AND v.source_asset_id = a.source_asset_id)) AS assessed FROM (SELECT * FROM assets WHERE source = 'falcon' AND NOT retired AND last_seen > now() - interval '7 days') a GROUP BY 1) a ON a.site_label = s.site_label LEFT JOIN (SELECT site_label, count(*) n FROM assets WHERE source = 'falcon' AND NOT retired AND last_seen <= now() - interval '7 days' GROUP BY 1) st ON st.site_label = s.site_label LEFT JOIN (SELECT site_label, count(*) n FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND discovery_class IN ('domain_controller_no_sensor', 'server_no_sensor', 'workstation_no_sensor', 'cloud_no_sensor') GROUP BY 1) u ON u.site_label = s.site_label WHERE s.site_label IN ($site) ORDER BY \"% assessed\" NULLS LAST, \"Active hosts\" DESC"
         }
-      ]
+      ],
+      "description": "Per site: active hosts, how many are assessed, stale sensors and named machines missing a sensor. Worst coverage first."
     },
     {
-      "id": 13,
+      "id": 14,
       "type": "table",
       "title": "Active hosts with no vulnerability data",
       "gridPos": {
         "x": 10,
-        "y": 16,
+        "y": 17,
         "w": 14,
         "h": 10
       },
@@ -659,25 +677,25 @@
       "description": "Compare sensor version, host groups and policy against assessed hosts to find what Exposure Management isn't covering."
     },
     {
-      "id": 14,
+      "id": 15,
       "type": "row",
       "title": "Missing endpoints",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 26,
+        "y": 27,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 15,
+      "id": 16,
       "type": "table",
       "title": "Stale sensors (silent 7+ days)",
       "gridPos": {
         "x": 0,
-        "y": 27,
+        "y": 28,
         "w": 12,
         "h": 10
       },
@@ -728,12 +746,12 @@
       "description": "Decommissioned: remove from Falcon. Still in use: fix the sensor."
     },
     {
-      "id": 16,
+      "id": 17,
       "type": "table",
       "title": "Unmanaged assets by class",
       "gridPos": {
         "x": 12,
-        "y": 27,
+        "y": 28,
         "w": 12,
         "h": 10
       },
@@ -763,25 +781,25 @@
       "description": "Discover's unmanaged list, sorted into real machines without a sensor vs records that aren't missing endpoints at all. Classified by collectors/falcon_hosts.py."
     },
     {
-      "id": 17,
+      "id": 18,
       "type": "row",
       "title": "Missing sensors: named machines",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 37,
+        "y": 38,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 18,
+      "id": 19,
       "type": "table",
       "title": "Servers, DCs and workstations with no sensor (AD accounts in use)",
       "gridPos": {
         "x": 0,
-        "y": 38,
+        "y": 39,
         "w": 24,
         "h": 12
       },
@@ -811,25 +829,25 @@
       "description": "Real, in-use Windows machines Falcon knows from AD but that have no sensor. Install one, or record why not (vendor-supported clinical systems). A workstation here can also be a renamed managed host -- check the name in Falcon first."
     },
     {
-      "id": 19,
+      "id": 20,
       "type": "row",
       "title": "Missing sensors: devices seen on the network",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 50,
+        "y": 51,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 20,
+      "id": 21,
       "type": "table",
       "title": "Network devices with no sensor (passive discovery)",
       "gridPos": {
         "x": 0,
-        "y": 51,
+        "y": 52,
         "w": 16,
         "h": 12
       },
@@ -859,12 +877,12 @@
       "description": "Seen talking on the network by managed sensors, no AD account. VMware MACs are VMs without a sensor or ESXi management interfaces; Dell/Intel/HP/Lenovo NICs are often PCs; printers, phones and IoT can't take a sensor."
     },
     {
-      "id": 21,
+      "id": 22,
       "type": "table",
       "title": "Network devices by MAC vendor",
       "gridPos": {
         "x": 16,
-        "y": 51,
+        "y": 52,
         "w": 8,
         "h": 12
       },
@@ -890,27 +908,28 @@
           "editorMode": "code",
           "rawSql": "SELECT COALESCE(mac_vendor, '(unknown)') AS \"MAC vendor\", count(*) AS \"Devices\", count(*) FILTER (WHERE hostname IS NOT NULL) AS \"With hostname\" FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND site_label IN ($site) AND discovery_class IN ('vmware_nic', 'network_device') GROUP BY 1 ORDER BY 2 DESC"
         }
-      ]
+      ],
+      "description": "Sensorless devices seen only on the network, grouped by network-card maker -- a quick way to spot printers, phones, VMs and IoT."
     },
     {
-      "id": 22,
+      "id": 23,
       "type": "row",
       "title": "Not missing endpoints (AD cleanup)",
       "collapsed": true,
       "gridPos": {
         "x": 0,
-        "y": 63,
+        "y": 64,
         "w": 24,
         "h": 1
       },
       "panels": [
         {
-          "id": 23,
+          "id": 24,
           "type": "table",
           "title": "Discover records that aren't unsensored machines",
           "gridPos": {
             "x": 0,
-            "y": 64,
+            "y": 65,
             "w": 24,
             "h": 12
           },
@@ -942,25 +961,40 @@
       ]
     },
     {
-      "id": 24,
+      "id": 25,
       "type": "row",
       "title": "External attack surface (Hadrian) hygiene",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 76,
+        "y": 77,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 25,
+      "id": 26,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 78,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Keeping Hadrian's picture accurate: assets without a site tag, and assets it hasn't seen lately (gone, or moved?)."
+      }
+    },
+    {
+      "id": 27,
       "type": "stat",
       "title": "Potential risks to triage",
       "gridPos": {
         "x": 0,
-        "y": 77,
+        "y": 80,
         "w": 4,
         "h": 4
       },
@@ -1015,12 +1049,12 @@
       "description": "Unverified detections: confirm (promote) or dismiss in Hadrian."
     },
     {
-      "id": 26,
+      "id": 28,
       "type": "stat",
       "title": "Confirmed risks open",
       "gridPos": {
         "x": 4,
-        "y": 77,
+        "y": 80,
         "w": 4,
         "h": 4
       },
@@ -1071,15 +1105,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM vuln_findings WHERE source = 'hadrian' AND state IN ('OPEN','REOPENED') AND risk_type IN ('Verified','UnpatchedTechnology','InfectedDevice') AND site_label IN ($site)"
         }
-      ]
+      ],
+      "description": "Open Hadrian risks that are verified, unpatched technology or infected devices."
     },
     {
-      "id": 27,
+      "id": 29,
       "type": "stat",
       "title": "Infostealer infections",
       "gridPos": {
         "x": 8,
-        "y": 77,
+        "y": 80,
         "w": 4,
         "h": 4
       },
@@ -1130,15 +1165,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM vuln_findings WHERE source = 'hadrian' AND state IN ('OPEN','REOPENED') AND risk_type = 'InfectedDevice' AND site_label IN ($site)"
         }
-      ]
+      ],
+      "description": "Open Hadrian infostealer findings: credentials of ours seen in malware logs."
     },
     {
-      "id": 28,
+      "id": 30,
       "type": "stat",
       "title": "Assets not matched by tag",
       "gridPos": {
         "x": 12,
-        "y": 77,
+        "y": 80,
         "w": 4,
         "h": 4
       },
@@ -1193,12 +1229,12 @@
       "description": "Tag these in Hadrian -- the collector also writes them to reports/hadrian-suggested-tags.csv."
     },
     {
-      "id": 29,
+      "id": 31,
       "type": "stat",
       "title": "Assets not seen in 30 days",
       "gridPos": {
         "x": 16,
-        "y": 77,
+        "y": 80,
         "w": 4,
         "h": 4
       },
@@ -1253,12 +1289,12 @@
       "description": "Hadrian hasn't observed these recently: gone, moved, or no longer reachable. Archive (zzArchive) if abandoned."
     },
     {
-      "id": 30,
+      "id": 32,
       "type": "stat",
       "title": "Reopened risks",
       "gridPos": {
         "x": 20,
-        "y": 77,
+        "y": 80,
         "w": 4,
         "h": 4
       },
@@ -1313,12 +1349,12 @@
       "description": "Risks marked fixed that Hadrian found again -- the fix didn't hold."
     },
     {
-      "id": 31,
+      "id": 33,
       "type": "table",
       "title": "Triage queue: potential risks by title",
       "gridPos": {
         "x": 0,
-        "y": 81,
+        "y": 84,
         "w": 14,
         "h": 10
       },
@@ -1409,12 +1445,12 @@
       "description": "Grouped so one decision clears many: confirm or dismiss each title across its assets."
     },
     {
-      "id": 32,
+      "id": 34,
       "type": "table",
       "title": "Infostealer infections",
       "gridPos": {
         "x": 14,
-        "y": 81,
+        "y": 84,
         "w": 10,
         "h": 10
       },
@@ -1444,12 +1480,12 @@
       "description": "Compromised credentials harvested from infected devices. Reset the named accounts and find the device. Not masked here -- this dashboard is for the cyber team."
     },
     {
-      "id": 33,
+      "id": 35,
       "type": "table",
       "title": "External assets: not tag-matched or not recently seen",
       "gridPos": {
         "x": 0,
-        "y": 91,
+        "y": 94,
         "w": 24,
         "h": 8
       },
@@ -1475,28 +1511,29 @@
           "editorMode": "code",
           "rawSql": "SELECT name AS \"Asset\", asset_type AS \"Type\", site_label AS \"Site\", site_matched_by AS \"Site from\", last_seen AS \"Last seen by Hadrian\" FROM external_assets WHERE source = 'hadrian' AND NOT retired AND site_label IN ($site) AND (site_matched_by <> 'hadrian_tag' OR last_seen IS NULL OR last_seen < now() - interval '30 days') ORDER BY last_seen NULLS FIRST"
         }
-      ]
+      ],
+      "description": "Hadrian assets with no site tag (site guessed from the domain) or not seen recently."
     },
     {
-      "id": 34,
+      "id": 36,
       "type": "row",
       "title": "Identity site mapping",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 99,
+        "y": 102,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 35,
+      "id": 37,
       "type": "table",
       "title": "Identities in Ungrouped, by domain and OU",
       "gridPos": {
         "x": 0,
-        "y": 100,
+        "y": 103,
         "w": 12,
         "h": 10
       },
@@ -1526,12 +1563,12 @@
       "description": "Ignores the Site filter. Each row is a mapping rule waiting to be written: add the domain or OU fragment to the right site in config.yaml."
     },
     {
-      "id": 36,
+      "id": 38,
       "type": "table",
       "title": "Identities per site",
       "gridPos": {
         "x": 12,
-        "y": 100,
+        "y": 103,
         "w": 12,
         "h": 10
       },
@@ -1561,25 +1598,25 @@
       "description": "A site with far fewer identities than staff is a sign its accounts are landing in Ungrouped (or another site)."
     },
     {
-      "id": 37,
+      "id": 39,
       "type": "row",
       "title": "Shared-domain access accounts (VPN / remote apps)",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 110,
+        "y": 113,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 38,
+      "id": 40,
       "type": "text",
       "title": "",
       "gridPos": {
         "x": 0,
-        "y": 111,
+        "y": 114,
         "w": 24,
         "h": 3
       },
@@ -1589,12 +1626,12 @@
       }
     },
     {
-      "id": 39,
+      "id": 41,
       "type": "stat",
       "title": "Extra access accounts (enabled)",
       "gridPos": {
         "x": 0,
-        "y": 114,
+        "y": 117,
         "w": 4,
         "h": 4
       },
@@ -1645,15 +1682,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM identity_entities e WHERE access_account IS NOT NULL AND NOT retired AND site_label IN ($site) AND enabled IS NOT FALSE"
         }
-      ]
+      ],
+      "description": "Enabled second accounts in the shared domain used only for VPN or remote apps."
     },
     {
-      "id": 40,
+      "id": 42,
       "type": "stat",
       "title": "Enabled but unused (stale)",
       "gridPos": {
         "x": 4,
-        "y": 114,
+        "y": 117,
         "w": 4,
         "h": 4
       },
@@ -1708,12 +1746,12 @@
       "description": "Quick win: nobody is using these -- disable."
     },
     {
-      "id": 41,
+      "id": 43,
       "type": "stat",
       "title": "Legacy (no VPN or remote-app group)",
       "gridPos": {
         "x": 8,
-        "y": 114,
+        "y": 117,
         "w": 4,
         "h": 4
       },
@@ -1764,15 +1802,16 @@
           "editorMode": "code",
           "rawSql": "SELECT count(*) FROM identity_entities e WHERE access_account IS NOT NULL AND NOT retired AND site_label IN ($site) AND enabled IS NOT FALSE AND access_account = 'legacy'"
         }
-      ]
+      ],
+      "description": "Enabled shared-domain access accounts in neither a VPN nor a remote-app group: confirm and remove."
     },
     {
-      "id": 42,
+      "id": 44,
       "type": "table",
       "title": "By site",
       "gridPos": {
         "x": 0,
-        "y": 118,
+        "y": 121,
         "w": 10,
         "h": 10
       },
@@ -1819,15 +1858,16 @@
           "editorMode": "code",
           "rawSql": "SELECT site_label AS \"Site\", count(*) FILTER (WHERE access_account = 'vpn') AS \"VPN\", count(*) FILTER (WHERE access_account = 'rds') AS \"Remote apps\", count(*) FILTER (WHERE access_account = 'vpn+rds') AS \"VPN + remote apps\", count(*) FILTER (WHERE access_account = 'legacy') AS \"Legacy\", count(*) FILTER (WHERE enabled IS NOT FALSE) AS \"Enabled\", count(*) FILTER (WHERE enabled IS NOT FALSE AND EXISTS (SELECT 1 FROM identity_risk_factors f WHERE f.source = e.source AND f.entity_id = e.entity_id AND f.factor_type = 'STALE_ACCOUNT')) AS \"Enabled + stale\" FROM identity_entities e WHERE access_account IS NOT NULL AND NOT retired AND site_label IN ($site) GROUP BY 1 ORDER BY \"Enabled\" DESC"
         }
-      ]
+      ],
+      "description": "Shared-domain access accounts per home site, by what they're used for."
     },
     {
-      "id": 43,
+      "id": 45,
       "type": "table",
       "title": "Accounts",
       "gridPos": {
         "x": 10,
-        "y": 118,
+        "y": 121,
         "w": 14,
         "h": 10
       },
@@ -1853,27 +1893,28 @@
           "editorMode": "code",
           "rawSql": "SELECT display_name AS \"Name\", sam_account_name AS \"Account\", site_label AS \"Site\", access_account AS \"Used for\", CASE WHEN enabled IS FALSE THEN 'No' ELSE 'Yes' END AS \"Enabled\", CASE WHEN EXISTS (SELECT 1 FROM identity_risk_factors f WHERE f.source = e.source AND f.entity_id = e.entity_id AND f.factor_type = 'STALE_ACCOUNT') THEN 'Yes' ELSE '' END AS \"Stale\", array_to_string(ARRAY(SELECT g FROM unnest(ad_groups) g WHERE g ~* '(vpn|manad|remote|terminal|rds|rdp)'), ', ') AS \"Access groups\" FROM identity_entities e WHERE access_account IS NOT NULL AND NOT retired AND site_label IN ($site) ORDER BY enabled IS FALSE, NOT EXISTS (SELECT 1 FROM identity_risk_factors f WHERE f.source = e.source AND f.entity_id = e.entity_id AND f.factor_type = 'STALE_ACCOUNT'), site_label, display_name"
         }
-      ]
+      ],
+      "description": "Every shared-domain access account; enabled and stale ones first."
     },
     {
-      "id": 44,
+      "id": 46,
       "type": "row",
       "title": "DMARC (parsedmarc)",
       "collapsed": true,
       "gridPos": {
         "x": 0,
-        "y": 128,
+        "y": 131,
         "w": 24,
         "h": 1
       },
       "panels": [
         {
-          "id": 45,
+          "id": 47,
           "type": "text",
           "title": "",
           "gridPos": {
             "x": 0,
-            "y": 129,
+            "y": 132,
             "w": 24,
             "h": 3
           },
@@ -1883,12 +1924,12 @@
           }
         },
         {
-          "id": 46,
+          "id": 48,
           "type": "table",
           "title": "DMARC pass rate by sending domain (range)",
           "gridPos": {
             "x": 0,
-            "y": 132,
+            "y": 135,
             "w": 12,
             "h": 9
           },
@@ -1955,15 +1996,16 @@
               "editorMode": "code",
               "rawSql": "SELECT header_from AS \"From domain\", sum(messages) AS \"Messages\", round(100.0 * sum(dmarc_pass) / NULLIF(sum(messages), 0), 1) AS \"Pass %\", sum(quarantined) AS \"Quarantined\", sum(rejected) AS \"Rejected\" FROM dmarc_daily WHERE site_label IN ($site) AND report_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1 ORDER BY \"Pass %\" NULLS LAST, 2 DESC"
             }
-          ]
+          ],
+          "description": "Per From domain in the range: volume, pass rate and failures."
         },
         {
-          "id": 47,
+          "id": 49,
           "type": "table",
           "title": "Top failing sources (range)",
           "gridPos": {
             "x": 12,
-            "y": 132,
+            "y": 135,
             "w": 12,
             "h": 9
           },

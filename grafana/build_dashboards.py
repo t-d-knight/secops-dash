@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Dashboard-as-code for the four non-vuln SecOps dashboards. Edit the panel
+Dashboard-as-code for the five SecOps dashboards. Edit the panel
 definitions here and re-run; the generated JSON is committed alongside so it
 can be imported without running anything.
 
-  python3 grafana/build_dashboards.py          # writes grafana/secops-*.json
+  python3 grafana/build_dashboards.py          # writes grafana/secops-*.json + vuln-dashboard.json
 
 Every dashboard shares the `secops` tag (they link to each other, keeping
-$site and the time range) and the same conventions as vuln-dashboard.json:
+$site and the time range) and the same conventions:
 severity is red -> orange -> amber -> yellow, never green; green only ever
 means a genuinely good number (coverage, pass rate, things closed).
 
@@ -76,13 +76,18 @@ class Builder:
             self.panels.append(p)
         return p
 
-    def row(self, title, collapsed=False):
+    def row(self, title, collapsed=False, note=None):
+        """A section. `note`: one or two lines under the header saying what the section is
+        and its main caveat (rows can't carry a description themselves); per-panel
+        definitions go in the panel descriptions (the hover i)."""
         self.newline()
         r = {"id": self._id(), "type": "row", "title": title, "collapsed": collapsed,
              "gridPos": {"x": 0, "y": self.y, "w": 24, "h": 1}, "panels": []}
         self.panels.append(r)
         self.current_row = r
         self.y += 1
+        if note:
+            self.text(note, h=2)
         return r
 
     def text(self, content, w=24, h=5):
@@ -99,18 +104,29 @@ class Builder:
             p["description"] = description
         return self.add(p)
 
-    def stat(self, title, sql, w=4, h=4, unit="short", thresholds=None, description=None, decimals=None):
+    def stat(self, title, sql, w=4, h=4, unit="short", thresholds=None, description=None, decimals=None,
+             color=None):
         d = {"unit": unit}
         if decimals is not None:
             d["decimals"] = decimals
         if thresholds:
             d["thresholds"] = {"mode": "absolute", "steps": thresholds}
             d["color"] = {"mode": "thresholds"}
+        elif color:
+            d["color"] = {"mode": "fixed", "fixedColor": color}
         return self._panel("stat", title, sql, w, h, defaults=d, description=description,
                            options={"reduceOptions": {"calcs": ["lastNotNull"]},
-                                    "colorMode": "value" if thresholds else "none", "graphMode": "none"})
+                                    "colorMode": "value" if thresholds or color else "none", "graphMode": "none"})
 
-    def ts(self, title, sql, w=12, h=8, unit="short", colors=None, stack=False, bars=False, description=None):
+    def delta(self, title, sql, w=6, h=4, suffix=None, decimals=0, description=None):
+        """Change-over-time tile. Every one counts a bad thing, so any rise is red and any
+        fall (or no change) green. suffix " pts" for differences between percentages."""
+        return self.stat(title, sql, w=w, h=h, unit=f"suffix:{suffix}" if suffix else "short", decimals=decimals,
+                         thresholds=[{"color": "green", "value": None}, {"color": "red", "value": 0.000001}],
+                         description=description)
+
+    def ts(self, title, sql, w=12, h=8, unit="short", colors=None, stack=False, bars=False, description=None,
+           minmax=None):
         custom = {"fillOpacity": 15}
         if stack:
             custom["stacking"] = {"mode": "normal"}
@@ -119,8 +135,11 @@ class Builder:
         ov = [{"matcher": {"id": "byName", "options": n},
                "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": c}}]}
               for n, c in (colors or {}).items()]
+        d = {"unit": unit, "custom": custom}
+        if minmax:
+            d["min"], d["max"] = minmax
         return self._panel("timeseries", title, sql, w, h, fmt="time_series",
-                           defaults={"unit": unit, "custom": custom}, overrides=ov, description=description,
+                           defaults=d, overrides=ov, description=description,
                            options={"legend": {"displayMode": "list", "placement": "bottom"}})
 
     def table(self, title, sql, w=24, h=9, overrides=None, description=None, links=None):
@@ -170,7 +189,19 @@ NEUTRAL = [{"color": "text", "value": None}]
 STALE_PCT = [{"color": "green", "value": None}, {"color": "orange", "value": 10}, {"color": "red", "value": 25}]
 
 
-def dashboard(uid, title, description, b: Builder):
+HOVER = "Hover the **i** on any panel for exactly what it counts."
+
+
+def dashboard(uid, title, description, b: Builder, help=None, tags=(), time_from="now-30d"):
+    """`help`: panel title -> description, for panels that don't set their own -- kept
+    together per dashboard so the definitions read as one glossary."""
+    def walk(ps):
+        for p in ps:
+            yield p
+            yield from walk(p.get("panels") or [])
+    for p in walk(b.panels):
+        if p["type"] not in ("row", "text") and not p.get("description") and (help or {}).get(p["title"]):
+            p["description"] = help[p["title"]]
     return {
         "__inputs": [{"name": "DS_POSTGRESQL", "label": "PostgreSQL",
                       "description": "Postgres datasource pointing at the secops_dashboard database",
@@ -178,9 +209,9 @@ def dashboard(uid, title, description, b: Builder):
         "__requires": [{"type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0"},
                        {"type": "datasource", "id": "postgres", "name": "PostgreSQL", "version": "1.0.0"}],
         "id": None, "uid": uid, "title": title, "description": description,
-        "tags": ["secops"], "timezone": "browser", "schemaVersion": 39, "version": 1,
+        "tags": ["secops", *tags], "timezone": "browser", "schemaVersion": 39, "version": 1,
         "editable": True, "graphTooltip": 1, "refresh": "1h",
-        "time": {"from": "now-30d", "to": "now"}, "timepicker": {},
+        "time": {"from": time_from, "to": "now"}, "timepicker": {},
         "annotations": {"list": []},
         "links": [{"type": "dashboards", "tags": ["secops"], "asDropdown": False, "title": "SecOps",
                    "includeVars": True, "keepTime": True}],
@@ -193,21 +224,36 @@ def dashboard(uid, title, description, b: Builder):
     }
 
 
+OVERVIEW_HELP = {
+    "Open Crit/High alerts": "Falcon detections of critical or high severity not yet closed.",
+    "Email threats (range)": "Phishing and malware emails Check Point flagged in the selected range "
+                             "(including suspected), by recipient site.",
+    "DMARC pass (range)": "Share of mail claiming to be from our domains that passed DMARC, from receiving "
+                          "servers' aggregate reports in the selected range.",
+    "Site scorecard": "Per site: open critical/high endpoint and external vulns, KEV findings and SLA breaches "
+                      "(seen in 30 days, as at the last nightly run); open critical/high alerts; high-risk accounts; "
+                      "Entra risky users and MFA %; email threats and DMARC pass % in range; stale sensors and "
+                      "unmanaged devices.",
+    "Open vulns by source": "Open findings per day from the nightly snapshot, split endpoint (Falcon) vs external "
+                            "(Hadrian).",
+    "New alerts per day by severity": "Falcon detections by the day they were raised.",
+    "Identity risk": "High-risk accounts per day: Falcon Identity Protection and Entra ID Protection.",
+    "Email threats per day": "Check Point email security events per day, by type.",
+    "Unmapped examples (add these to config.yaml)": "Hosts and accounts no site rule matched, with the attributes "
+                                                     "a rule could use (domain, OU, groups, email domain).",
+}
+
 # =====================================================================
 #  1. SecOps Overview
 # =====================================================================
 def overview():
     b = Builder()
-    b.text(
-        "### SecOps Overview\n"
-        "One row per site across every feed. **Vulns** = Falcon Exposure Management (endpoints) + Hadrian "
-        "(external), open and seen in the last 30 days. **Alerts** = Falcon detections not yet closed. "
-        "**Identity** = Falcon Identity Protection high-risk accounts + Entra ID users at risk. "
-        "**Email** = Check Point HEC threats in the selected range. **DMARC** = share of mail claiming the "
-        "site's domains that passed DMARC. Drill into the linked dashboards (top right) for detail. "
-        "If a number looks too good, check **Data freshness** at the bottom first.", h=4)
+    b.text("Every feed, per site. Drill into the linked dashboards (top right) for detail. If a number looks "
+           f"too good, check **Data freshness** at the bottom first. {HOVER}", h=2)
 
-    b.row("Posture at a glance")
+    b.row("Posture at a glance", note="**Vulns** = Falcon Exposure Management (endpoints) + Hadrian (external), "
+          "open and seen in the last 30 days, as at the last nightly run. **Alerts** = Falcon detections not yet "
+          "closed. **Email** and **DMARC** follow the time picker.")
     # dash_vuln_site_summary: pre-computed nightly by rollup_daily_metrics.py (the live
     # fact view took 1-2 minutes per panel at estate scale)
     b.stat("Open Crit + High vulns",
@@ -235,7 +281,8 @@ def overview():
            f"WHERE site_label IN ($site) AND {rng_d('report_date')}",
            unit="percent", thresholds=GOOD_PCT, decimals=1)
 
-    b.row("Site scorecard")
+    b.row("Site scorecard", note="One row per site, worst KEV exposure first. Vulnerability columns are as at the "
+          "last nightly run; email and DMARC follow the time picker; the rest are live.")
     b.table("Site scorecard", """
         WITH v AS (
             SELECT site_label,
@@ -279,7 +326,8 @@ def overview():
         thresh_bg("DMARC pass %", GOOD_PCT), thresh_bg("Stale sensors", BAD_UP),
         bg("Endpoint C+H"), bg("External C+H"), bg("SLA breaches")])
 
-    b.row("Trends")
+    b.row("Trends", note="From the nightly snapshots. A step change usually means coverage changed (more hosts "
+          "assessed, a feed added) rather than risk -- check before reading it as a trend.")
     b.ts("Open vulns by source", f"""
         SELECT snapshot_date::timestamp AS time,
                sum(total) FILTER (WHERE source = 'falcon_spotlight') AS "Endpoint (Falcon)",
@@ -307,7 +355,8 @@ def overview():
         FROM daily_email_metrics WHERE site_label IN ($site) AND {rng_d('snapshot_date')}
         GROUP BY 1 ORDER BY 1""", stack=True, bars=True)
 
-    b.row("Data freshness & site mapping", collapsed=False)
+    b.row("Data freshness & site mapping", collapsed=False, note="If a feed's last success is old, every panel "
+          "built on it is stale. Anything that landed in **Ungrouped** needs a site rule in config.yaml.")
     b.table("Data freshness (latest run per feed)", """
         SELECT collector AS "Feed", status AS "Last run status",
                round(EXTRACT(EPOCH FROM now() - last_success) / 3600.0, 1) AS "Hours since last success",
@@ -365,15 +414,56 @@ def overview():
              FROM external_assets WHERE NOT retired AND site_matched_by = 'none' LIMIT 25)
         ) x""", h=9)
     return dashboard("secops-overview", "SecOps Overview",
-                     "Cross-feed security posture per site: vulns, detections, identity, email, DMARC, coverage.", b)
+                     "Cross-feed security posture per site: vulns, detections, identity, email, DMARC, coverage.", b,
+                     help=OVERVIEW_HELP)
 
 
 # =====================================================================
 #  2. Endpoint & Identity
 # =====================================================================
+ENDPOINT_IDENTITY_HELP = {
+    "Managed hosts": "Devices with a Falcon sensor (not retired), whatever their last check-in.",
+    "Stale sensors (7d+)": "Managed hosts whose sensor hasn't checked in for 7+ days.",
+    "Contained hosts": "Hosts currently network-contained from the Falcon console.",
+    "Coverage trend": "Managed, unmanaged and stale-sensor counts per day from the nightly snapshot.",
+    "Stale / degraded sensors": "Hosts silent 7+ days or in reduced-functionality mode, longest-silent first.",
+    "Unmanaged assets": "Devices Falcon saw on the network or in AD that have no sensor, most recently seen first.",
+    "Open alerts": "Falcon detections not yet closed (any severity, including informational).",
+    "Open Critical": "Critical-severity Falcon detections not yet closed.",
+    "New in range": "Falcon detections raised in the selected range.",
+    "Median time to close (range)": "Median hours from raised to closed, for detections closed in the range.",
+    "Unassigned > 24h": "Detections still 'new' (not picked up) a day after being raised.",
+    "New alerts per day": "Falcon detections per day, stacked by severity.",
+    "Top tactics (range)": "MITRE ATT&CK tactic of the detections raised in the range.",
+    "High-risk accounts": "Accounts Falcon Identity Protection currently rates high risk.",
+    "Medium-risk accounts": "Accounts Falcon Identity Protection currently rates medium risk.",
+    "Enabled, password > 1 year": "Enabled accounts whose password was last changed over a year ago.",
+    "Accounts by risk factor": "Accounts carrying each Falcon Identity risk factor right now (one account can have "
+                               "several).",
+    "Risk factor trend": "Accounts per risk factor per day, from the nightly snapshot.",
+    "Users at risk": "Users Entra ID Protection currently flags at risk.",
+    "Confirmed compromised": "Users an admin marked confirmed compromised in Entra ID Protection.",
+    "Risk detections (range)": "Entra ID Protection risk detections (unfamiliar sign-in, leaked credentials, ...) "
+                               "in the range.",
+    "MFA registered": "Share of member users with an MFA method registered (guests excluded).",
+    "Admins without MFA": "Users holding an admin role with no MFA method registered. Should be zero.",
+    "MFA registration by site": "Share of member users with MFA registered, per site.",
+    "Risky users": "Entra ID Protection's current risky-user list.",
+    "Recent risk detections": "Entra ID Protection risk detections in the range, newest first.",
+    "Sign-ins: success vs failure": "Entra sign-ins per day from Log Analytics.",
+    "MFA denied": "Sign-ins where the user denied or failed the MFA prompt, per day.",
+    "Legacy authentication by client": "Sign-ins using legacy protocols (IMAP, POP, SMTP auth, ...) that can't do "
+                                       "MFA, per day.",
+    "Risky sign-ins": "Sign-ins Entra rated risky, per day by risk level.",
+    "Conditional Access blocks": "Sign-ins blocked by a Conditional Access policy, per day.",
+}
+
 def endpoint_identity():
     b = Builder()
-    b.row("Endpoint coverage (Falcon)")
+    b.text(f"Falcon sensor coverage and detections, identity risk (Falcon Identity Protection) and Entra ID. {HOVER}",
+           h=2)
+    b.row("Endpoint coverage (Falcon)", note="A **stale** sensor hasn't checked in for 7+ days: the host is "
+          "unprotected and unassessed, or decommissioned but not removed from Falcon.")
     b.stat("Managed hosts", "SELECT count(*) FROM assets WHERE source = 'falcon' AND NOT retired AND site_label IN ($site)",
            thresholds=NEUTRAL)
     b.stat("Stale sensors (7d+)", "SELECT count(*) FROM assets WHERE source = 'falcon' AND NOT retired "
@@ -407,7 +497,8 @@ def endpoint_identity():
         FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND site_label IN ($site)
         ORDER BY last_seen DESC LIMIT 200""", w=24, h=8)
 
-    b.row("Detections (Falcon alerts)")
+    b.row("Detections (Falcon alerts)", note="Falcon endpoint and identity detections. Informational-severity "
+          "alerts are counted here but excluded from the exec reports.")
     b.stat("Open alerts", "SELECT count(*) FROM security_alerts WHERE status <> 'closed' AND site_label IN ($site)",
            thresholds=BAD_UP)
     b.stat("Open Critical", "SELECT count(*) FROM security_alerts WHERE status <> 'closed' AND severity = 'critical' "
@@ -439,7 +530,8 @@ def endpoint_identity():
         ORDER BY CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END, created_at
         LIMIT 200""", h=9, overrides=[sev_cell()], links={"Link": "${__value.raw}"})
 
-    b.row("Identity risk (Falcon Identity Protection)")
+    b.row("Identity risk (Falcon Identity Protection)", note="Current state from the latest Identity "
+          "Protection pull; trends from the nightly snapshot. **Enabled** includes accounts whose status is unknown.")
     b.stat("High-risk accounts", "SELECT count(*) FROM identity_entities WHERE NOT retired AND risk_severity = 'high' "
            "AND site_label IN ($site)", thresholds=BAD_UP)
     b.stat("Medium-risk accounts", "SELECT count(*) FROM identity_entities WHERE NOT retired AND risk_severity = 'medium' "
@@ -502,7 +594,8 @@ def endpoint_identity():
         ORDER BY e.risk_score DESC NULLS LAST LIMIT 500""", h=10, overrides=[sev_cell(), bg("Password age (days)")],
         description="Work list for the service desk (users) and cyber/systems (privileged/service accounts).")
 
-    b.row("Entra ID")
+    b.row("Entra ID", note="Entra ID Protection risk and MFA registration (needs the Entra app registration; "
+          "empty until the **entra** collector is enabled).")
     b.stat("Users at risk", "SELECT count(*) FROM entra_risky_users WHERE site_label IN ($site)", thresholds=BAD_UP)
     b.stat("Confirmed compromised", "SELECT count(*) FROM entra_risky_users WHERE risk_state = 'confirmedCompromised' "
            "AND site_label IN ($site)", thresholds=BAD_UP)
@@ -539,12 +632,39 @@ def endpoint_identity():
             FROM azure_log_metrics WHERE query_name = '{q}' AND site_label IN ($site) AND {rng_d('snapshot_date')}
             GROUP BY 1, 2 ORDER BY 1""", colors={"failure": "red", "success": "green", "high": "red", "medium": "dark-yellow"})
     return dashboard("secops-endpoint-identity", "Endpoint & Identity",
-                     "Falcon sensor coverage and detections, Falcon Identity Protection risk, Entra ID risk/MFA and sign-in activity.", b)
+                     "Falcon sensor coverage and detections, Falcon Identity Protection risk, Entra ID risk/MFA and sign-in activity.", b,
+                     help=ENDPOINT_IDENTITY_HELP)
 
 
 # =====================================================================
 #  3. Email & External exposure
 # =====================================================================
+EMAIL_EXTERNAL_HELP = {
+    "Phishing (range)": "Check Point phishing events (including suspected) in the range.",
+    "Malware (range)": "Check Point malware events (including suspected) in the range.",
+    "Suspicious (range)": "Events Check Point marked suspicious rather than confirmed, in the range.",
+    "DLP (range)": "Outbound data-loss-prevention matches in the range.",
+    "Anomaly (range)": "Check Point anomaly events (unusual sending behaviour) in the range.",
+    "High+ severity (range)": "Email events Check Point rated high or critical, in the range.",
+    "Top sending domains (threats)": "Sender domains behind the most threat events, and how many sites they hit.",
+    "Recent High+ email events": "High and critical email events in the range, newest first.",
+    "Messages reported (range)": "Messages covered by DMARC aggregate reports in the range.",
+    "DMARC pass": "Share of reported messages that passed DMARC.",
+    "SPF aligned": "Share of reported messages whose SPF result aligned with the From domain.",
+    "DKIM aligned": "Share of reported messages with an aligned DKIM signature.",
+    "Rejected / quarantined": "Messages receivers rejected or quarantined because of our DMARC policy.",
+    "DMARC pass rate by domain": "DMARC pass rate per day, per From domain.",
+    "Domains": "Per From domain: volume, pass rates and what receivers did with failures.",
+    "External assets": "Internet-facing assets Hadrian monitors (domains, IPs, services), excluding archived ones.",
+    "Open external risks": "Risks Hadrian currently has open against our assets.",
+    "Critical + High": "Open external risks rated critical or high.",
+    "KEV on the internet": "Open external risks with a CVE on CISA's Known Exploited list.",
+    "SLA breaches": "Open external risks older than their severity's SLA.",
+    "Fixed (range)": "External risks Hadrian closed in the range (fixed, or no longer found).",
+    "External risks trend": "Open external risks per day by severity, from the nightly snapshot.",
+    "External asset inventory": "Every monitored internet-facing asset with its IPs, ports and technologies.",
+}
+
 def email_external():
     b = Builder()
     # event_type is split into genuine threats vs bulk mail classification
@@ -552,7 +672,9 @@ def email_external():
     # all HEC events, which was swamping "Top sending domains (threats)"
     # with legitimate bulk senders (LinkedIn, Zoom, Canva notification
     # traffic) instead of actual phishing/malware senders.
-    b.row("Email threats (Check Point HEC)")
+    b.text(f"Check Point HEC email threats, DMARC alignment and the Hadrian external attack surface. {HOVER}", h=2)
+    b.row("Email threats (Check Point HEC)", note="Security events Check Point raised on mail in the selected "
+          "range: one email can raise more than one. Site = the recipient's domain.")
     for t, title in (("phishing", "Phishing"), ("malware", "Malware"), ("suspicious", "Suspicious"),
                       ("dlp", "DLP"), ("anomaly", "Anomaly")):
         b.stat(f"{title} (range)", f"SELECT count(*) FROM email_events WHERE site_label IN ($site) "
@@ -591,7 +713,8 @@ def email_external():
         FROM email_events WHERE site_label IN ($site) AND severity IN ('critical','high') AND {rng_ts('created_at')}
         ORDER BY created_at DESC LIMIT 200""", h=9, overrides=[sev_cell()], links={"Link": "${__value.raw}"})
 
-    b.row("DMARC (parsedmarc)")
+    b.row("DMARC (parsedmarc)", note="Aggregate reports from receiving mail servers about mail claiming to be "
+          "from our domains. Low pass rates are usually a misconfigured legitimate sender, not spoofing.")
     b.stat("Messages reported (range)", f"SELECT sum(messages) FROM dmarc_daily WHERE site_label IN ($site) "
            f"AND {rng_d('report_date')}", thresholds=NEUTRAL)
     b.stat("DMARC pass", f"SELECT round(100.0 * sum(dmarc_pass) / NULLIF(sum(messages),0), 1) FROM dmarc_daily "
@@ -628,7 +751,8 @@ def email_external():
         GROUP BY 1, 2, 3 ORDER BY 5 DESC LIMIT 50""", w=12, h=8,
             description="'Partly aligned' sources are usually legitimate senders missing SPF/DKIM setup, not spoofers.")
 
-    b.row("External attack surface (Hadrian)")
+    b.row("External attack surface (Hadrian)", note="What Hadrian sees from the internet. **Confirmed** = "
+          "verified, unpatched-technology or infected-device risks; the rest are unverified detections.")
     b.stat("External assets", "SELECT count(*) FROM external_assets WHERE NOT retired AND site_label IN ($site)",
            thresholds=NEUTRAL)
     b.stat("Open external risks", "SELECT count(*) FROM fact_vuln_findings_current WHERE source = 'hadrian' "
@@ -663,7 +787,8 @@ def email_external():
         FROM external_assets WHERE NOT retired AND site_label IN ($site)
         ORDER BY "Open risks" DESC, name LIMIT 500""", h=9, overrides=[bg("Open risks")])
     return dashboard("secops-email-external", "Email & External Exposure",
-                     "Check Point HEC email threats, DMARC alignment from parsedmarc, and Hadrian external attack surface.", b)
+                     "Check Point HEC email threats, DMARC alignment from parsedmarc, and Hadrian external attack surface.", b,
+                     help=EMAIL_EXTERNAL_HELP)
 
 
 # =====================================================================
@@ -683,14 +808,32 @@ ASSESSED_A = ("EXISTS (SELECT 1 FROM vuln_findings v WHERE v.source = 'falcon_sp
 CONFIRMED = "('Verified','UnpatchedTechnology','InfectedDevice')"
 
 
+WORKLIST_HELP = {
+    "Active managed hosts (7d)": "Hosts with a Falcon sensor that checked in within 7 days.",
+    "Active hosts not assessed": "Active hosts Falcon has returned no vulnerability data for: blind spots in the "
+                                 "vulnerability figures.",
+    "Coverage by site": "Per site: active hosts, how many are assessed, stale sensors and named machines missing a "
+                        "sensor. Worst coverage first.",
+    "Network devices by MAC vendor": "Sensorless devices seen only on the network, grouped by network-card maker -- "
+                                     "a quick way to spot printers, phones, VMs and IoT.",
+    "Confirmed risks open": "Open Hadrian risks that are verified, unpatched technology or infected devices.",
+    "Infostealer infections": "Open Hadrian infostealer findings: credentials of ours seen in malware logs.",
+    "External assets: not tag-matched or not recently seen": "Hadrian assets with no site tag (site guessed from "
+                                                             "the domain) or not seen recently.",
+    "Extra access accounts (enabled)": "Enabled second accounts in the shared domain used only for VPN or remote "
+                                       "apps.",
+    "Legacy (no VPN or remote-app group)": "Enabled shared-domain access accounts in neither a VPN nor a remote-app "
+                                           "group: confirm and remove.",
+    "By site": "Shared-domain access accounts per home site, by what they're used for.",
+    "Accounts": "Every shared-domain access account; enabled and stale ones first.",
+    "DMARC pass rate by sending domain (range)": "Per From domain in the range: volume, pass rate and failures.",
+}
+
 def worklist():
     b = Builder()
-    b.text(
-        "### Cyber Team Worklist\n"
-        "Coverage gaps, data-quality problems and triage queues -- the things to fix so every other "
-        "dashboard and report is telling the truth. Point-in-time (the time picker doesn't apply), "
-        "filtered by **Site**. Start with **Feed health**: a failing feed makes everything downstream stale.",
-        h=3)
+    b.text("Coverage gaps, data-quality problems and triage queues: the things to fix so every other dashboard "
+           "and report tells the truth. Point-in-time (the time picker doesn't apply). Start with **Feed health**. "
+           f"{HOVER}", h=2)
 
     b.row("Feed health")
     b.table("Collectors (latest run each)", """
@@ -708,7 +851,8 @@ def worklist():
         description="Disabled feeds keep their last run here. An 'error' row for a feed you rely on means its "
                     "panels and report figures are stale since 'Last success'.")
 
-    b.row("Endpoint coverage")
+    b.row("Endpoint coverage", note="**Active** = sensor seen in the last 7 days. **Assessed** = Falcon has "
+          "returned vulnerability data for it. The gap is estate the vulnerability figures can't see.")
     b.stat("Active managed hosts (7d)", f"SELECT count(*) FROM ({ACTIVE_HOSTS}) a WHERE site_label IN ($site)",
            thresholds=NEUTRAL)
     b.stat("Vulnerability assessment coverage", f"""
@@ -824,7 +968,8 @@ def worklist():
                         "appliances, cluster/listener names, disabled or stale AD accounts. No sensor needed; "
                         "disabled/stale ones are AD cleanup.")
 
-    b.row("External attack surface (Hadrian) hygiene")
+    b.row("External attack surface (Hadrian) hygiene", note="Keeping Hadrian's picture accurate: assets "
+          "without a site tag, and assets it hasn't seen lately (gone, or moved?).")
     b.stat("Potential risks to triage", f"""
         SELECT count(*) FROM vuln_findings WHERE source = 'hadrian' AND state IN ('OPEN','REOPENED')
           AND risk_type = 'Potential' AND site_label IN ($site)""", thresholds=BAD_UP,
@@ -943,14 +1088,268 @@ def worklist():
             description="Legitimate senders failing here need SPF/DKIM set up; unknown ones are spoofing.")
 
     return dashboard("secops-worklist", "SecOps Cyber Team Worklist",
-                     "Coverage gaps, data quality and triage queues for the cyber team", b)
+                     "Coverage gaps, data quality and triage queues for the cyber team", b, help=WORKLIST_HELP)
+
+# =====================================================================
+#  5. Vulnerability Management
+# =====================================================================
+NIGHTLY = "As at the last nightly run (pre-computed by rollup_daily_metrics.py)."
+CVSS_BG = thresh_bg("CVSS", [{"color": "yellow", "value": None}, {"color": "dark-yellow", "value": 4},
+                             {"color": "orange", "value": 7}, {"color": "red", "value": 9}])
+NVD_LINK = {"CVE": "https://nvd.nist.gov/vuln/detail/${__value.text}"}
+SEV4 = {"Critical": "red", "High": "orange", "Medium": "dark-yellow", "Low": "yellow"}
+SITE_SUMMARY = "FROM dash_vuln_site_summary WHERE site_label IN ($site)"
+
+
+def week_change(table, expr):
+    """Latest daily snapshot of `expr` minus the one 7 days before it (same days for every site)."""
+    return f"""
+        WITH latest AS (SELECT max(snapshot_date) AS d FROM {table}),
+             hist AS (SELECT max(snapshot_date) AS d FROM {table}, latest WHERE snapshot_date::date <= latest.d::date - 7),
+             now_v AS (SELECT {expr} AS v FROM {table}, latest WHERE site_label IN ($site) AND snapshot_date = latest.d),
+             then_v AS (SELECT {expr} AS v FROM {table}, hist WHERE site_label IN ($site) AND snapshot_date = hist.d)
+        SELECT (now_v.v - then_v.v) AS delta FROM now_v, then_v"""
+
+
+VULN_HELP = {
+    "Open findings": f"Open vulnerability findings (one per CVE per device, plus Hadrian's external risks). {NIGHTLY}",
+    "Critical + high open": f"Open findings rated critical or high. {NIGHTLY}",
+    "SLA breach rate": "Share of open findings older than their severity's SLA. Drops sharply whenever coverage "
+                       f"expands, because new findings start at age zero -- read it with the breach count. {NIGHTLY}",
+    "Share on CISA KEV": f"Share of open findings whose CVE CISA lists as actively exploited. {NIGHTLY}",
+    "Remote + no-auth critical/high": "Open critical/high findings exploitable over the network with no credentials "
+                                      f"and no user interaction: reachable by an attacker starting from nothing. {NIGHTLY}",
+    "Remote + no-auth critical/high trend": "The same count per day, from the nightly snapshot.",
+    "Open findings by severity": "Open findings per day by severity, from the nightly snapshot. Step changes are "
+                                 "usually coverage (more devices assessed), not risk.",
+    "Net change (opened − fixed)": "Findings opened minus fixed in the selected range, by the day each happened "
+                                   "(as the exec reports count them; expired records aren't 'opened'). Positive = "
+                                   "backlog growing.",
+    "Opened vs remediated per day": "Findings first detected (up) and fixed (down) per day, from the nightly rollup.",
+    "Open findings: change over 7 days": "Open findings now minus 7 days ago. Any rise is red.",
+    "Critical + high: change over 7 days": "Open critical + high findings now minus 7 days ago.",
+    "SLA breaches: change over 7 days": "Findings past SLA now minus 7 days ago: the count behind the rate, which "
+                                        "can fall while breaches rise when coverage grows.",
+    "SLA breach rate: change over 7 days": "Breach rate now minus 7 days ago, in percentage points: 10% -> 12% is "
+                                           "+2 pts (not +20%).",
+    "KEV share: change over 7 days": "Share of open findings on CISA KEV now minus 7 days ago, in percentage points.",
+    "Critical SLA (days)": "Days a critical finding may stay open before it breaches (current policy).",
+    "High SLA (days)": "Days a high finding may stay open before it breaches.",
+    "Medium SLA (days)": "Days a medium finding may stay open before it breaches.",
+    "Low SLA (days)": "Days a low finding may stay open before it breaches.",
+    "SLA breaches by site and risk (latest snapshot)": "Per site and risk band: open findings, how many are past SLA, "
+                                                       "and the rate. Worst rate first.",
+    "SLA breach rate by risk band": "Breach rate per day for each risk band, from the nightly snapshot.",
+    "Open KEV findings": "Open findings whose CVE is on CISA's Known Exploited list (latest snapshot).",
+    "Ransomware-linked": "Open KEV findings CISA notes are used in ransomware campaigns.",
+    "Past CISA due date": "Open KEV findings past the remediation date CISA set when listing them.",
+    "Open KEV trend": "Open KEV and ransomware-linked findings per day.",
+    "Open KEV findings by CVE (soonest due first)": "One row per KEV CVE: what it's in, how many findings, devices "
+                                                    f"and sites, and the oldest. CVE links to NVD. {NIGHTLY}",
+    "High EPSS, not yet KEV": "Open findings with EPSS of 50% or more (likely to be exploited within 30 days) that "
+                              "aren't on KEV yet (latest snapshot).",
+    "Average / max EPSS": "Average and highest EPSS across open findings per day.",
+    "NVD enrichment coverage": "Open CVE-backed findings with a CVSS vector (from the vendor, or looked up from NVD "
+                               f"when the vendor gave none). {NIGHTLY}",
+    "Likely next: high EPSS, not yet KEV (by CVE)": "One row per CVE with EPSS 50%+ not yet on KEV. Priority = "
+                                                    "severity-weighted findings, scaled up by EPSS, plus remote/no-auth "
+                                                    f"exposure. {NIGHTLY}",
+    "Worst devices (by risk score)": "Devices ranked by severity counts plus KEV and remote/no-auth bonuses. A "
+                                     f"ranking, not a unit. {NIGHTLY}",
+    "Top 10 patches to deploy (all sites)": "One row per fix (e.g. one browser update, or one Hadrian risk). Priority "
+                                            "= devices affected + severity + remote/no-auth + KEV + EPSS: the single "
+                                            f"fixes that close the most, worst risk. Not filtered by Site. {NIGHTLY}",
+    "Average days to remediate by severity": "Average days from first detected to fixed, for findings fixed each "
+                                             "day.",
+    "Fixed within SLA by severity (range)": "Share of findings fixed in the range that were fixed within their SLA.",
+    "Top products by open findings (latest snapshot)": "Open findings per product, by severity.",
+}
+
+
+def vuln():
+    b = Builder()
+    b.text("Endpoint (Falcon Exposure Management) and external (Hadrian) vulnerabilities. Current figures are as at "
+           f"the last nightly run; trends come from the daily snapshots. {HOVER}", h=2)
+
+    b.row("Executive summary", note="Severity runs red (critical) to orange (high) to amber (medium) to yellow (low); "
+          "green only ever means good news. A coverage jump raises counts and lowers rates for a few weeks.")
+    b.stat("Open findings", f'SELECT COALESCE(sum(n), 0) AS "Open Findings" {SITE_SUMMARY}', w=6,
+           thresholds=NEUTRAL)
+    b.stat("Critical + high open", "SELECT COALESCE(sum(n) FILTER (WHERE severity IN ('critical','high')), 0) "
+           f'AS "Critical + High" {SITE_SUMMARY}', w=6,
+           thresholds=[{"color": "green", "value": None}, {"color": "orange", "value": 1}, {"color": "red", "value": 25}])
+    b.stat("SLA breach rate", "SELECT round(100.0 * sum(n) FILTER (WHERE sla_breach) / NULLIF(sum(n),0), 1) "
+           f'AS "SLA Breach Rate" {SITE_SUMMARY}', w=6, unit="percent",
+           thresholds=[{"color": "green", "value": None}, {"color": "orange", "value": 10}, {"color": "red", "value": 25}])
+    b.stat("Share on CISA KEV", "SELECT round(100.0 * sum(n) FILTER (WHERE has_kev) / NULLIF(sum(n),0), 2) "
+           f'AS "Active KEV %" {SITE_SUMMARY}', w=6, unit="percent", decimals=2,
+           thresholds=[{"color": "green", "value": None}, {"color": "orange", "value": 5}, {"color": "red", "value": 15}])
+    b.stat("Remote + no-auth critical/high", "SELECT COALESCE(sum(n) FILTER (WHERE severity IN ('critical','high') "
+           f'AND is_remote_no_auth), 0) AS "Remote+NoAuth Crit/High" {SITE_SUMMARY}', w=6, h=8,
+           thresholds=[{"color": "green", "value": None}, {"color": "orange", "value": 1}, {"color": "red", "value": 25}])
+    b.ts("Remote + no-auth critical/high trend", f"""
+        SELECT snapshot_date::timestamp AS time, sum(remote_crit) AS "Remote Critical", sum(remote_high) AS "Remote High"
+        FROM daily_site_metrics WHERE site_label IN ($site) AND {rng_d('snapshot_date::date')}
+        GROUP BY snapshot_date ORDER BY time""", w=18, colors={"Remote Critical": "red", "Remote High": "orange"})
+    b.ts("Open findings by severity", f"""
+        SELECT snapshot_date::timestamp AS time, sum(crit) AS "Critical", sum(high) AS "High",
+               sum(medium) AS "Medium", sum(low) AS "Low"
+        FROM daily_site_metrics WHERE site_label IN ($site) AND {rng_d('snapshot_date::date')}
+        GROUP BY snapshot_date ORDER BY time""", w=24, colors=SEV4, stack=True)
+    b.stat("Net change (opened − fixed)", f"""
+        SELECT (COALESCE(sum(opened),0) - COALESCE(sum(fixed),0))::int AS "Net Change"
+        FROM daily_vuln_flow_metrics WHERE site_label IN ($site) AND {rng_d('snapshot_date')}""", w=6, h=8,
+           thresholds=[{"color": "green", "value": None}, {"color": "red", "value": 1}])
+    b.ts("Opened vs remediated per day", f"""
+        SELECT snapshot_date::timestamp AS time, sum(opened) AS "Opened", -sum(fixed) AS "Closed"
+        FROM daily_vuln_flow_metrics WHERE site_label IN ($site) AND {rng_d('snapshot_date')}
+        GROUP BY 1 ORDER BY 1""", w=18, bars=True, colors={"Opened": "red", "Closed": "green"})
+
+    b.row("Change over 7 days", collapsed=True, note="Today's figure minus the figure 7 days ago. Rates are in "
+          "percentage points (**pts**): 10% -> 12% is +2 pts, not +20%. Any rise is red. Straight after a coverage "
+          "jump, trust the counts over the rates.")
+    b.delta("Open findings: change over 7 days", week_change("daily_site_metrics", "coalesce(sum(total),0)"), w=5)
+    b.delta("Critical + high: change over 7 days",
+            week_change("daily_site_metrics", "coalesce(sum(crit)+sum(high),0)"), w=5)
+    b.delta("SLA breaches: change over 7 days", week_change("daily_sla_metrics", "coalesce(sum(sla_breaches),0)"), w=5)
+    b.delta("SLA breach rate: change over 7 days", week_change(
+        "daily_sla_metrics", "round(100.0*sum(sla_breaches)/NULLIF(sum(total_vulns),0),1)"), w=5, suffix=" pts",
+        decimals=1)
+    b.delta("KEV share: change over 7 days", week_change(
+        "daily_kev_metrics", "round(100.0*sum(kev_open_total)/NULLIF(sum(kev_open_total)+sum(non_kev_open_total),0),2)"),
+        w=4, suffix=" pts", decimals=2)
+
+    b.row("SLA compliance", collapsed=True, note="A finding breaches once its age since first detected exceeds its "
+          "severity's SLA -- the policy is in the four tiles below, so check them rather than assuming.")
+    for sev, color in (("critical", "red"), ("high", "orange"), ("medium", "dark-yellow"), ("low", "yellow")):
+        b.stat(f"{sev.title()} SLA (days)", f"SELECT threshold_days AS \"SLA (days)\" FROM sla_policy WHERE severity = '{sev}'",
+               w=6, h=3, color=color)
+    b.table("SLA breaches by site and risk (latest snapshot)", """
+        SELECT site_label AS "Site", risk AS "Risk", total_vulns AS "Total", sla_breaches AS "Breaches",
+               round(100.0 * sla_breaches / NULLIF(total_vulns,0), 1) AS "Breach Rate %"
+        FROM daily_sla_metrics WHERE site_label IN ($site)
+          AND snapshot_date = (SELECT max(snapshot_date) FROM daily_sla_metrics)
+        ORDER BY "Breach Rate %" DESC""", w=12, h=8)
+    b.ts("SLA breach rate by risk band", f"""
+        SELECT snapshot_date::timestamp AS time, risk AS metric,
+               round(100.0 * sum(sla_breaches) / NULLIF(sum(total_vulns),0), 1) AS value
+        FROM daily_sla_metrics WHERE site_label IN ($site) AND {rng_d('snapshot_date::date')}
+        GROUP BY snapshot_date, risk ORDER BY time""", unit="percent", colors=SEV4)
+
+    b.row("CISA KEV exposure", collapsed=True, note="**KEV** = CISA has confirmed the CVE is being exploited in the "
+          "wild right now: the highest-priority signal here. **Past due** = beyond the fix-by date CISA set.")
+    latest_kev = "snapshot_date = (SELECT max(snapshot_date) FROM daily_kev_metrics)"
+    for title, col, alias in (("Open KEV findings", "kev_open_total", "Open KEV"),
+                              ("Ransomware-linked", "kev_ransomware_total", "Ransomware-Flagged"),
+                              ("Past CISA due date", "kev_past_due_total", "Past Due")):
+        b.stat(title, f'SELECT sum({col}) AS "{alias}" FROM daily_kev_metrics WHERE site_label IN ($site) AND {latest_kev}',
+               w=8, thresholds=[{"color": "green", "value": None}, {"color": "red", "value": 1}])
+    b.ts("Open KEV trend", f"""
+        SELECT snapshot_date::timestamp AS time, sum(kev_open_total) AS "Open KEV",
+               sum(kev_ransomware_total) AS "Ransomware-Flagged"
+        FROM daily_kev_metrics WHERE site_label IN ($site) AND {rng_d('snapshot_date::date')}
+        GROUP BY snapshot_date ORDER BY time""", w=24, colors={"Open KEV": "red", "Ransomware-Flagged": "dark-red"})
+    b.table("Open KEV findings by CVE (soonest due first)", """
+        SELECT kev_cve_id AS "CVE",
+               mode() WITHIN GROUP (ORDER BY product_family) FILTER (WHERE product_family IS NOT NULL) AS "Application",
+               round(max(cvss_score)::numeric,1) AS "CVSS", max(kev_due_date) AS "KEV Due",
+               max(kev_ransomware_use) AS "Ransomware Use", count(*) AS "Findings",
+               count(DISTINCT source_asset_id) AS "Assets", count(DISTINCT site_label) AS "Sites",
+               count(*) FILTER (WHERE severity='critical') AS "Crit", count(*) FILTER (WHERE severity='high') AS "High",
+               count(*) FILTER (WHERE severity='medium') AS "Med", count(*) FILTER (WHERE severity='low') AS "Low",
+               round(max(age_days)::numeric,1) AS "Oldest (days)"
+        FROM dash_vuln_kev_epss WHERE has_kev AND site_label IN ($site)
+        GROUP BY kev_cve_id ORDER BY "KEV Due" ASC NULLS LAST, "Crit" DESC LIMIT 100""", h=10,
+            overrides=[CVSS_BG], links=NVD_LINK)
+
+    b.row("Predictive risk (EPSS)", collapsed=True, note="**EPSS** (FIRST.org) = the probability a CVE is exploited "
+          "in the next 30 days, updated daily. Predictive, the complement to KEV: high EPSS but not yet KEV is the "
+          "'likely next' list.")
+    b.stat("High EPSS, not yet KEV", """
+        SELECT sum(high_epss_non_kev_total) AS "High-EPSS Not Yet KEV" FROM daily_epss_metrics
+        WHERE site_label IN ($site) AND snapshot_date = (SELECT max(snapshot_date) FROM daily_epss_metrics)""", w=6, h=8,
+           thresholds=[{"color": "green", "value": None}, {"color": "orange", "value": 1}, {"color": "red", "value": 25}])
+    b.ts("Average / max EPSS", f"""
+        SELECT snapshot_date::timestamp AS time, avg(avg_epss) AS "Avg EPSS", max(max_epss) AS "Max EPSS"
+        FROM daily_epss_metrics WHERE site_label IN ($site) AND {rng_d('snapshot_date::date')}
+        GROUP BY snapshot_date ORDER BY time""", w=18, unit="percentunit", minmax=(0, 1))
+    b.table("NVD enrichment coverage", "SELECT * FROM dash_nvd_coverage", h=4)
+    b.table("Likely next: high EPSS, not yet KEV (by CVE)", """
+        SELECT epss_cve_id AS "CVE",
+               mode() WITHIN GROUP (ORDER BY product_family) FILTER (WHERE product_family IS NOT NULL) AS "Application",
+               round(max(cvss_score)::numeric,1) AS "CVSS", round((epss_score*100)::numeric,1) AS "EPSS %",
+               round((epss_percentile*100)::numeric,1) AS "Percentile", count(*) AS "Findings",
+               count(DISTINCT source_asset_id) AS "Assets", count(DISTINCT site_label) AS "Sites",
+               count(*) FILTER (WHERE severity='critical') AS "Crit", count(*) FILTER (WHERE severity='high') AS "High",
+               count(*) FILTER (WHERE severity='medium') AS "Med", count(*) FILTER (WHERE severity='low') AS "Low",
+               count(*) FILTER (WHERE is_remote_no_auth) AS "Remote/No-Auth",
+               round(max(age_days)::numeric,1) AS "Oldest (days)",
+               ((count(*) FILTER (WHERE severity='critical')*10 + count(*) FILTER (WHERE severity='high')*5
+                 + count(*) FILTER (WHERE severity='medium')*2 + count(*) FILTER (WHERE severity='low')*1)
+                + ROUND((count(*) FILTER (WHERE severity='critical')*10 + count(*) FILTER (WHERE severity='high')*5
+                         + count(*) FILTER (WHERE severity='medium')*2 + count(*) FILTER (WHERE severity='low')*1)
+                        * epss_score)
+                + (count(*) FILTER (WHERE is_remote_no_auth) * 5))::int AS "Priority"
+        FROM dash_vuln_kev_epss WHERE site_label IN ($site) AND epss_score >= 0.5 AND NOT has_kev
+        GROUP BY epss_cve_id, epss_score, epss_percentile ORDER BY "Priority" DESC LIMIT 100""", h=10,
+            overrides=[CVSS_BG], links=NVD_LINK)
+
+    b.row("Worst devices", collapsed=True, note="Devices ranked by risk score: severity counts plus a KEV bonus plus "
+          "a remote/no-auth bonus. A ranking tool, not an absolute unit.")
+    b.table("Worst devices (by risk score)", """
+        SELECT hostname AS "Host", site_label AS "Site",
+               CASE source WHEN 'hadrian' THEN 'External' ELSE 'Endpoint' END AS "Source", asset_type AS "Type",
+               open_critical AS "Crit", open_high AS "High", open_medium AS "Med", open_low AS "Low",
+               open_kev_count AS "KEV", open_remote_no_auth AS "Remote/No-Auth",
+               round(oldest_open_finding_age_days::numeric,1) AS "Oldest (days)", risk_score AS "Risk Score"
+        FROM dash_asset_risk WHERE site_label IN ($site) ORDER BY risk_score DESC LIMIT 25""", h=10,
+            overrides=[bg("Risk Score")])
+
+    b.row("Top patches to deploy", collapsed=True, note="Which single fixes close the most, worst risk across the "
+          "region -- not the same as the biggest raw counts. Not filtered by Site.")
+    b.table("Top 10 patches to deploy (all sites)", """
+        SELECT title AS "Fix", CASE source WHEN 'hadrian' THEN 'External' ELSE 'Endpoint' END AS "Source",
+               affected_sites AS "Sites", product_family AS "Product Family", affected_assets AS "Assets",
+               open_findings AS "Findings", crit AS "Crit", high AS "High", medium AS "Med", low AS "Low",
+               remote_no_auth_count AS "Remote/No-Auth", CASE WHEN has_kev THEN 'Yes' ELSE 'No' END AS "KEV",
+               round((COALESCE(max_epss,0)*100)::numeric,1) AS "Max EPSS %", priority_score AS "Priority"
+        FROM dash_patch_impact ORDER BY priority_score DESC LIMIT 10""", h=10, overrides=[bg("Priority")])
+
+    b.row("Time to remediate", collapsed=True, note="How long fixes take: days from first detected to fixed, for "
+          "findings fixed in the period, and the share fixed inside their SLA.")
+    b.ts("Average days to remediate by severity", f"""
+        SELECT snapshot_date::timestamp AS time, severity AS metric, avg(avg_remediation_days) AS value
+        FROM daily_mttr_metrics WHERE site_label IN ($site) AND {rng_d('snapshot_date::date')}
+        GROUP BY snapshot_date, severity ORDER BY time""", w=14, unit="d",
+         colors={"critical": "red", "high": "orange", "medium": "dark-yellow", "low": "yellow"})
+    b.bars("Fixed within SLA by severity (range)", f"""
+        SELECT severity AS "Severity", round(100.0 * sum(sla_compliant_count) / NULLIF(sum(fixed_count),0), 1)
+               AS "SLA Compliance %"
+        FROM daily_mttr_metrics WHERE site_label IN ($site) AND {rng_d('snapshot_date::date')}
+        GROUP BY severity ORDER BY CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END""",
+           w=10, unit="percent", minmax=(0, 100),
+           thresholds=[{"color": "red", "value": None}, {"color": "orange", "value": 60}, {"color": "green", "value": 85}])
+
+    b.row("Products", collapsed=True, note="Open findings by product from the latest snapshot -- where the backlog "
+          "actually sits.")
+    b.table("Top products by open findings (latest snapshot)", """
+        SELECT product AS "Product", vendor AS "Vendor", product_family AS "Family", sum(open_crit) AS "Crit",
+               sum(open_high) AS "High", sum(open_medium) AS "Med", sum(open_low) AS "Low", sum(open_total) AS "Total"
+        FROM daily_product_metrics WHERE site_label IN ($site)
+          AND snapshot_date = (SELECT max(snapshot_date) FROM daily_product_metrics)
+        GROUP BY product, vendor, product_family ORDER BY "Total" DESC LIMIT 15""", h=10)
+    return dashboard("vuln-mgmt-core", "Vulnerability Management",
+                     "Site/severity trending, SLA compliance, CISA KEV exposure, worst-devices hit list and MTTR across "
+                     "every vulnerability source in vuln_findings (Falcon Exposure Management endpoints + Hadrian "
+                     "external).", b, help=VULN_HELP, tags=("kev", "mttr", "vuln-management"), time_from="now-90d")
 
 
 def main():
     for fname, fn in (("secops-overview.json", overview),
                       ("secops-endpoint-identity.json", endpoint_identity),
                       ("secops-email-external.json", email_external),
-                      ("secops-worklist.json", worklist)):
+                      ("secops-worklist.json", worklist),
+                      ("vuln-dashboard.json", vuln)):
         path = os.path.join(HERE, fname)
         with open(path, "w") as f:
             json.dump(fn(), f, indent=2)
