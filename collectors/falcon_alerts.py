@@ -5,7 +5,8 @@ Falcon alerts (endpoint, identity and any other Falcon detection product)
 status changes (new -> in_progress -> closed) flow through and MTTA/MTTC
 can be measured.
 """
-from typing import Any, Dict
+import datetime as dt
+from typing import Any, Dict, List
 
 from collectors.base import RunContext, as_list, norm_severity, parse_ts, upsert_rows
 from collectors.falcon_client import FalconClient
@@ -22,15 +23,31 @@ def _status(s: Any) -> str:
             "ignored": "closed"}.get(s, s or "new")
 
 
+QUERY = "/alerts/queries/alerts/v2"
+# The alerts query endpoint refuses offset + limit > 10,000, so a window holding more
+# alerts than that (a backfill, or catching up after an outage) is split into
+# time slices that each fit.
+MAX_PER_WINDOW = 9000
+
+
+def _fql_ts(t: dt.datetime) -> str:
+    return t.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _window_ids(fc: FalconClient, start: dt.datetime, end: dt.datetime, extra: str) -> List[str]:
+    fql = f"updated_timestamp:>'{_fql_ts(start)}'+updated_timestamp:<='{_fql_ts(end)}'" + (f"+{extra}" if extra else "")
+    total = ((fc.get(QUERY, {"filter": fql, "limit": 1}).get("meta") or {}).get("pagination") or {}).get("total") or 0
+    if total > MAX_PER_WINDOW and end - start > dt.timedelta(minutes=10):
+        mid = start + (end - start) / 2
+        return _window_ids(fc, start, mid, extra) + _window_ids(fc, mid, end, extra)
+    return list(fc.iter_offset_ids(QUERY, {"filter": fql}, limit=1000))
+
+
 def run(ctx: RunContext) -> Dict[str, Any]:
     fc = FalconClient(ctx.cfg, ctx.ccfg)
     hosts = host_site_map(ctx.conn)
     since = ctx.since(NAME, default_days=int(ctx.ccfg.get("lookback_days", 30)))
-    fql = f"updated_timestamp:>'{since.strftime('%Y-%m-%dT%H:%M:%SZ')}'"
-    if ctx.ccfg.get("filter"):
-        fql += "+" + ctx.ccfg["filter"]
-
-    ids = list(fc.iter_offset_ids("/alerts/queries/alerts/v2", {"filter": fql}, limit=1000))
+    ids = list(dict.fromkeys(_window_ids(fc, since, dt.datetime.now(dt.timezone.utc), ctx.ccfg.get("filter") or "")))
     ctx.log(f"{len(ids)} alerts updated since {since:%Y-%m-%d %H:%M}")
 
     rows = []

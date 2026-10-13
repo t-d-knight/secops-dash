@@ -109,8 +109,8 @@ def run_problems(cfg: Dict[str, Any], rc: int, started: dt.datetime) -> List[tup
     hours = (dt.datetime.now(dt.timezone.utc) - started).total_seconds() / 3600
     if hours > float(n.get("max_run_hours", 6)):
         out.append((NORMAL, f"run took {hours:.1f} h (limit {n.get('max_run_hours', 6)} h)"))
-    if rc != 0 and not out:
-        out.append((NORMAL, f"run exited {rc} -- see logs/collector.log"))
+    if rc != 0:   # always say so: a step that died (e.g. database restarted) isn't a collector row
+        out.append((NORMAL, f"run exited {rc} -- a step failed, see logs/collector.log"))
     out += disk_problems(cfg)
     return out
 
