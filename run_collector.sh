@@ -7,7 +7,8 @@ set -uo pipefail
 # A failing vendor feed does NOT stop the run: collect.py isolates each
 # collector, the rollups still run on whatever did arrive, and this script
 # exits non-zero at the end so cron mail / monitoring still notices.
-# Feed health is also visible on the dashboards (Data freshness panel).
+# Feed health is also visible on the dashboards (Data freshness panel), and
+# notify.py sends a Pushover alert if anything needs a look (config `notify:`).
 
 cd "$(dirname "$0")"
 source venv/bin/activate
@@ -16,10 +17,13 @@ mkdir -p logs
 exec 9>logs/.collector.lock
 if ! flock -n 9; then
     echo "[$(date -Iseconds)] previous run still going -- skipping"
+    python3 notify.py --config config.yaml run-skipped
     exit 0
 fi
 
-echo "[$(date -Iseconds)] ===== collector run start ====="
+started="$(date -Iseconds)"
+echo "[$started] ===== collector run start ====="
+python3 notify.py --config config.yaml run-start
 rc=0
 
 # Enrichment catalogs first so today's rollup uses today's KEV/EPSS.
@@ -39,4 +43,5 @@ python3 rollup_daily_metrics.py --config config.yaml || rc=1
 python3 reclassify_product_families.py --config config.yaml || rc=1
 
 echo "[$(date -Iseconds)] ===== collector run end (rc=$rc) ====="
+python3 notify.py --config config.yaml run-end --rc "$rc" --started "$started"
 exit $rc

@@ -287,6 +287,20 @@ collectors:
     # ca_file: "/etc/pki/tls/certs/opensearch-ca.pem"    # or verify_tls: false for a self-signed lab box
     # username / password -> secrets.yaml
 
+# Alerts (notify.py): Pushover when something needs a look -- a collector
+# failed or went stale, a run overran or failed, publishing/backup/report jobs
+# failed, disk filling -- plus a quiet note when reports are published.
+# Nothing is sent for a healthy run. healthcheck_url is a dead-man's switch
+# (e.g. healthchecks.io, which can itself alert via Pushover): pinged at the
+# start and end of each nightly run, so a box that's off or hung still gets
+# noticed. Keys: notify.pushover.app_token / user_key in secrets.yaml.
+notify:
+  enabled: false
+  healthcheck_url: null   # e.g. "https://hc-ping.com/<uuid>"
+  stale_hours: 36         # a feed with no successful run for this long alerts
+  max_run_hours: 6        # nightly run longer than this alerts
+  disk_warn_pct: 85
+
 # Copy finished reports (weekly/quarterly exec reports, monthly action packs)
 # to a file share, laid out <base>/<Site>/<Weekly|Quarterly|Monthly>/ -- e.g. a
 # NAS that syncs into SharePoint. publish.py, run from cron after the reports.

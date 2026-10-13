@@ -9,24 +9,26 @@
 # it skips the night, so nothing heavy is ever scheduled before it.
 #
 # Logs: logs/*.log (rotated and pruned by maintenance.sh).
+# Failures alert via notify.py (Pushover, config `notify:`); the nightly run and
+# publish.py call it themselves.
 
 # Nightly collection + rollups
 0  2 * * *        /opt/secops-dashboard/run_collector.sh >> /opt/secops-dashboard/logs/collector.log 2>&1
 
 # Weekly exec reports (last Mon-Sun week), region + every site, HTML + PDF -> reports/week-YYYY-Www/
-30 3 * * 1        cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock venv/bin/python3 exec_report.py --config config.yaml --period week --all-sites >> logs/report.log 2>&1
+30 3 * * 1        cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock venv/bin/python3 exec_report.py --config config.yaml --period week --all-sites >> logs/report.log 2>&1 || venv/bin/python3 notify.py --config config.yaml send --priority 1 --title "weekly reports failed" --message "See logs/report.log"
 
 # Quarterly exec reports (last calendar quarter) -> reports/quarter-YYYY-Qn/
-30 3 1 1,4,7,10 * cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock venv/bin/python3 exec_report.py --config config.yaml --period quarter --all-sites >> logs/report.log 2>&1
+30 3 1 1,4,7,10 * cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock venv/bin/python3 exec_report.py --config config.yaml --period quarter --all-sites >> logs/report.log 2>&1 || venv/bin/python3 notify.py --config config.yaml send --priority 1 --title "quarterly reports failed" --message "See logs/report.log"
 
 # Monthly per-site action packs (Excel) -> reports/monthly-YYYY-MM/
-0  4 1 * *        cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock venv/bin/python3 action_pack.py --config config.yaml >> logs/report.log 2>&1
+0  4 1 * *        cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock venv/bin/python3 action_pack.py --config config.yaml >> logs/report.log 2>&1 || venv/bin/python3 notify.py --config config.yaml send --priority 1 --title "monthly action packs failed" --message "See logs/report.log"
 
 # Publish anything new to the file share (no-op unless publish.enabled in config.yaml)
 30 7 * * *        cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock venv/bin/python3 publish.py --config config.yaml >> logs/publish.log 2>&1
 
 # Database backup (pg_dump, keeps 7 days in backups/) -- needs ~/.pgpass, see backup.sh
-0  9 * * *        cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock ./backup.sh >> logs/backup.log 2>&1
+0  9 * * *        cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock ./backup.sh >> logs/backup.log 2>&1 || venv/bin/python3 notify.py --config config.yaml send --priority 1 --title "database backup failed" --message "See logs/backup.log"
 
 # Weekly maintenance: retention pruning, VACUUM, log rotation -- needs ~/.pgpass, see maintenance.sh
-0 10 * * 0        cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock ./maintenance.sh >> logs/maintenance.log 2>&1
+0 10 * * 0        cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock ./maintenance.sh >> logs/maintenance.log 2>&1 || venv/bin/python3 notify.py --config config.yaml send --priority 1 --title "weekly maintenance failed" --message "See logs/maintenance.log"

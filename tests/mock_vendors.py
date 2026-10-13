@@ -310,6 +310,8 @@ class H(BaseHTTPRequestHandler):
         q = parse_qs(u.query)
         p = u.path
         CALLS.append(("GET", p, q))
+        if p.startswith("/hc/"):   # dead-man's-switch pings carry no auth
+            return self._send_text("OK")
         if not self._auth_ok():
             return self._send({"error": "no auth"}, 401)
         # ---- Falcon
@@ -399,6 +401,9 @@ class H(BaseHTTPRequestHandler):
         CALLS.append(("POST", p, body))
         if p == "/falcon/oauth2/token":
             return self._send({"access_token": "tok", "expires_in": 1799})
+        if p == "/pushover/1/messages.json":   # auth is the token in the form body
+            assert body.get("token") and body.get("user") and body.get("message"), body
+            return self._send({"status": 1, "request": "r1"})
         if p.endswith("/oauth2/v2.0/token"):
             return self._send({"access_token": "aztok", "expires_in": 3599})
         if p == "/hec/auth/external":

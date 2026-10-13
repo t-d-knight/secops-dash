@@ -82,6 +82,8 @@ collectors:
     workspaces: [{{name: ws, tenant: main, workspace_id: w1}}]
     queries: [{{name: signins, key_type: upn, kql: "SigninLogs | take 1"}}]
   dmarc: {{enabled: true, opensearch_url: "{M}/os", username: u}}
+notify: {{enabled: true, host_label: e2e, healthcheck_url: "{M}/hc/abc",
+          pushover: {{api_url: "{M}/pushover/1/messages.json"}}}}
 """
 SECRETS = """
 database: {password: null}
@@ -91,6 +93,7 @@ collectors:
   checkpoint_hec: {client_id: hc, access_key: hk}
   entra: {tenants: [{name: main, client_id: ac, client_secret: as}]}
   dmarc: {password: p}
+notify: {pushover: {app_token: at, user_key: uk}}
 """
 
 failures = []
@@ -149,6 +152,27 @@ def main() -> int:
     check(run("collect.py") == 0, "second collect.py run exited 0")
     print("== rollup_daily_metrics.py")
     check(run("rollup_daily_metrics.py") == 0, "rollup exited 0")
+
+    print("== notifications")
+    # form-encoded, so the mock parses each field to a list
+    pushes = lambda: [{k: v[0] for k, v in c[2].items()} for c in mock_vendors.CALLS
+                      if c[1] == "/pushover/1/messages.json"]
+    pings = lambda: [c[1] for c in mock_vendors.CALLS if c[1].startswith("/hc/")]
+    started = (dt.datetime.now().astimezone() - dt.timedelta(minutes=5)).isoformat(timespec="seconds")
+    subprocess.run([sys.executable, "notify.py", "--config", cfgp, "run-start"], cwd=ROOT)
+    subprocess.run([sys.executable, "notify.py", "--config", cfgp, "run-end", "--rc", "0", "--started", started], cwd=ROOT)
+    check(pings() == ["/hc/abc/start", "/hc/abc/0"] and not pushes(),
+          f"healthy run: start + success pings, no Pushover message ({pings()}, {len(pushes())} pushes)")
+    cur.execute("INSERT INTO collector_runs (collector, started_at, finished_at, status, error) "
+                "VALUES ('falcon_alerts', now(), now(), 'error', 'HTTP 403 from vendor')")
+    conn.commit()
+    subprocess.run([sys.executable, "notify.py", "--config", cfgp, "run-end", "--rc", "1", "--started", started], cwd=ROOT)
+    p = pushes()
+    check(len(p) == 1 and "falcon_alerts: error -- HTTP 403" in p[0].get("message", "")
+          and p[0].get("priority") == "1" and pings()[-1] == "/hc/abc/1",
+          f"failed collector: one high-priority push naming it, failure ping ({p}, {pings()[-1:]})")
+    cur.execute("DELETE FROM collector_runs WHERE error = 'HTTP 403 from vendor'")
+    conn.commit()
     srv.shutdown()
 
     cur = conn.cursor()

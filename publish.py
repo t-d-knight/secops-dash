@@ -39,6 +39,7 @@ import sys
 from typing import Dict, Iterator, List, Optional, Tuple
 
 import config as config_mod
+import notify
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 MANIFEST = os.path.join(ROOT, "logs", "publish-manifest.json")
@@ -201,6 +202,8 @@ def main() -> int:
             return 0
     except Exception as e:   # unreachable NAS, bad credentials, no permission: one clear line for the cron log
         print(f"[publish] cannot reach destination: {type(e).__name__}: {e}", file=sys.stderr)
+        if not args.check:
+            notify.notify_published(cfg, [], [], error=f"{type(e).__name__}: {e}")
         return 2
 
     failed: List[str] = []
@@ -217,6 +220,7 @@ def main() -> int:
         json.dump(manifest, fh, indent=1, sort_keys=True)
     os.replace(MANIFEST + ".tmp", MANIFEST)
     print(f"[publish] {len(todo) - len(failed)} published, {len(failed)} failed -> {t.describe()}")
+    notify.notify_published(cfg, [rel for _, rel, _ in todo if rel not in failed], failed)
     return 1 if failed else 0
 
 
