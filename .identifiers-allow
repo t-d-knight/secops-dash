@@ -2,3 +2,5 @@
 # Committed, so keep entries generic -- describe the false positive, never the real value.
 # Date/time format strings (a short site code can collide with the hour token in these)
 HH:mm
+# The documented default database role name (secrets.yaml database.user holds it too, but it's not a credential)
+secops_user

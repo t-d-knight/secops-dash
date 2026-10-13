@@ -3,8 +3,15 @@
 # Credentials -- see secrets.yaml.example
 /secrets.yaml
 
+# Rollback copies made when deploying (config.yaml.bak-20261013, secrets.yaml.bak-...,
+# crontab.bak-...): may hold real config and credentials
+*.bak
+*.bak-*
+
 # Other dev files
 bld.txt
+# Local notes (real names allowed), e.g. NEXT-STEPS.local.md
+*.local.md
 # Extra identifier denylist for tools/check_identifiers.py (real values)
 /.identifiers.local
 
