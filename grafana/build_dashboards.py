@@ -21,6 +21,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import discovery_classes as dc
+import usb_categories as uc
 from email_types import BULK_EVENT_TYPES, THREAT_EVENT_TYPES, sql_in
 
 DS = {"type": "postgres", "uid": "${DS_POSTGRESQL}"}
@@ -450,6 +451,26 @@ ENDPOINT_IDENTITY_HELP = {
     "MFA registration by site": "Share of member users with MFA registered, per site.",
     "Risky users": "Entra ID Protection's current risky-user list.",
     "Recent risk detections": "Entra ID Protection risk detections in the range, newest first.",
+    "Files to removable media": "Files written to USB / removable drives in the range, all kinds.",
+    "Business-data files": "Files written to removable drives that are business data: documents, spreadsheets & "
+                           "data, email, medical images and archives (contents unknown, so counted as data).",
+    "Email & medical images": "Outlook messages / mailbox exports and DICOM images written to removable drives "
+                              "-- the most sensitive categories.",
+    "Data to removable media": "Total size of the files written to removable drives in the range.",
+    "People writing to USB": "Distinct users who wrote any file to a removable drive (system writes excluded).",
+    "Drives used": "Distinct removable drives (by serial) written to. Drives Falcon couldn't name aren't counted.",
+    "Files written per day by category": "Files written to removable drives per day, stacked by what kind of file.",
+    "Business-data files by site": "Business-data files written to removable drives in the range, per site.",
+    "Top removable-media writers": "People who wrote the most business-data files to removable drives in the range. "
+                                   "Volume alone isn't wrongdoing -- check against role (imaging, records, IT).",
+    "Email & medical image writes": "Every PC x user x drive x folder group in the range that wrote Outlook mail, "
+                                    "mailbox exports or DICOM images, largest first. Sample files are the "
+                                    "largest names in the group.",
+    "USB scans (range)": "On-demand scans Falcon ran when a drive was plugged in.",
+    "Incomplete scans": "USB scans that didn't finish -- usually the drive was removed mid-scan.",
+    "Scans finding malware": "USB scans that found at least one malicious file.",
+    "Detections from USB scans": "Falcon detections raised by a USB scan in the range.",
+    "Recent USB scans": "USB insertion scans in the range, ones that found malware first.",
     "Sign-ins: success vs failure": "Entra sign-ins per day from Log Analytics.",
     "MFA denied": "Sign-ins where the user denied or failed the MFA prompt, per day.",
     "Legacy authentication by client": "Sign-ins using legacy protocols (IMAP, POP, SMTP auth, ...) that can't do "
@@ -460,7 +481,7 @@ ENDPOINT_IDENTITY_HELP = {
 
 def endpoint_identity():
     b = Builder()
-    b.text(f"Falcon sensor coverage and detections, identity risk (Falcon Identity Protection) and Entra ID. {HOVER}",
+    b.text(f"Falcon sensor coverage and detections, removable media, identity risk (Falcon Identity Protection) and Entra ID. {HOVER}",
            h=2)
     b.row("Endpoint coverage (Falcon)", note="A **stale** sensor hasn't checked in for 7+ days: the host is "
           "unprotected and unassessed, or decommissioned but not removed from Falcon.")
@@ -529,6 +550,69 @@ def endpoint_identity():
         FROM security_alerts WHERE status <> 'closed' AND site_label IN ($site)
         ORDER BY CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END, created_at
         LIMIT 200""", h=9, overrides=[sev_cell()], links={"Link": "${__value.raw}"})
+
+    usb_biz = f"category IN {uc.sql_in(uc.BUSINESS)}"
+    usb_label = "CASE category " + " ".join(f"WHEN '{k}' THEN '{v}'" for k, v in uc.LABEL.items()) + \
+        " ELSE category END"
+    usb_where = f"site_label IN ($site) AND {rng_d('day')}"
+    as_bytes = lambda col: {"matcher": {"id": "byName", "options": col}, "properties": [{"id": "unit", "value": "bytes"}]}
+    b.row("Removable media (Falcon)", note="Files written to USB and other removable drives, and the scan Falcon "
+          "runs when a drive is plugged in. **File-write history starts 5 Oct 2026** (Falcon keeps raw events "
+          "about 7 days), so ranges reaching further back undercount; scan history goes back to 5 Sep.")
+    b.stat("Files to removable media", f"SELECT COALESCE(sum(files), 0) FROM usb_file_writes_daily WHERE {usb_where}",
+           thresholds=NEUTRAL)
+    b.stat("Business-data files", f"SELECT COALESCE(sum(files) FILTER (WHERE {usb_biz}), 0) FROM usb_file_writes_daily "
+           f"WHERE {usb_where}", thresholds=NEUTRAL)
+    b.stat("Email & medical images", "SELECT COALESCE(sum(files), 0) FROM usb_file_writes_daily "
+           f"WHERE category IN ('email', 'clinical') AND {usb_where}", thresholds=NEUTRAL)
+    b.stat("Data to removable media", f"SELECT COALESCE(sum(bytes), 0) FROM usb_file_writes_daily WHERE {usb_where}",
+           unit="bytes", thresholds=NEUTRAL)
+    b.stat("People writing to USB", "SELECT count(DISTINCT user_key) FILTER (WHERE user_key <> '') "
+           f"FROM usb_file_writes_daily WHERE {usb_where}", thresholds=NEUTRAL)
+    b.stat("Drives used", "SELECT count(DISTINCT device_serial) FILTER (WHERE device_serial <> '') "
+           f"FROM usb_file_writes_daily WHERE {usb_where}", thresholds=NEUTRAL)
+    b.ts("Files written per day by category", f"""
+        SELECT day::timestamp AS time, {usb_label} AS metric, sum(files) AS value
+        FROM usb_file_writes_daily WHERE {usb_where} GROUP BY 1, 2 ORDER BY 1""",
+         w=16, stack=True, bars=True, colors={uc.LABEL[k]: uc.COLOR[k] for k in uc.ORDER})
+    b.bars("Business-data files by site", f"""
+        SELECT site_label AS "Site", sum(files) AS "Files"
+        FROM usb_file_writes_daily WHERE {usb_biz} AND {usb_where} GROUP BY 1 ORDER BY 2 DESC""",
+           w=8, h=8, thresholds=[{"color": "blue", "value": None}])
+    b.table("Top removable-media writers", f"""
+        SELECT max(display_name) AS "Name", max(user_name) AS "Account", max(department) AS "Department",
+               max(title) AS "Title", string_agg(DISTINCT site_label, ', ') AS "Site",
+               count(DISTINCT aid) AS "PCs", count(DISTINCT device_serial) FILTER (WHERE device_serial <> '') AS "Drives",
+               COALESCE(sum(files) FILTER (WHERE {usb_biz}), 0) AS "Business files",
+               COALESCE(sum(files) FILTER (WHERE category IN ('email', 'clinical')), 0) AS "Email / medical",
+               sum(files) AS "All files", sum(bytes) AS "Data",
+               string_agg(DISTINCT {usb_label}, ', ') AS "Categories", max(last_write) AS "Last write"
+        FROM usb_file_writes_daily WHERE user_key <> '' AND {usb_where}
+        GROUP BY user_key ORDER BY 8 DESC, 10 DESC LIMIT 100""", h=9,
+            overrides=[as_bytes("Data"), bg("Business files"), bg("Email / medical")])
+    b.table("Email & medical image writes", f"""
+        SELECT day AS "Day", COALESCE(NULLIF(display_name, ''), NULLIF(user_name, ''), '(system)') AS "User",
+               department AS "Department", hostname AS "PC", site_label AS "Site", {usb_label} AS "Category",
+               files AS "Files", bytes AS "Data", concat_ws(' ', device_make, device_model) AS "Drive",
+               folder AS "Folder", array_to_string(sample_files, ', ') AS "Sample files"
+        FROM usb_file_writes_daily WHERE category IN ('email', 'clinical') AND {usb_where}
+        ORDER BY files DESC, bytes DESC LIMIT 200""", h=8, overrides=[as_bytes("Data")])
+    b.stat("USB scans (range)", f"SELECT count(*) FROM usb_scans WHERE site_label IN ($site) AND {rng_ts('created_on')}",
+           w=6, thresholds=NEUTRAL)
+    b.stat("Incomplete scans", "SELECT count(*) FROM usb_scans WHERE status IS DISTINCT FROM 'completed' "
+           f"AND site_label IN ($site) AND {rng_ts('created_on')}", w=6, thresholds=NEUTRAL)
+    b.stat("Scans finding malware", "SELECT count(*) FROM usb_scans WHERE files_malicious > 0 "
+           f"AND site_label IN ($site) AND {rng_ts('created_on')}", w=6, thresholds=BAD_UP)
+    b.stat("Detections from USB scans", "SELECT count(*) FROM security_alerts a JOIN usb_scans s ON s.scan_id = a.scan_id "
+           f"WHERE a.site_label IN ($site) AND {rng_ts('a.created_at')}", w=6, thresholds=BAD_UP)
+    b.table("Recent USB scans", f"""
+        SELECT created_on AS "Started", hostname AS "PC", site_label AS "Site", status AS "Status",
+               array_to_string(drives, ', ') AS "Drives", files_traversed AS "Files seen",
+               files_scanned AS "Scanned", files_malicious AS "Malicious", files_quarantined AS "Quarantined",
+               round(EXTRACT(EPOCH FROM completed_on - created_on) / 60.0, 1) AS "Minutes"
+        FROM usb_scans WHERE site_label IN ($site) AND {rng_ts('created_on')}
+        ORDER BY files_malicious DESC NULLS LAST, created_on DESC LIMIT 200""", h=8,
+            overrides=[thresh_bg("Malicious", [{"color": "transparent", "value": None}, {"color": "red", "value": 1}])])
 
     b.row("Identity risk (Falcon Identity Protection)", note="Current state from the latest Identity "
           "Protection pull; trends from the nightly snapshot. **Enabled** includes accounts whose status is unknown.")
@@ -632,7 +716,7 @@ def endpoint_identity():
             FROM azure_log_metrics WHERE query_name = '{q}' AND site_label IN ($site) AND {rng_d('snapshot_date')}
             GROUP BY 1, 2 ORDER BY 1""", colors={"failure": "red", "success": "green", "high": "red", "medium": "dark-yellow"})
     return dashboard("secops-endpoint-identity", "Endpoint & Identity",
-                     "Falcon sensor coverage and detections, Falcon Identity Protection risk, Entra ID risk/MFA and sign-in activity.", b,
+                     "Falcon sensor coverage and detections, removable media (USB writes and scans), Falcon Identity Protection risk, Entra ID risk/MFA and sign-in activity.", b,
                      help=ENDPOINT_IDENTITY_HELP)
 
 

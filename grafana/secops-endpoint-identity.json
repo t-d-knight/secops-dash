@@ -26,7 +26,7 @@
   "id": null,
   "uid": "secops-endpoint-identity",
   "title": "Endpoint & Identity",
-  "description": "Falcon sensor coverage and detections, Falcon Identity Protection risk, Entra ID risk/MFA and sign-in activity.",
+  "description": "Falcon sensor coverage and detections, removable media (USB writes and scans), Falcon Identity Protection risk, Entra ID risk/MFA and sign-in activity.",
   "tags": [
     "secops"
   ],
@@ -92,7 +92,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "Falcon sensor coverage and detections, identity risk (Falcon Identity Protection) and Entra ID. Hover the **i** on any panel for exactly what it counts."
+        "content": "Falcon sensor coverage and detections, removable media, identity risk (Falcon Identity Protection) and Entra ID. Hover the **i** on any panel for exactly what it counts."
       }
     },
     {
@@ -1305,7 +1305,7 @@
     {
       "id": 24,
       "type": "row",
-      "title": "Identity risk (Falcon Identity Protection)",
+      "title": "Removable media (Falcon)",
       "collapsed": false,
       "gridPos": {
         "x": 0,
@@ -1327,16 +1327,1036 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "Current state from the latest Identity Protection pull; trends from the nightly snapshot. **Enabled** includes accounts whose status is unknown."
+        "content": "Files written to USB and other removable drives, and the scan Falcon runs when a drive is plugged in. **File-write history starts 5 Oct 2026** (Falcon keeps raw events about 7 days), so ranges reaching further back undercount; scan history goes back to 5 Sep."
       }
     },
     {
       "id": 26,
       "type": "stat",
-      "title": "High-risk accounts",
+      "title": "Files to removable media",
       "gridPos": {
         "x": 0,
         "y": 52,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT COALESCE(sum(files), 0) FROM usb_file_writes_daily WHERE site_label IN ($site) AND day BETWEEN '${__from:date}'::date AND '${__to:date}'::date"
+        }
+      ],
+      "description": "Files written to USB / removable drives in the range, all kinds."
+    },
+    {
+      "id": 27,
+      "type": "stat",
+      "title": "Business-data files",
+      "gridPos": {
+        "x": 4,
+        "y": 52,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT COALESCE(sum(files) FILTER (WHERE category IN ('documents', 'data', 'email', 'clinical', 'archives')), 0) FROM usb_file_writes_daily WHERE site_label IN ($site) AND day BETWEEN '${__from:date}'::date AND '${__to:date}'::date"
+        }
+      ],
+      "description": "Files written to removable drives that are business data: documents, spreadsheets & data, email, medical images and archives (contents unknown, so counted as data)."
+    },
+    {
+      "id": 28,
+      "type": "stat",
+      "title": "Email & medical images",
+      "gridPos": {
+        "x": 8,
+        "y": 52,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT COALESCE(sum(files), 0) FROM usb_file_writes_daily WHERE category IN ('email', 'clinical') AND site_label IN ($site) AND day BETWEEN '${__from:date}'::date AND '${__to:date}'::date"
+        }
+      ],
+      "description": "Outlook messages / mailbox exports and DICOM images written to removable drives -- the most sensitive categories."
+    },
+    {
+      "id": 29,
+      "type": "stat",
+      "title": "Data to removable media",
+      "gridPos": {
+        "x": 12,
+        "y": 52,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT COALESCE(sum(bytes), 0) FROM usb_file_writes_daily WHERE site_label IN ($site) AND day BETWEEN '${__from:date}'::date AND '${__to:date}'::date"
+        }
+      ],
+      "description": "Total size of the files written to removable drives in the range."
+    },
+    {
+      "id": 30,
+      "type": "stat",
+      "title": "People writing to USB",
+      "gridPos": {
+        "x": 16,
+        "y": 52,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(DISTINCT user_key) FILTER (WHERE user_key <> '') FROM usb_file_writes_daily WHERE site_label IN ($site) AND day BETWEEN '${__from:date}'::date AND '${__to:date}'::date"
+        }
+      ],
+      "description": "Distinct users who wrote any file to a removable drive (system writes excluded)."
+    },
+    {
+      "id": 31,
+      "type": "stat",
+      "title": "Drives used",
+      "gridPos": {
+        "x": 20,
+        "y": 52,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(DISTINCT device_serial) FILTER (WHERE device_serial <> '') FROM usb_file_writes_daily WHERE site_label IN ($site) AND day BETWEEN '${__from:date}'::date AND '${__to:date}'::date"
+        }
+      ],
+      "description": "Distinct removable drives (by serial) written to. Drives Falcon couldn't name aren't counted."
+    },
+    {
+      "id": 32,
+      "type": "timeseries",
+      "title": "Files written per day by category",
+      "gridPos": {
+        "x": 0,
+        "y": 56,
+        "w": 16,
+        "h": 8
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 80,
+            "stacking": {
+              "mode": "normal"
+            },
+            "drawStyle": "bars"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Documents"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#2563eb"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Spreadsheets & data"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#0891b2"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Email"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#7c3aed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Medical images"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#db2777"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Archives"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d97706"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Images & media"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#f59e0b"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Applications & scripts"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#64748b"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Design & CAD"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#0d9488"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Disk images & system"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#475569"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Other"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#cbd5e1"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT day::timestamp AS time, CASE category WHEN 'documents' THEN 'Documents' WHEN 'data' THEN 'Spreadsheets & data' WHEN 'email' THEN 'Email' WHEN 'clinical' THEN 'Medical images' WHEN 'archives' THEN 'Archives' WHEN 'images' THEN 'Images & media' WHEN 'software' THEN 'Applications & scripts' WHEN 'cad' THEN 'Design & CAD' WHEN 'system' THEN 'Disk images & system' WHEN 'other' THEN 'Other' ELSE category END AS metric, sum(files) AS value FROM usb_file_writes_daily WHERE site_label IN ($site) AND day BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1, 2 ORDER BY 1"
+        }
+      ],
+      "description": "Files written to removable drives per day, stacked by what kind of file."
+    },
+    {
+      "id": 33,
+      "type": "bargauge",
+      "title": "Business-data files by site",
+      "gridPos": {
+        "x": 16,
+        "y": 56,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "showUnfilled": true,
+        "reduceOptions": {
+          "values": true,
+          "calcs": [],
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT site_label AS \"Site\", sum(files) AS \"Files\" FROM usb_file_writes_daily WHERE category IN ('documents', 'data', 'email', 'clinical', 'archives') AND site_label IN ($site) AND day BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1 ORDER BY 2 DESC"
+        }
+      ],
+      "description": "Business-data files written to removable drives in the range, per site."
+    },
+    {
+      "id": 34,
+      "type": "table",
+      "title": "Top removable-media writers",
+      "gridPos": {
+        "x": 0,
+        "y": 64,
+        "w": 24,
+        "h": 9
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Data"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Business files"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Email / medical"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT max(display_name) AS \"Name\", max(user_name) AS \"Account\", max(department) AS \"Department\", max(title) AS \"Title\", string_agg(DISTINCT site_label, ', ') AS \"Site\", count(DISTINCT aid) AS \"PCs\", count(DISTINCT device_serial) FILTER (WHERE device_serial <> '') AS \"Drives\", COALESCE(sum(files) FILTER (WHERE category IN ('documents', 'data', 'email', 'clinical', 'archives')), 0) AS \"Business files\", COALESCE(sum(files) FILTER (WHERE category IN ('email', 'clinical')), 0) AS \"Email / medical\", sum(files) AS \"All files\", sum(bytes) AS \"Data\", string_agg(DISTINCT CASE category WHEN 'documents' THEN 'Documents' WHEN 'data' THEN 'Spreadsheets & data' WHEN 'email' THEN 'Email' WHEN 'clinical' THEN 'Medical images' WHEN 'archives' THEN 'Archives' WHEN 'images' THEN 'Images & media' WHEN 'software' THEN 'Applications & scripts' WHEN 'cad' THEN 'Design & CAD' WHEN 'system' THEN 'Disk images & system' WHEN 'other' THEN 'Other' ELSE category END, ', ') AS \"Categories\", max(last_write) AS \"Last write\" FROM usb_file_writes_daily WHERE user_key <> '' AND site_label IN ($site) AND day BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY user_key ORDER BY 8 DESC, 10 DESC LIMIT 100"
+        }
+      ],
+      "description": "People who wrote the most business-data files to removable drives in the range. Volume alone isn't wrongdoing -- check against role (imaging, records, IT)."
+    },
+    {
+      "id": 35,
+      "type": "table",
+      "title": "Email & medical image writes",
+      "gridPos": {
+        "x": 0,
+        "y": 73,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Data"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT day AS \"Day\", COALESCE(NULLIF(display_name, ''), NULLIF(user_name, ''), '(system)') AS \"User\", department AS \"Department\", hostname AS \"PC\", site_label AS \"Site\", CASE category WHEN 'documents' THEN 'Documents' WHEN 'data' THEN 'Spreadsheets & data' WHEN 'email' THEN 'Email' WHEN 'clinical' THEN 'Medical images' WHEN 'archives' THEN 'Archives' WHEN 'images' THEN 'Images & media' WHEN 'software' THEN 'Applications & scripts' WHEN 'cad' THEN 'Design & CAD' WHEN 'system' THEN 'Disk images & system' WHEN 'other' THEN 'Other' ELSE category END AS \"Category\", files AS \"Files\", bytes AS \"Data\", concat_ws(' ', device_make, device_model) AS \"Drive\", folder AS \"Folder\", array_to_string(sample_files, ', ') AS \"Sample files\" FROM usb_file_writes_daily WHERE category IN ('email', 'clinical') AND site_label IN ($site) AND day BETWEEN '${__from:date}'::date AND '${__to:date}'::date ORDER BY files DESC, bytes DESC LIMIT 200"
+        }
+      ],
+      "description": "Every PC x user x drive x folder group in the range that wrote Outlook mail, mailbox exports or DICOM images, largest first. Sample files are the largest names in the group."
+    },
+    {
+      "id": 36,
+      "type": "stat",
+      "title": "USB scans (range)",
+      "gridPos": {
+        "x": 0,
+        "y": 81,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM usb_scans WHERE site_label IN ($site) AND created_on >= '${__from:date}'::date AND created_on < '${__to:date}'::date + 1"
+        }
+      ],
+      "description": "On-demand scans Falcon ran when a drive was plugged in."
+    },
+    {
+      "id": 37,
+      "type": "stat",
+      "title": "Incomplete scans",
+      "gridPos": {
+        "x": 6,
+        "y": 81,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM usb_scans WHERE status IS DISTINCT FROM 'completed' AND site_label IN ($site) AND created_on >= '${__from:date}'::date AND created_on < '${__to:date}'::date + 1"
+        }
+      ],
+      "description": "USB scans that didn't finish -- usually the drive was removed mid-scan."
+    },
+    {
+      "id": 38,
+      "type": "stat",
+      "title": "Scans finding malware",
+      "gridPos": {
+        "x": 12,
+        "y": 81,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM usb_scans WHERE files_malicious > 0 AND site_label IN ($site) AND created_on >= '${__from:date}'::date AND created_on < '${__to:date}'::date + 1"
+        }
+      ],
+      "description": "USB scans that found at least one malicious file."
+    },
+    {
+      "id": 39,
+      "type": "stat",
+      "title": "Detections from USB scans",
+      "gridPos": {
+        "x": 18,
+        "y": 81,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM security_alerts a JOIN usb_scans s ON s.scan_id = a.scan_id WHERE a.site_label IN ($site) AND a.created_at >= '${__from:date}'::date AND a.created_at < '${__to:date}'::date + 1"
+        }
+      ],
+      "description": "Falcon detections raised by a USB scan in the range."
+    },
+    {
+      "id": 40,
+      "type": "table",
+      "title": "Recent USB scans",
+      "gridPos": {
+        "x": 0,
+        "y": 85,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Malicious"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT created_on AS \"Started\", hostname AS \"PC\", site_label AS \"Site\", status AS \"Status\", array_to_string(drives, ', ') AS \"Drives\", files_traversed AS \"Files seen\", files_scanned AS \"Scanned\", files_malicious AS \"Malicious\", files_quarantined AS \"Quarantined\", round(EXTRACT(EPOCH FROM completed_on - created_on) / 60.0, 1) AS \"Minutes\" FROM usb_scans WHERE site_label IN ($site) AND created_on >= '${__from:date}'::date AND created_on < '${__to:date}'::date + 1 ORDER BY files_malicious DESC NULLS LAST, created_on DESC LIMIT 200"
+        }
+      ],
+      "description": "USB insertion scans in the range, ones that found malware first."
+    },
+    {
+      "id": 41,
+      "type": "row",
+      "title": "Identity risk (Falcon Identity Protection)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 93,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 42,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 94,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Current state from the latest Identity Protection pull; trends from the nightly snapshot. **Enabled** includes accounts whose status is unknown."
+      }
+    },
+    {
+      "id": 43,
+      "type": "stat",
+      "title": "High-risk accounts",
+      "gridPos": {
+        "x": 0,
+        "y": 96,
         "w": 4,
         "h": 4
       },
@@ -1391,12 +2411,12 @@
       "description": "Accounts Falcon Identity Protection currently rates high risk."
     },
     {
-      "id": 27,
+      "id": 44,
       "type": "stat",
       "title": "Medium-risk accounts",
       "gridPos": {
         "x": 4,
-        "y": 52,
+        "y": 96,
         "w": 4,
         "h": 4
       },
@@ -1443,12 +2463,12 @@
       "description": "Accounts Falcon Identity Protection currently rates medium risk."
     },
     {
-      "id": 28,
+      "id": 45,
       "type": "stat",
       "title": "Enabled, password > 1 year",
       "gridPos": {
         "x": 8,
-        "y": 52,
+        "y": 96,
         "w": 4,
         "h": 4
       },
@@ -1503,12 +2523,12 @@
       "description": "Enabled accounts whose password was last changed over a year ago."
     },
     {
-      "id": 29,
+      "id": 46,
       "type": "stat",
       "title": "Enabled accounts",
       "gridPos": {
         "x": 12,
-        "y": 52,
+        "y": 96,
         "w": 4,
         "h": 4
       },
@@ -1555,12 +2575,12 @@
       "description": "Enabled (or unknown-status) accounts, all kinds: people, service, mailbox, generic, VPN / remote-app. The denominator for the stale percentages."
     },
     {
-      "id": 30,
+      "id": 47,
       "type": "stat",
       "title": "Stale: all enabled accounts",
       "gridPos": {
         "x": 16,
-        "y": 52,
+        "y": 96,
         "w": 4,
         "h": 4
       },
@@ -1616,12 +2636,12 @@
       "description": "Enabled accounts Falcon Identity flags STALE_ACCOUNT (no recent activity). Disable or confirm still needed."
     },
     {
-      "id": 31,
+      "id": 48,
       "type": "stat",
       "title": "Stale: people's main accounts",
       "gridPos": {
         "x": 20,
-        "y": 52,
+        "y": 96,
         "w": 4,
         "h": 4
       },
@@ -1677,12 +2697,12 @@
       "description": "As left, for human accounts only, excluding service / mailbox / generic accounts and shared-domain VPN / remote-app second accounts: roughly, staff who've left or moved on."
     },
     {
-      "id": 32,
+      "id": 49,
       "type": "bargauge",
       "title": "Accounts by risk factor",
       "gridPos": {
         "x": 0,
-        "y": 56,
+        "y": 100,
         "w": 12,
         "h": 8
       },
@@ -1730,12 +2750,12 @@
       "description": "Accounts carrying each Falcon Identity risk factor right now (one account can have several)."
     },
     {
-      "id": 33,
+      "id": 50,
       "type": "timeseries",
       "title": "Risk factor trend",
       "gridPos": {
         "x": 12,
-        "y": 56,
+        "y": 100,
         "w": 12,
         "h": 8
       },
@@ -1770,12 +2790,12 @@
       "description": "Accounts per risk factor per day, from the nightly snapshot."
     },
     {
-      "id": 34,
+      "id": 51,
       "type": "timeseries",
       "title": "Stale accounts, % of enabled",
       "gridPos": {
         "x": 0,
-        "y": 64,
+        "y": 108,
         "w": 24,
         "h": 7
       },
@@ -1841,12 +2861,12 @@
       "description": "From the nightly identity snapshot (history from 14 Oct 2026, when the enabled-account totals started being recorded)."
     },
     {
-      "id": 35,
+      "id": 52,
       "type": "table",
       "title": "Identity remediation list",
       "gridPos": {
         "x": 0,
-        "y": 71,
+        "y": 115,
         "w": 24,
         "h": 10
       },
@@ -1957,25 +2977,25 @@
       "description": "Work list for the service desk (users) and cyber/systems (privileged/service accounts)."
     },
     {
-      "id": 36,
+      "id": 53,
       "type": "row",
       "title": "Entra ID",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 81,
+        "y": 125,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 37,
+      "id": 54,
       "type": "text",
       "title": "",
       "gridPos": {
         "x": 0,
-        "y": 82,
+        "y": 126,
         "w": 24,
         "h": 2
       },
@@ -1985,12 +3005,12 @@
       }
     },
     {
-      "id": 38,
+      "id": 55,
       "type": "stat",
       "title": "Users at risk",
       "gridPos": {
         "x": 0,
-        "y": 84,
+        "y": 128,
         "w": 4,
         "h": 4
       },
@@ -2045,12 +3065,12 @@
       "description": "Users Entra ID Protection currently flags at risk."
     },
     {
-      "id": 39,
+      "id": 56,
       "type": "stat",
       "title": "Confirmed compromised",
       "gridPos": {
         "x": 4,
-        "y": 84,
+        "y": 128,
         "w": 4,
         "h": 4
       },
@@ -2105,12 +3125,12 @@
       "description": "Users an admin marked confirmed compromised in Entra ID Protection."
     },
     {
-      "id": 40,
+      "id": 57,
       "type": "stat",
       "title": "Risk detections (range)",
       "gridPos": {
         "x": 8,
-        "y": 84,
+        "y": 128,
         "w": 4,
         "h": 4
       },
@@ -2157,12 +3177,12 @@
       "description": "Entra ID Protection risk detections (unfamiliar sign-in, leaked credentials, ...) in the range."
     },
     {
-      "id": 41,
+      "id": 58,
       "type": "stat",
       "title": "MFA registered",
       "gridPos": {
         "x": 12,
-        "y": 84,
+        "y": 128,
         "w": 4,
         "h": 4
       },
@@ -2218,12 +3238,12 @@
       "description": "Share of member users with an MFA method registered (guests excluded)."
     },
     {
-      "id": 42,
+      "id": 59,
       "type": "stat",
       "title": "Admins without MFA",
       "gridPos": {
         "x": 16,
-        "y": 84,
+        "y": 128,
         "w": 8,
         "h": 4
       },
@@ -2274,12 +3294,12 @@
       "description": "Users holding an admin role with no MFA method registered. Should be zero."
     },
     {
-      "id": 43,
+      "id": 60,
       "type": "bargauge",
       "title": "MFA registration by site",
       "gridPos": {
         "x": 0,
-        "y": 88,
+        "y": 132,
         "w": 8,
         "h": 8
       },
@@ -2337,12 +3357,12 @@
       "description": "Share of member users with MFA registered, per site."
     },
     {
-      "id": 44,
+      "id": 61,
       "type": "table",
       "title": "Risky users",
       "gridPos": {
         "x": 8,
-        "y": 88,
+        "y": 132,
         "w": 16,
         "h": 8
       },
@@ -2433,12 +3453,12 @@
       "description": "Entra ID Protection's current risky-user list."
     },
     {
-      "id": 45,
+      "id": 62,
       "type": "table",
       "title": "Recent risk detections",
       "gridPos": {
         "x": 0,
-        "y": 96,
+        "y": 140,
         "w": 24,
         "h": 8
       },
@@ -2529,24 +3549,24 @@
       "description": "Entra ID Protection risk detections in the range, newest first."
     },
     {
-      "id": 46,
+      "id": 63,
       "type": "row",
       "title": "Sign-in activity (Log Analytics)",
       "collapsed": true,
       "gridPos": {
         "x": 0,
-        "y": 104,
+        "y": 148,
         "w": 24,
         "h": 1
       },
       "panels": [
         {
-          "id": 47,
+          "id": 64,
           "type": "timeseries",
           "title": "Sign-ins: success vs failure",
           "gridPos": {
             "x": 0,
-            "y": 105,
+            "y": 149,
             "w": 12,
             "h": 8
           },
@@ -2642,12 +3662,12 @@
           "description": "Entra sign-ins per day from Log Analytics."
         },
         {
-          "id": 48,
+          "id": 65,
           "type": "timeseries",
           "title": "MFA denied",
           "gridPos": {
             "x": 12,
-            "y": 105,
+            "y": 149,
             "w": 12,
             "h": 8
           },
@@ -2743,12 +3763,12 @@
           "description": "Sign-ins where the user denied or failed the MFA prompt, per day."
         },
         {
-          "id": 49,
+          "id": 66,
           "type": "timeseries",
           "title": "Legacy authentication by client",
           "gridPos": {
             "x": 0,
-            "y": 113,
+            "y": 157,
             "w": 12,
             "h": 8
           },
@@ -2844,12 +3864,12 @@
           "description": "Sign-ins using legacy protocols (IMAP, POP, SMTP auth, ...) that can't do MFA, per day."
         },
         {
-          "id": 50,
+          "id": 67,
           "type": "timeseries",
           "title": "Risky sign-ins",
           "gridPos": {
             "x": 12,
-            "y": 113,
+            "y": 157,
             "w": 12,
             "h": 8
           },
@@ -2945,12 +3965,12 @@
           "description": "Sign-ins Entra rated risky, per day by risk level."
         },
         {
-          "id": 51,
+          "id": 68,
           "type": "timeseries",
           "title": "Conditional Access blocks",
           "gridPos": {
             "x": 0,
-            "y": 121,
+            "y": 165,
             "w": 12,
             "h": 8
           },

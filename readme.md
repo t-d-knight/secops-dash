@@ -208,7 +208,7 @@ sudo dnf install -y grafana && sudo systemctl enable --now grafana-server
 |---|---|
 | `grafana/secops-overview.json` | **SecOps Overview**: site scorecard across every feed, trends, data freshness, site-mapping gaps |
 | `grafana/vuln-dashboard.json` | **Vulnerability Management**: SLA, KEV, EPSS, worst devices, top fixes, MTTR (endpoint + external) |
-| `grafana/secops-endpoint-identity.json` | **Endpoint & Identity**: sensor coverage, alerts, Identity Protection remediation list, Entra risk/MFA, sign-in activity |
+| `grafana/secops-endpoint-identity.json` | **Endpoint & Identity**: sensor coverage, alerts, removable media (USB writes/scans), Identity Protection remediation list, Entra risk/MFA, sign-in activity |
 | `grafana/secops-email-external.json` | **Email & External Exposure**: HEC threats, DMARC alignment and failing senders, Hadrian assets and risks |
 | `grafana/secops-worklist.json` | **Cyber Team Worklist**: feed health, vulnerability-assessment coverage, stale/unmanaged endpoints, Hadrian triage queues, identity site-mapping gaps, DMARC |
 
