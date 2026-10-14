@@ -300,6 +300,8 @@ notify:
   stale_hours: 36         # a feed with no successful run for this long alerts
   max_run_hours: 6        # nightly run longer than this alerts
   disk_warn_pct: 85
+  identity_console_url: null   # optional link in the nightly identity digest, e.g. the child CID's
+                               # Identity Protection detections page
 
 # Copy finished reports (weekly/quarterly exec reports, monthly action packs)
 # to a file share, laid out <base>/<Site>/<Weekly|Quarterly|Monthly>/ -- e.g. a

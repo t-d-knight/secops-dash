@@ -187,7 +187,7 @@
     {
       "id": 5,
       "type": "row",
-      "title": "Endpoint coverage",
+      "title": "Detections awaiting triage",
       "collapsed": false,
       "gridPos": {
         "x": 0,
@@ -209,16 +209,463 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "**Active** = sensor seen in the last 7 days. **Assessed** = Falcon has returned vulnerability data for it. The gap is estate the vulnerability figures can't see."
+        "content": "Identity Protection detections live in the **child CID's** console, so they pile up unseen from the parent. Triage there (and OverWatch in the parent); the nightly digest on Pushover lists new ones."
       }
     },
     {
       "id": 7,
       "type": "stat",
-      "title": "Active managed hosts (7d)",
+      "title": "Identity: high",
       "gridPos": {
         "x": 0,
         "y": 13,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM security_alerts WHERE product = 'idp' AND severity IN ('critical','high') AND status IS DISTINCT FROM 'closed' AND site_label IN ($site)"
+        }
+      ],
+      "description": "Open Falcon Identity Protection detections rated critical or high."
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Identity: medium",
+      "gridPos": {
+        "x": 6,
+        "y": 13,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM security_alerts WHERE product = 'idp' AND severity = 'medium' AND status IS DISTINCT FROM 'closed' AND site_label IN ($site)"
+        }
+      ],
+      "description": "Open Falcon Identity Protection detections rated medium."
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "Identity: low",
+      "gridPos": {
+        "x": 12,
+        "y": 13,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM security_alerts WHERE product = 'idp' AND severity = 'low' AND status IS DISTINCT FROM 'closed' AND site_label IN ($site)"
+        }
+      ],
+      "description": "Open low-severity identity detections -- mostly unusual logins and bad-reputation IPs; review in bulk rather than one by one."
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "OverWatch open",
+      "gridPos": {
+        "x": 18,
+        "y": 13,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM security_alerts WHERE product = 'overwatch' AND status IS DISTINCT FROM 'closed' AND site_label IN ($site)"
+        }
+      ],
+      "description": "Open alerts from CrowdStrike's OverWatch threat hunters, any severity."
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "Detections to triage",
+      "gridPos": {
+        "x": 0,
+        "y": 17,
+        "w": 16,
+        "h": 9
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Severity"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Critical": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "High": {
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "Medium": {
+                        "color": "dark-yellow",
+                        "index": 2
+                      },
+                      "Low": {
+                        "color": "yellow",
+                        "index": 3
+                      },
+                      "critical": {
+                        "color": "red",
+                        "index": 4
+                      },
+                      "high": {
+                        "color": "orange",
+                        "index": 5
+                      },
+                      "medium": {
+                        "color": "dark-yellow",
+                        "index": 6
+                      },
+                      "low": {
+                        "color": "yellow",
+                        "index": 7
+                      },
+                      "info": {
+                        "color": "blue",
+                        "index": 8
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Days open"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Link"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open",
+                    "url": "${__value.raw}",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT created_at AS \"Raised\", severity AS \"Severity\", CASE product WHEN 'idp' THEN 'Identity' WHEN 'overwatch' THEN 'OverWatch' ELSE product END AS \"From\", name AS \"Detection\", user_name AS \"User\", hostname AS \"Host\", site_label AS \"Site\", floor(EXTRACT(EPOCH FROM now() - created_at) / 86400)::int AS \"Days open\", link AS \"Link\" FROM security_alerts WHERE status IS DISTINCT FROM 'closed' AND site_label IN ($site) AND ((product = 'idp' AND severity IN ('critical','high','medium')) OR product = 'overwatch') ORDER BY CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 ELSE 3 END, created_at LIMIT 300"
+        }
+      ],
+      "description": "Open identity detections rated medium and up, plus OverWatch alerts, oldest first. Close them in the Falcon console; the next nightly pull clears them here."
+    },
+    {
+      "id": 12,
+      "type": "bargauge",
+      "title": "Open identity detections by type",
+      "gridPos": {
+        "x": 16,
+        "y": 17,
+        "w": 8,
+        "h": 9
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "showUnfilled": true,
+        "reduceOptions": {
+          "values": true,
+          "calcs": [],
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT name AS \"Detection\", count(*) AS \"Open\" FROM security_alerts WHERE product = 'idp' AND severity <> 'info' AND status IS DISTINCT FROM 'closed' AND site_label IN ($site) GROUP BY 1 ORDER BY 2 DESC LIMIT 12"
+        }
+      ],
+      "description": "Open identity detections (low and up) by detection name."
+    },
+    {
+      "id": 13,
+      "type": "row",
+      "title": "Endpoint coverage",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 14,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**Active** = sensor seen in the last 7 days. **Assessed** = Falcon has returned vulnerability data for it. The gap is estate the vulnerability figures can't see."
+      }
+    },
+    {
+      "id": 15,
+      "type": "stat",
+      "title": "Active managed hosts (7d)",
+      "gridPos": {
+        "x": 0,
+        "y": 29,
         "w": 4,
         "h": 4
       },
@@ -265,12 +712,12 @@
       "description": "Hosts with a Falcon sensor that checked in within 7 days."
     },
     {
-      "id": 8,
+      "id": 16,
       "type": "stat",
       "title": "Vulnerability assessment coverage",
       "gridPos": {
         "x": 4,
-        "y": 13,
+        "y": 29,
         "w": 4,
         "h": 4
       },
@@ -326,12 +773,12 @@
       "description": "Active managed hosts Falcon has returned vulnerability data for. Everything below 100% is estate the vuln figures can't see."
     },
     {
-      "id": 9,
+      "id": 17,
       "type": "stat",
       "title": "Active hosts not assessed",
       "gridPos": {
         "x": 8,
-        "y": 13,
+        "y": 29,
         "w": 4,
         "h": 4
       },
@@ -386,12 +833,12 @@
       "description": "Active hosts Falcon has returned no vulnerability data for: blind spots in the vulnerability figures."
     },
     {
-      "id": 10,
+      "id": 18,
       "type": "stat",
       "title": "Stale sensors",
       "gridPos": {
         "x": 12,
-        "y": 13,
+        "y": 29,
         "w": 4,
         "h": 4
       },
@@ -446,12 +893,12 @@
       "description": "Managed hosts silent for 7+ days: unprotected, unassessed, or decommissioned but not removed from Falcon."
     },
     {
-      "id": 11,
+      "id": 19,
       "type": "stat",
       "title": "Named machines missing a sensor",
       "gridPos": {
         "x": 16,
-        "y": 13,
+        "y": 29,
         "w": 4,
         "h": 4
       },
@@ -506,12 +953,12 @@
       "description": "AD computer accounts in active use (servers, workstations, DCs) with no Falcon sensor -- Discover's unmanaged list minus duplicates, service accounts, appliances and stale objects. Network-only devices are counted separately below."
     },
     {
-      "id": 12,
+      "id": 20,
       "type": "stat",
       "title": "Hosts in Ungrouped",
       "gridPos": {
         "x": 20,
-        "y": 13,
+        "y": 29,
         "w": 4,
         "h": 4
       },
@@ -566,12 +1013,12 @@
       "description": "Managed + unmanaged hosts no site rule matched (ignores the Site filter). Fix with falcon_groups / ou_contains / hostname_regex in config.yaml."
     },
     {
-      "id": 13,
+      "id": 21,
       "type": "table",
       "title": "Coverage by site",
       "gridPos": {
         "x": 0,
-        "y": 17,
+        "y": 33,
         "w": 10,
         "h": 10
       },
@@ -642,12 +1089,12 @@
       "description": "Per site: active hosts, how many are assessed, stale sensors and named machines missing a sensor. Worst coverage first."
     },
     {
-      "id": 14,
+      "id": 22,
       "type": "table",
       "title": "Active hosts with no vulnerability data",
       "gridPos": {
         "x": 10,
-        "y": 17,
+        "y": 33,
         "w": 14,
         "h": 10
       },
@@ -677,25 +1124,25 @@
       "description": "Compare sensor version, host groups and policy against assessed hosts to find what Exposure Management isn't covering."
     },
     {
-      "id": 15,
+      "id": 23,
       "type": "row",
       "title": "Missing endpoints",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 27,
+        "y": 43,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 16,
+      "id": 24,
       "type": "table",
       "title": "Stale sensors (silent 7+ days)",
       "gridPos": {
         "x": 0,
-        "y": 28,
+        "y": 44,
         "w": 12,
         "h": 10
       },
@@ -746,12 +1193,12 @@
       "description": "Decommissioned: remove from Falcon. Still in use: fix the sensor."
     },
     {
-      "id": 17,
+      "id": 25,
       "type": "table",
       "title": "Unmanaged assets by class",
       "gridPos": {
         "x": 12,
-        "y": 28,
+        "y": 44,
         "w": 12,
         "h": 10
       },
@@ -781,25 +1228,25 @@
       "description": "Discover's unmanaged list, sorted into real machines without a sensor vs records that aren't missing endpoints at all. Classified by collectors/falcon_hosts.py."
     },
     {
-      "id": 18,
+      "id": 26,
       "type": "row",
       "title": "Missing sensors: named machines",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 38,
+        "y": 54,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 19,
+      "id": 27,
       "type": "table",
       "title": "Servers, DCs and workstations with no sensor (AD accounts in use)",
       "gridPos": {
         "x": 0,
-        "y": 39,
+        "y": 55,
         "w": 24,
         "h": 12
       },
@@ -829,25 +1276,25 @@
       "description": "Real, in-use Windows machines Falcon knows from AD but that have no sensor. Install one, or record why not (vendor-supported clinical systems). A workstation here can also be a renamed managed host -- check the name in Falcon first."
     },
     {
-      "id": 20,
+      "id": 28,
       "type": "row",
       "title": "Missing sensors: devices seen on the network",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 51,
+        "y": 67,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 21,
+      "id": 29,
       "type": "table",
       "title": "Network devices with no sensor (passive discovery)",
       "gridPos": {
         "x": 0,
-        "y": 52,
+        "y": 68,
         "w": 16,
         "h": 12
       },
@@ -877,12 +1324,12 @@
       "description": "Seen talking on the network by managed sensors, no AD account. VMware MACs are VMs without a sensor or ESXi management interfaces; Dell/Intel/HP/Lenovo NICs are often PCs; printers, phones and IoT can't take a sensor."
     },
     {
-      "id": 22,
+      "id": 30,
       "type": "table",
       "title": "Network devices by MAC vendor",
       "gridPos": {
         "x": 16,
-        "y": 52,
+        "y": 68,
         "w": 8,
         "h": 12
       },
@@ -912,24 +1359,24 @@
       "description": "Sensorless devices seen only on the network, grouped by network-card maker -- a quick way to spot printers, phones, VMs and IoT."
     },
     {
-      "id": 23,
+      "id": 31,
       "type": "row",
       "title": "Not missing endpoints (AD cleanup)",
       "collapsed": true,
       "gridPos": {
         "x": 0,
-        "y": 64,
+        "y": 80,
         "w": 24,
         "h": 1
       },
       "panels": [
         {
-          "id": 24,
+          "id": 32,
           "type": "table",
           "title": "Discover records that aren't unsensored machines",
           "gridPos": {
             "x": 0,
-            "y": 65,
+            "y": 81,
             "w": 24,
             "h": 12
           },
@@ -961,25 +1408,25 @@
       ]
     },
     {
-      "id": 25,
+      "id": 33,
       "type": "row",
       "title": "External attack surface (Hadrian) hygiene",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 77,
+        "y": 93,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 26,
+      "id": 34,
       "type": "text",
       "title": "",
       "gridPos": {
         "x": 0,
-        "y": 78,
+        "y": 94,
         "w": 24,
         "h": 2
       },
@@ -989,12 +1436,12 @@
       }
     },
     {
-      "id": 27,
+      "id": 35,
       "type": "stat",
       "title": "Potential risks to triage",
       "gridPos": {
         "x": 0,
-        "y": 80,
+        "y": 96,
         "w": 4,
         "h": 4
       },
@@ -1049,12 +1496,12 @@
       "description": "Unverified detections: confirm (promote) or dismiss in Hadrian."
     },
     {
-      "id": 28,
+      "id": 36,
       "type": "stat",
       "title": "Confirmed risks open",
       "gridPos": {
         "x": 4,
-        "y": 80,
+        "y": 96,
         "w": 4,
         "h": 4
       },
@@ -1109,12 +1556,12 @@
       "description": "Open Hadrian risks that are verified, unpatched technology or infected devices."
     },
     {
-      "id": 29,
+      "id": 37,
       "type": "stat",
       "title": "Infostealer infections",
       "gridPos": {
         "x": 8,
-        "y": 80,
+        "y": 96,
         "w": 4,
         "h": 4
       },
@@ -1169,12 +1616,12 @@
       "description": "Open Hadrian infostealer findings: credentials of ours seen in malware logs."
     },
     {
-      "id": 30,
+      "id": 38,
       "type": "stat",
       "title": "Assets not matched by tag",
       "gridPos": {
         "x": 12,
-        "y": 80,
+        "y": 96,
         "w": 4,
         "h": 4
       },
@@ -1229,12 +1676,12 @@
       "description": "Tag these in Hadrian -- the collector also writes them to reports/hadrian-suggested-tags.csv."
     },
     {
-      "id": 31,
+      "id": 39,
       "type": "stat",
       "title": "Assets not seen in 30 days",
       "gridPos": {
         "x": 16,
-        "y": 80,
+        "y": 96,
         "w": 4,
         "h": 4
       },
@@ -1289,12 +1736,12 @@
       "description": "Hadrian hasn't observed these recently: gone, moved, or no longer reachable. Archive (zzArchive) if abandoned."
     },
     {
-      "id": 32,
+      "id": 40,
       "type": "stat",
       "title": "Reopened risks",
       "gridPos": {
         "x": 20,
-        "y": 80,
+        "y": 96,
         "w": 4,
         "h": 4
       },
@@ -1349,12 +1796,12 @@
       "description": "Risks marked fixed that Hadrian found again -- the fix didn't hold."
     },
     {
-      "id": 33,
+      "id": 41,
       "type": "table",
       "title": "Triage queue: potential risks by title",
       "gridPos": {
         "x": 0,
-        "y": 84,
+        "y": 100,
         "w": 14,
         "h": 10
       },
@@ -1445,12 +1892,12 @@
       "description": "Grouped so one decision clears many: confirm or dismiss each title across its assets."
     },
     {
-      "id": 34,
+      "id": 42,
       "type": "table",
       "title": "Infostealer infections",
       "gridPos": {
         "x": 14,
-        "y": 84,
+        "y": 100,
         "w": 10,
         "h": 10
       },
@@ -1480,12 +1927,12 @@
       "description": "Compromised credentials harvested from infected devices. Reset the named accounts and find the device. Not masked here -- this dashboard is for the cyber team."
     },
     {
-      "id": 35,
+      "id": 43,
       "type": "table",
       "title": "External assets: not tag-matched or not recently seen",
       "gridPos": {
         "x": 0,
-        "y": 94,
+        "y": 110,
         "w": 24,
         "h": 8
       },
@@ -1515,25 +1962,25 @@
       "description": "Hadrian assets with no site tag (site guessed from the domain) or not seen recently."
     },
     {
-      "id": 36,
+      "id": 44,
       "type": "row",
       "title": "Identity site mapping",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 102,
+        "y": 118,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 37,
+      "id": 45,
       "type": "table",
       "title": "Identities in Ungrouped, by domain and OU",
       "gridPos": {
         "x": 0,
-        "y": 103,
+        "y": 119,
         "w": 12,
         "h": 10
       },
@@ -1563,12 +2010,12 @@
       "description": "Ignores the Site filter. Each row is a mapping rule waiting to be written: add the domain or OU fragment to the right site in config.yaml."
     },
     {
-      "id": 38,
+      "id": 46,
       "type": "table",
       "title": "Identities per site",
       "gridPos": {
         "x": 12,
-        "y": 103,
+        "y": 119,
         "w": 12,
         "h": 10
       },
@@ -1598,25 +2045,25 @@
       "description": "A site with far fewer identities than staff is a sign its accounts are landing in Ungrouped (or another site)."
     },
     {
-      "id": 39,
+      "id": 47,
       "type": "row",
       "title": "Shared-domain access accounts (VPN / remote apps)",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 113,
+        "y": 129,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 40,
+      "id": 48,
       "type": "text",
       "title": "",
       "gridPos": {
         "x": 0,
-        "y": 114,
+        "y": 130,
         "w": 24,
         "h": 3
       },
@@ -1626,12 +2073,12 @@
       }
     },
     {
-      "id": 41,
+      "id": 49,
       "type": "stat",
       "title": "Extra access accounts (enabled)",
       "gridPos": {
         "x": 0,
-        "y": 117,
+        "y": 133,
         "w": 4,
         "h": 4
       },
@@ -1686,12 +2133,12 @@
       "description": "Enabled second accounts in the shared domain used only for VPN or remote apps."
     },
     {
-      "id": 42,
+      "id": 50,
       "type": "stat",
       "title": "Enabled but unused (stale)",
       "gridPos": {
         "x": 4,
-        "y": 117,
+        "y": 133,
         "w": 4,
         "h": 4
       },
@@ -1746,12 +2193,12 @@
       "description": "Quick win: nobody is using these -- disable."
     },
     {
-      "id": 43,
+      "id": 51,
       "type": "stat",
       "title": "Legacy (no VPN or remote-app group)",
       "gridPos": {
         "x": 8,
-        "y": 117,
+        "y": 133,
         "w": 4,
         "h": 4
       },
@@ -1806,12 +2253,12 @@
       "description": "Enabled shared-domain access accounts in neither a VPN nor a remote-app group: confirm and remove."
     },
     {
-      "id": 44,
+      "id": 52,
       "type": "table",
       "title": "By site",
       "gridPos": {
         "x": 0,
-        "y": 121,
+        "y": 137,
         "w": 10,
         "h": 10
       },
@@ -1862,12 +2309,12 @@
       "description": "Shared-domain access accounts per home site, by what they're used for."
     },
     {
-      "id": 45,
+      "id": 53,
       "type": "table",
       "title": "Accounts",
       "gridPos": {
         "x": 10,
-        "y": 121,
+        "y": 137,
         "w": 14,
         "h": 10
       },
@@ -1897,24 +2344,24 @@
       "description": "Every shared-domain access account; enabled and stale ones first."
     },
     {
-      "id": 46,
+      "id": 54,
       "type": "row",
       "title": "DMARC (parsedmarc)",
       "collapsed": true,
       "gridPos": {
         "x": 0,
-        "y": 131,
+        "y": 147,
         "w": 24,
         "h": 1
       },
       "panels": [
         {
-          "id": 47,
+          "id": 55,
           "type": "text",
           "title": "",
           "gridPos": {
             "x": 0,
-            "y": 132,
+            "y": 148,
             "w": 24,
             "h": 3
           },
@@ -1924,12 +2371,12 @@
           }
         },
         {
-          "id": 48,
+          "id": 56,
           "type": "table",
           "title": "DMARC pass rate by sending domain (range)",
           "gridPos": {
             "x": 0,
-            "y": 135,
+            "y": 151,
             "w": 12,
             "h": 9
           },
@@ -2000,12 +2447,12 @@
           "description": "Per From domain in the range: volume, pass rate and failures."
         },
         {
-          "id": 49,
+          "id": 57,
           "type": "table",
           "title": "Top failing sources (range)",
           "gridPos": {
             "x": 12,
-            "y": 135,
+            "y": 151,
             "w": 12,
             "h": 9
           },

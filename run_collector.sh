@@ -78,6 +78,10 @@ stage rollup ok python3 rollup_daily_metrics.py --config config.yaml
 # Keep product families tidy after product_groups.yaml rule changes.
 stage reclassify ok python3 reclassify_product_families.py --config config.yaml
 
+# New identity / OverWatch detections since the last digest (one Pushover message,
+# nothing if none). Remembers what it sent, so a catch-up run doesn't repeat it.
+python3 notify.py --config config.yaml identity-digest
+
 label="collector"; [[ "$mode" == "--catch-up" ]] && label="catch-up"
 echo "[$(date -Iseconds)] ===== $label run end (rc=$rc) ====="
 python3 notify.py --config config.yaml run-end --rc "$rc" --started "$started"

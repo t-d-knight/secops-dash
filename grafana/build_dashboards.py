@@ -911,6 +911,14 @@ WORKLIST_HELP = {
     "By site": "Shared-domain access accounts per home site, by what they're used for.",
     "Accounts": "Every shared-domain access account; enabled and stale ones first.",
     "DMARC pass rate by sending domain (range)": "Per From domain in the range: volume, pass rate and failures.",
+    "Identity: high": "Open Falcon Identity Protection detections rated critical or high.",
+    "Identity: medium": "Open Falcon Identity Protection detections rated medium.",
+    "Identity: low": "Open low-severity identity detections -- mostly unusual logins and bad-reputation IPs; "
+                     "review in bulk rather than one by one.",
+    "OverWatch open": "Open alerts from CrowdStrike's OverWatch threat hunters, any severity.",
+    "Open identity detections by type": "Open identity detections (low and up) by detection name.",
+    "Detections to triage": "Open identity detections rated medium and up, plus OverWatch alerts, oldest first. "
+                            "Close them in the Falcon console; the next nightly pull clears them here.",
 }
 
 def worklist():
@@ -934,6 +942,32 @@ def worklist():
                             "error": {"color": "red", "index": 2}, "running": {"color": "blue", "index": 3}}}]}]}],
         description="Disabled feeds keep their last run here. An 'error' row for a feed you rely on means its "
                     "panels and report figures are stale since 'Last success'.")
+
+    open_det = "status IS DISTINCT FROM 'closed' AND site_label IN ($site)"
+    b.row("Detections awaiting triage", note="Identity Protection detections live in the **child CID's** console, "
+          "so they pile up unseen from the parent. Triage there (and OverWatch in the parent); the nightly digest "
+          "on Pushover lists new ones.")
+    b.stat("Identity: high", f"SELECT count(*) FROM security_alerts WHERE product = 'idp' "
+           f"AND severity IN ('critical','high') AND {open_det}", w=6, thresholds=BAD_UP)
+    b.stat("Identity: medium", f"SELECT count(*) FROM security_alerts WHERE product = 'idp' AND severity = 'medium' "
+           f"AND {open_det}", w=6, thresholds=BAD_UP)
+    b.stat("Identity: low", f"SELECT count(*) FROM security_alerts WHERE product = 'idp' AND severity = 'low' "
+           f"AND {open_det}", w=6, thresholds=NEUTRAL)
+    b.stat("OverWatch open", f"SELECT count(*) FROM security_alerts WHERE product = 'overwatch' AND {open_det}",
+           w=6, thresholds=BAD_UP)
+    b.table("Detections to triage", f"""
+        SELECT created_at AS "Raised", severity AS "Severity",
+               CASE product WHEN 'idp' THEN 'Identity' WHEN 'overwatch' THEN 'OverWatch' ELSE product END AS "From",
+               name AS "Detection", user_name AS "User", hostname AS "Host", site_label AS "Site",
+               floor(EXTRACT(EPOCH FROM now() - created_at) / 86400)::int AS "Days open", link AS "Link"
+        FROM security_alerts
+        WHERE {open_det} AND ((product = 'idp' AND severity IN ('critical','high','medium')) OR product = 'overwatch')
+        ORDER BY CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 ELSE 3 END, created_at
+        LIMIT 300""", w=16, h=9, overrides=[sev_cell(), bg("Days open")], links={"Link": "${__value.raw}"})
+    b.bars("Open identity detections by type", f"""
+        SELECT name AS "Detection", count(*) AS "Open" FROM security_alerts
+        WHERE product = 'idp' AND severity <> 'info' AND {open_det} GROUP BY 1 ORDER BY 2 DESC LIMIT 12""",
+           w=8, h=9, thresholds=[{"color": "orange", "value": None}])
 
     b.row("Endpoint coverage", note="**Active** = sensor seen in the last 7 days. **Assessed** = Falcon has "
           "returned vulnerability data for it. The gap is estate the vulnerability figures can't see.")

@@ -10,6 +10,10 @@ Quiet by design: nothing is sent when a run is healthy. What does send:
             notify.stale_hours, the run exited non-zero or ran longer than
             notify.max_run_hours, or the disk is over notify.disk_warn_pct
   publish   reports published (low priority), or publishing failed (high)
+  identity-digest
+            new open Falcon Identity Protection detections (critical/high/
+            medium) and OverWatch alerts since the last digest -- identity
+            detections live in the child CID's console, which nobody watches
   send      anything else, e.g. a crontab line's `|| notify.py send ...`
 
 Config (config.yaml `notify:`, keys in secrets.yaml):
@@ -27,6 +31,7 @@ run into a failed one. Problems sending are printed to the calling job's log.
 """
 import argparse
 import datetime as dt
+import json
 import os
 import shutil
 import socket
@@ -160,6 +165,63 @@ def published_summary(published: List[str]):
     return lines, parts
 
 
+DIGEST_STATE = os.path.join(ROOT, "logs", ".identity-digest.json")
+DIGEST_KEEP_DAYS = 90
+
+
+def identity_digest(cfg: Dict[str, Any]) -> None:
+    """One message listing open identity detections (critical/high/medium) and
+    OverWatch alerts not yet notified. The first run reports the existing
+    backlog. Detection names and sites only -- no account names off the box.
+    Notified ids are remembered (logs/.identity-digest.json) only once the
+    message has gone, so a failed send is retried next run."""
+    from db import pg_connect
+    try:
+        with open(DIGEST_STATE) as fh:
+            seen: Dict[str, str] = json.load(fh)
+    except (OSError, ValueError):
+        seen = {}
+    conn = pg_connect(cfg)
+    try:
+        cur = conn.cursor()
+        cur.execute("""SELECT source || ':' || alert_id, product, severity, COALESCE(name, '(unnamed)'), site_label
+                       FROM security_alerts
+                       WHERE status IS DISTINCT FROM 'closed'
+                         AND ((product = 'idp' AND severity IN ('critical', 'high', 'medium'))
+                              OR product = 'overwatch')""")
+        new = [r for r in cur.fetchall() if r[0] not in seen]
+    finally:
+        conn.close()
+    if not new:
+        return
+    order = {"critical": 0, "high": 1, "medium": 2}
+    groups: Dict[tuple, set] = {}
+    counts: Dict[tuple, int] = {}
+    for _, product, sev, name, site in new:
+        k = ("OverWatch" if product == "overwatch" else sev, name)
+        groups.setdefault(k, set()).add(site)
+        counts[k] = counts.get(k, 0) + 1
+    keys = sorted(counts, key=lambda k: (k[0] != "OverWatch", order.get(k[0], 9), -counts[k]))
+    lines = [f"{counts[k]} x {k[1]} ({k[0]}) -- {', '.join(sorted(groups[k]))}" for k in keys[:12]]
+    if len(keys) > 12:
+        lines.append(f"... and {len(keys) - 12} more kinds")
+    url = _cfg(cfg).get("identity_console_url")
+    lines.append("Triage in the Identity Protection console (child CID)" + (f": {url}" if url else "") +
+                 "; open list on the Worklist dashboard.")
+    n_hi = sum(1 for _, product, sev, _, _ in new if product == "overwatch" or sev in ("critical", "high"))
+    title = (f"{len(new)} identity detection{'s' if len(new) != 1 else ''} to triage"
+             + (f" ({n_hi} high/OverWatch)" if n_hi else "") + (" -- current backlog" if not seen else ""))
+    if send(cfg, title, "\n".join(lines), HIGH if n_hi else NORMAL):
+        today = dt.date.today()
+        seen.update({r[0]: today.isoformat() for r in new})
+        cutoff = (today - dt.timedelta(days=DIGEST_KEEP_DAYS)).isoformat()
+        seen = {k: v for k, v in seen.items() if v >= cutoff}
+        tmp = DIGEST_STATE + ".tmp"
+        with open(tmp, "w") as fh:
+            json.dump(seen, fh)
+        os.replace(tmp, DIGEST_STATE)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--config", default="config.yaml")
@@ -170,6 +232,7 @@ def main() -> int:
     s.add_argument("--priority", type=int, default=NORMAL)
     sub.add_parser("run-start", help="dead-man's switch: nightly run started")
     sub.add_parser("run-skipped", help="nightly run skipped because the previous one still holds the lock")
+    sub.add_parser("identity-digest", help="new identity / OverWatch detections since the last digest")
     e = sub.add_parser("run-end", help="check the run that just finished; alert on problems, ping the switch")
     e.add_argument("--rc", type=int, required=True)
     e.add_argument("--started", required=True, help="run start time, ISO 8601 with offset")
@@ -181,6 +244,8 @@ def main() -> int:
             send(cfg, args.title, args.message, args.priority)
         elif args.cmd == "run-start":
             ping(cfg, "start")
+        elif args.cmd == "identity-digest":
+            identity_digest(cfg)
         elif args.cmd == "run-skipped":
             send(cfg, "nightly run skipped", "The previous run still holds the collector lock -- "
                  "it's still going, or hung. Check logs/collector.log.", HIGH)
