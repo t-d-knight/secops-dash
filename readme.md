@@ -166,8 +166,9 @@ sed "s#/opt/secops-dashboard#$PWD#g" crontab.example | crontab -
 | 03:30, 1 Jan/Apr/Jul/Oct | Quarterly exec reports | `logs/report.log` |
 | 04:00, 1st of the month | Monthly action packs (Excel) | `logs/report.log` |
 | 07:30 daily | `publish.py`: anything new to the file share | `logs/publish.log` |
-| 09:00 daily | `backup.sh`: `pg_dump`, last 7 days kept in `backups/` | `logs/backup.log` |
-| 10:00 Sundays | `maintenance.sh`: retention pruning, `VACUUM`, log rotation | `logs/maintenance.log` |
+| 09:00 daily | `backup.sh`: `pg_dump`, last 7 days kept in `backups/`; with `backup.offsite` enabled, also copied to an SMB share (`backup_offsite.py`, `keep_days` there) | `logs/backup.log` |
+| 10:00 daily | `run_collector.sh --catch-up`: finishes any stage the night run didn't (power loss, reboot, Postgres restart); silent no-op otherwise | `logs/collector.log` |
+| 10:00 Sundays | `maintenance.sh`: retention pruning, `VACUUM`, log rotation, deploy `*.bak-YYYYMMDD` copies over 14 days | `logs/maintenance.log` |
 
 Everything after the collection waits on its lock (`flock -w`) instead of starting at a fixed time, so a long collection never leaves a later job working on half-collected data. The collector itself skips the night if the lock is still held at 02:00, so nothing heavy is scheduled before it.
 

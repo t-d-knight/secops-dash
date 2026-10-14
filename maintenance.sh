@@ -23,6 +23,7 @@ RETENTION_DAYS_FINDINGS="${RETENTION_DAYS_FINDINGS:-180}" # reporting.findings_r
 RETENTION_DAYS_EVENTS="${RETENTION_DAYS_EVENTS:-365}"     # reporting.events_retention_days
 RETENTION_DAYS_RUNS=90
 RETENTION_DAYS_LOGS=30
+RETENTION_DAYS_BAK="${RETENTION_DAYS_BAK:-14}"             # deploy rollback copies (*.bak-YYYYMMDD)
 LOG_ROTATE_MB="${LOG_ROTATE_MB:-20}"
 
 TS="$(date -Iseconds)"
@@ -78,5 +79,16 @@ find "$LOG_DIR" -maxdepth 1 -type f -name "*.log" -size +"${LOG_ROTATE_MB}"M | w
 done
 find "$LOG_DIR" -maxdepth 1 -type f -name "*.log.*.gz" -mtime +"$RETENTION_DAYS_LOGS" -delete
 find "$LOG_DIR" -maxdepth 1 -type f -name "*.log" -mtime +"$RETENTION_DAYS_LOGS" -delete
+
+echo "[$TS] removing deploy rollback copies (*.bak-YYYYMMDD*) older than ${RETENTION_DAYS_BAK} days…"
+# By the date in the name, not mtime: cp -p keeps the original file's old mtime.
+BAK_CUTOFF="$(date -d "-${RETENTION_DAYS_BAK} days" +%Y%m%d)"
+find "$APP_DIR" \( -path "$APP_DIR/venv" -o -path "$APP_DIR/backups" -o -path "$APP_DIR/reports" \) -prune -o \
+     -type f -name '*.bak-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]*' -print | while read -r f; do
+    d="${f##*.bak-}"
+    if [[ "${d:0:8}" < "$BAK_CUTOFF" ]]; then
+        rm -f -- "$f" && echo "  removed ${f#"$APP_DIR"/}"
+    fi
+done
 
 echo "[$TS] ===== secops dashboard maintenance complete ====="
