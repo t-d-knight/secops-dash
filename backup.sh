@@ -8,9 +8,10 @@ set -euo pipefail
 # Same password-free auth as maintenance.sh: a ~/.pgpass line
 #   127.0.0.1:5432:secops_dashboard:secops_user:yourpassword
 #
-# These dumps sit on the same disk as the database: they cover "dropped a
-# table / bad migration", not "lost the VM". Copy them off the box (VM backup,
-# NAS) for that.
+# The local dumps sit on the same disk as the database: they cover "dropped a
+# table / bad migration", not "lost the box". With backup.offsite.enabled in
+# config.yaml, each dump is also copied to an SMB share (backup_offsite.py,
+# keeping backup.offsite.keep_days there) and a failed copy fails this script.
 
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKUP_DIR="${BACKUP_DIR:-$APP_DIR/backups}"
@@ -27,6 +28,8 @@ echo "[$(date -Iseconds)] backup start -> $OUT"
 pg_dump -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -Fc -Z 6 -f "$OUT.partial"
 mv "$OUT.partial" "$OUT"
 echo "[$(date -Iseconds)] backup done ($(du -h "$OUT" | cut -f1))"
+
+"$APP_DIR/venv/bin/python3" "$APP_DIR/backup_offsite.py" --config "$APP_DIR/config.yaml" "$OUT"
 
 find "$BACKUP_DIR" -maxdepth 1 -name "${DB_NAME}-*.dump" -mtime +"$KEEP_DAYS" -print -delete
 find "$BACKUP_DIR" -maxdepth 1 -name "*.partial" -mtime +1 -delete

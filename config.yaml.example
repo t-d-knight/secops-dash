@@ -319,6 +319,19 @@ publish:
   # local:
   #   path: "/mnt/security-reports"
 
+# Off-box copies of the nightly database dump (backup.sh -> backup_offsite.py).
+# SMB only; credentials default to publish.smb's (override under
+# backup.offsite.smb.username / password in secrets.yaml if they differ).
+backup:
+  offsite:
+    enabled: false
+    keep_days: 14             # dumps older than this are pruned from the share (local copies: backup.sh KEEP_DAYS)
+    smb:
+      server: "nas.example.local"
+      share: "Backups"
+      base_path: "secops-dashboard"
+      encrypt: true
+
 database:
   engine: "postgres"
   host: "127.0.0.1"
