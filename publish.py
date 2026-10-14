@@ -170,6 +170,7 @@ def main() -> int:
     ap.add_argument("--force", action="store_true", help="re-publish everything, ignoring the manifest")
     ap.add_argument("--sets", help="only these kinds, comma-separated: week,quarter,monthly (default: all)")
     args = ap.parse_args()
+    print(f"[{dt.datetime.now().astimezone().isoformat(timespec='seconds')}] publish start: {' '.join(sys.argv[1:])}", flush=True)
 
     cfg = config_mod.load_config(args.config)
     pub = cfg.get("publish") or {}

@@ -47,11 +47,17 @@ REQUIRED_RELATIONS = [
     ("entra_mfa_registration", "table", False, "entra collector (mfa_registration feed)."),
     ("dmarc_daily", "table", False, "dmarc collector."),
     ("azure_log_metrics", "table", False, "azure_log_analytics collector."),
-    ("fact_vuln_findings_current", "view", True, "Run db_schema.ensure_schema() (collect.py / rollup_daily_metrics.py do this)."),
+    ("fact_vuln_findings_current", "large view", True, "Run db_schema.ensure_schema() (collect.py / rollup_daily_metrics.py do this)."),
     ("dim_site", "view", True, "Same as above."),
     ("dim_product", "view", False, "Empty until findings have a classified product_key."),
-    ("asset_risk_summary", "view", True, "Same as fact_vuln_findings_current."),
-    ("patch_impact_summary", "view", False, "Empty until there are open findings."),
+    # aggregates over every open finding (minutes each): the dashboards read the
+    # dash_* tables the nightly rollup builds from them, so check those for data
+    ("asset_risk_summary", "rolled-up view", True, "Same as fact_vuln_findings_current."),
+    ("patch_impact_summary", "rolled-up view", False, "Same as fact_vuln_findings_current."),
+    ("dash_vuln_site_summary", "table", True, "Run rollup_daily_metrics.py."),
+    ("dash_vuln_kev_epss", "table", False, "Run rollup_daily_metrics.py (empty if no KEV / high-EPSS findings)."),
+    ("dash_asset_risk", "table", True, "Run rollup_daily_metrics.py (built from asset_risk_summary)."),
+    ("dash_patch_impact", "table", False, "Run rollup_daily_metrics.py (built from patch_impact_summary)."),
     ("collector_freshness", "view", True, "Run collect.py at least once."),
 ]
 
@@ -61,9 +67,26 @@ def check_relation_exists(cur, name: str) -> bool:
     return bool(cur.fetchone()[0])
 
 
-def check_row_count(cur, name: str) -> int:
-    cur.execute(f"SELECT count(*) FROM {name}")  # nosec: name is from our own fixed allowlist above
-    return cur.fetchone()[0]
+def check_row_count(cur, kind: str, name: str) -> str:
+    """'' if empty, else a row count for the message. Small views are counted
+    exactly; tables and large views get an "any rows?" probe (plus the planner's
+    estimate for tables) -- count(*) on vuln_findings alone is a multi-minute
+    full scan. Rolled-up views aren't run at all: their dash_* table is checked."""
+    # nosec: name is from our own fixed allowlist above
+    if kind == "rolled-up view":
+        return "not run here (its data is checked via its dash_* table)"
+    if kind == "view":
+        cur.execute(f"SELECT count(*) FROM {name}")
+        n = cur.fetchone()[0]
+        return f"{n} row(s)" if n else ""
+    cur.execute(f"SELECT EXISTS (SELECT 1 FROM {name})")
+    if not cur.fetchone()[0]:
+        return ""
+    if kind == "large view":
+        return "has rows"
+    cur.execute("SELECT reltuples::bigint FROM pg_class WHERE oid = %s::regclass", (f"public.{name}",))
+    est = cur.fetchone()[0]
+    return f"~{est:,} rows" if est and est > 0 else "has rows"
 
 
 def check_grafana_service_local() -> None:
@@ -213,14 +236,14 @@ def main():
             fatal_failures += 1
             continue
 
-        count = check_row_count(cur, name)
-        if count == 0:
+        count = check_row_count(cur, kind, name)
+        if not count:
             level = "FAIL" if empty_is_fatal else "WARN"
             print(f"[{level}] {kind} '{name}' exists but has 0 rows. {hint}")
             if empty_is_fatal:
                 fatal_failures += 1
         else:
-            print(f"[PASS] {kind} '{name}' exists, {count} row(s).")
+            print(f"[PASS] {kind} '{name}' exists, {count}.")
 
     print("\n=== Collector freshness ===")
     enabled = [n for n, c in (cfg.get("collectors") or {}).items() if (c or {}).get("enabled")]
@@ -271,9 +294,9 @@ def main():
     else:
         print("All required tables/views are present and populated -- the data side is ready.")
         if grafana_up:
-            print("Grafana is reachable. Remaining manual steps: add a PostgreSQL datasource pointing at this "
-                  "database, then Import Dashboard -> upload each grafana/*.json -> select that datasource "
-                  "for DS_POSTGRESQL.")
+            print("Grafana is reachable. Next: a PostgreSQL datasource pointing at this database (first time "
+                  "only), then python3 grafana/push_dashboards.py --config config.yaml to load or update the "
+                  "dashboards (or Import Dashboard -> each grafana/*.json -> that datasource for DS_POSTGRESQL).")
         else:
             print("Grafana itself is NOT confirmed reachable -- install/start it first (see the README's Grafana section) "
                   "before the datasource + dashboard import steps will make sense.")

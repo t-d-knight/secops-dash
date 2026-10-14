@@ -44,6 +44,7 @@ Writes reports/monthly-YYYY-MM/<site>-actions-YYYY-MM.xlsx (gitignored).
 """
 import argparse
 import datetime as dt
+import sys
 import os
 import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -361,6 +362,7 @@ def main() -> None:
     ap.add_argument("--since", help="USB tabs: first day (default: first of last month)")
     ap.add_argument("--until", help="USB tabs: last day, inclusive (default: end of last month)")
     args = ap.parse_args()
+    print(f"[{dt.datetime.now().astimezone().isoformat(timespec='seconds')}] action_pack start: {' '.join(sys.argv[1:])}", flush=True)
 
     cfg = config_mod.load_config(args.config)
     labels = [s["label"] for s in cfg.get("sites", [])] + [cfg.get("ungrouped_label", "Ungrouped")]

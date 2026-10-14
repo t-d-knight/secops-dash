@@ -59,6 +59,7 @@ and counts.
 """
 import argparse
 import datetime as dt
+import sys
 import html
 import os
 import re
@@ -1593,6 +1594,7 @@ def main() -> None:
     ap.add_argument("--pdf", action=argparse.BooleanOptionalAction, default=None,
                     help="also write a PDF next to each HTML (default: reporting.pdf in config, else on)")
     args = ap.parse_args()
+    print(f"[{dt.datetime.now().astimezone().isoformat(timespec='seconds')}] exec_report start: {' '.join(sys.argv[1:])}", flush=True)
 
     today = dt.date.today()
     if args.since and args.until:
