@@ -250,6 +250,50 @@ DDL_STATEMENTS = [
         collected_at         TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     """,
+    # --- programme impact (impact.py) -------------------------------------
+    """
+    CREATE TABLE IF NOT EXISTS daily_impact_metrics (
+        snapshot_date  DATE NOT NULL,
+        site_label     TEXT NOT NULL,
+        metric         TEXT NOT NULL,          -- impact.METRICS keys; rates derived at display
+        value          BIGINT NOT NULL,
+        PRIMARY KEY (snapshot_date, site_label, metric)
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS patch_cohort_metrics (
+        cohort        DATE NOT NULL,           -- Patch Tuesday (US date)
+        site_label    TEXT NOT NULL,
+        findings      INTEGER NOT NULL,
+        hosts         INTEGER NOT NULL,
+        closed_7      INTEGER,                 -- NULL until that many days have passed
+        closed_14     INTEGER,
+        closed_30     INTEGER,
+        closed_60     INTEGER,
+        closed_now    INTEGER NOT NULL,
+        expired       INTEGER NOT NULL,        -- host gone from Spotlight: neither fixed nor open
+        days_elapsed  INTEGER NOT NULL,
+        computed_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (cohort, site_label)
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS impact_actions (
+        row_no      INTEGER PRIMARY KEY,       -- row in the workbook
+        found       DATE,
+        what        TEXT NOT NULL,
+        source      TEXT,
+        site_label  TEXT,
+        severity    TEXT,
+        action      TEXT,
+        owner_team  TEXT,
+        status      TEXT,
+        closed      DATE,
+        ticket_ref  TEXT,
+        notes       TEXT,
+        loaded_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    """,
     # Discover system insights for servers: disk, CPU, memory, roles.
     """
     CREATE TABLE IF NOT EXISTS host_insights (

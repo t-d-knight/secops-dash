@@ -32,7 +32,7 @@ elif ! flock -n 9; then
 fi
 
 today="$(date +%F)"
-STAGES=(kev epss collect nvd rollup reclassify)
+STAGES=(kev epss collect nvd rollup reclassify impact)
 stage_done() { [[ "$(cat "logs/.stage-$1" 2>/dev/null)" == "$today" ]]; }
 
 if [[ "$mode" == "--catch-up" ]]; then
@@ -77,6 +77,9 @@ stage rollup ok python3 rollup_daily_metrics.py --config config.yaml
 
 # Keep product families tidy after product_groups.yaml rule changes.
 stage reclassify ok python3 reclassify_product_families.py --config config.yaml
+
+# Programme impact: today's impact metrics, Patch Tuesday cohorts, the action log.
+stage impact ok python3 impact.py --config config.yaml
 
 # New identity / OverWatch detections since the last digest (one Pushover message,
 # nothing if none). Remembers what it sent, so a catch-up run doesn't repeat it.

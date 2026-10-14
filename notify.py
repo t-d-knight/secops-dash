@@ -155,7 +155,8 @@ def published_summary(published: List[str]):
         stem, ext = os.path.splitext(fname)
         period = stem.split(" ", 1)[0]
         kind = ("Action Pack" if stem.endswith("Action Pack") else
-                "Servers Report" if stem.endswith("Servers Report") else "Security Report")
+                "Servers Report" if stem.endswith("Servers Report") else
+                "Impact Report" if stem.endswith("Impact Report") else "Security Report")
         groups.setdefault((folder, period, kind, ext.lstrip(".").upper()), set()).add(site)
     lines, parts = [], []
     for (folder, period, kind, ext), sites in sorted(groups.items()):

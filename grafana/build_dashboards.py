@@ -21,6 +21,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import discovery_classes as dc
+import impact_spec
 import usb_categories as uc
 from email_types import BULK_EVENT_TYPES, THREAT_EVENT_TYPES, sql_in
 
@@ -1626,13 +1627,142 @@ def servers():
                      "infrastructure, applications and database teams.", b, help=SERVERS_HELP)
 
 
+# =====================================================================
+#  7. Impact (programme impact since Day 0)
+# =====================================================================
+IMPACT_HELP = {
+    "Scorecard: Day 0 vs now": "Each measure on the first day on record (Day 0) and on the latest night, for the "
+                               "selected sites (TEST left out). Rates are worked out from the summed counts. "
+                               "Better/worse follows the direction that's good for that measure.",
+    "Actions logged": "Everything in the action log: findings this programme surfaced that led to (or need) action.",
+    "Resolved": "Action log entries marked Done or Accepted risk.",
+    "Open": "Action log entries still Open or In progress.",
+    "Days since Day 0": "How long the impact measures have been recorded.",
+    "Servers patched within 35 days": "Share of active servers whose last confirmed patch is within 35 days.",
+    "Devices with a known-exploited vulnerability": "Share of active devices with at least one open CISA KEV finding.",
+    "Open critical / high past SLA": "Share of open critical and of open high findings past the remediation SLA.",
+    "Enabled accounts that are stale": "Share of enabled accounts Falcon Identity flags stale.",
+    "Backlogs": "Counts that should fall: servers not patched in 90+ days, identity detections awaiting triage, "
+                "confirmed external risks, machines missing a sensor.",
+    "Patch Tuesday cohorts": "Each month's Microsoft findings that appeared in the week after Patch Tuesday on hosts "
+                             "already being assessed, and the share fixed within 7 / 14 / 30 / 60 days (blank until "
+                             "that many days have passed). The comparable, month-on-month measure of time to patch.",
+    "Action log": "From the Impact action log workbook on SharePoint (Metrics > Impact), loaded nightly.",
+}
+IMP_SITES = "site_label IN ($site) AND site_label <> ALL(ARRAY[" + ", ".join(f"'{x}'" for x in impact_spec.EXCLUDE_SITES) + "])"
+
+
+def _impact_rate(num, den, label):
+    return (f"""SELECT snapshot_date::timestamp AS time,
+               round(100.0 * sum(value) FILTER (WHERE metric = '{num}')
+                     / NULLIF(sum(value) FILTER (WHERE metric = '{den}'), 0), 1) AS "{label}"
+        FROM daily_impact_metrics WHERE {IMP_SITES} AND {rng_d('snapshot_date')} GROUP BY 1 ORDER BY 1""")
+
+
+def impact():
+    b = Builder()
+    b.text("What has changed since this programme started measuring (**Day 0**, the first day on record): "
+           "the scorecard, month-by-month Patch Tuesday remediation, and the log of what was found and done. "
+           f"Region figures leave out TEST. {HOVER}", h=2)
+    vals = ", ".join(f"({i}, '{label}', '{num}', {('NULL' if den is None else repr(den))}, '{good}')"
+                     for i, (_, label, num, den, good) in enumerate(impact_spec.SCORECARD))
+    scorecard = f"""
+        WITH d AS (SELECT min(snapshot_date) AS d0, max(snapshot_date) AS d1 FROM daily_impact_metrics),
+        m AS (SELECT metric, sum(value) FILTER (WHERE snapshot_date = d.d0) AS b,
+                     sum(value) FILTER (WHERE snapshot_date = d.d1) AS c
+              FROM daily_impact_metrics, d WHERE {IMP_SITES} AND snapshot_date IN (d.d0, d.d1) GROUP BY metric),
+        s(ord, label, num, den, good) AS (VALUES {vals}),
+        v AS (SELECT s.ord, s.label, s.good, s.den IS NOT NULL AS rate,
+                     CASE WHEN s.den IS NULL THEN n.b ELSE round(100.0 * n.b / NULLIF(dd.b, 0), 1) END AS b,
+                     CASE WHEN s.den IS NULL THEN n.c ELSE round(100.0 * n.c / NULLIF(dd.c, 0), 1) END AS c
+              FROM s LEFT JOIN m n ON n.metric = s.num LEFT JOIN m dd ON dd.metric = s.den)
+        SELECT label AS "Measure",
+               CASE WHEN rate THEN b || '%' ELSE to_char(b, 'FM999,999,999') END AS "Day 0",
+               CASE WHEN rate THEN c || '%' ELSE to_char(c, 'FM999,999,999') END AS "Now",
+               CASE WHEN c = b THEN 'no change'
+                    ELSE (CASE WHEN c > b THEN '+' ELSE '' END) ||
+                         CASE WHEN rate THEN round(c - b, 1) || ' pts' ELSE to_char(c - b, 'FM999,999,999') END END AS "Change",
+               CASE WHEN c = b OR c IS NULL OR b IS NULL THEN 'Same'
+                    WHEN (c > b) = (good = 'up') THEN 'Better' ELSE 'Worse' END AS "Direction"
+        FROM v ORDER BY ord"""
+
+    b.row("Headline")
+    b.stat("Actions logged", "SELECT count(*) FROM impact_actions", thresholds=NEUTRAL, w=6)
+    b.stat("Resolved", "SELECT count(*) FROM impact_actions WHERE status IN ('Done', 'Accepted risk')", w=6,
+           color="green")
+    b.stat("Open", "SELECT count(*) FROM impact_actions WHERE status NOT IN ('Done', 'Accepted risk') OR status IS NULL",
+           w=6, thresholds=[{"color": "text", "value": None}, {"color": "orange", "value": 1}])
+    b.stat("Days since Day 0", "SELECT current_date - min(snapshot_date) FROM daily_impact_metrics", w=6,
+           thresholds=NEUTRAL)
+    b.table("Scorecard: Day 0 vs now", scorecard, w=24, h=14, overrides=[{
+        "matcher": {"id": "byName", "options": "Direction"},
+        "properties": [{"id": "custom.cellOptions", "value": {"type": "color-background"}},
+                       {"id": "mappings", "value": [{"type": "value", "options": {
+                           "Better": {"color": "green", "index": 0}, "Worse": {"color": "red", "index": 1},
+                           "Same": {"color": "transparent", "index": 2}}}]}]}])
+
+    b.row("Trends", note="Rates from the nightly impact snapshot. A rate can rise just because coverage grew -- "
+          "read with the scorecard and the cohorts.")
+    b.ts("Servers patched within 35 days", _impact_rate("servers_patched_35d", "servers_active", "Patched within 35 days"),
+         w=12, unit="percent", minmax=(0, 100), colors={"Patched within 35 days": "green"})
+    b.ts("Devices with a known-exploited vulnerability",
+         _impact_rate("hosts_with_kev", "hosts_active", "Devices with KEV"), w=12, unit="percent", minmax=(0, 100),
+         colors={"Devices with KEV": "red"})
+    b.ts("Open critical / high past SLA", f"""
+        SELECT snapshot_date::timestamp AS time,
+               round(100.0 * sum(value) FILTER (WHERE metric = 'crit_past_sla') / NULLIF(sum(value) FILTER (WHERE metric = 'crit_open'), 0), 1) AS "Critical",
+               round(100.0 * sum(value) FILTER (WHERE metric = 'high_past_sla') / NULLIF(sum(value) FILTER (WHERE metric = 'high_open'), 0), 1) AS "High"
+        FROM daily_impact_metrics WHERE {IMP_SITES} AND {rng_d('snapshot_date')} GROUP BY 1 ORDER BY 1""",
+         w=12, unit="percent", minmax=(0, 100), colors={"Critical": "red", "High": "orange"})
+    b.ts("Enabled accounts that are stale", _impact_rate("stale_accounts", "enabled_accounts", "Stale"), w=12,
+         unit="percent", minmax=(0, 100), colors={"Stale": "orange"})
+    b.ts("Backlogs", f"""
+        SELECT snapshot_date::timestamp AS time,
+               sum(value) FILTER (WHERE metric = 'servers_unpatched_90d') AS "Servers not patched 90+ days",
+               sum(value) FILTER (WHERE metric = 'identity_triage') AS "Identity detections to triage",
+               sum(value) FILTER (WHERE metric = 'ext_confirmed_open') AS "Confirmed external risks",
+               sum(value) FILTER (WHERE metric = 'missing_sensors') AS "Machines missing a sensor"
+        FROM daily_impact_metrics WHERE {IMP_SITES} AND {rng_d('snapshot_date')} GROUP BY 1 ORDER BY 1""", w=24)
+
+    b.row("Patch Tuesday cohorts", note="Time to patch, month by month: each cohort is fixed when it starts, so "
+          "coverage growth can't move it. The first week after release is still collecting (hosts are rescanned).")
+    b.table("Patch Tuesday cohorts", f"""
+        SELECT cohort AS "Patch Tuesday", sum(findings) AS "Findings", sum(hosts) AS "Hosts",
+               round(100.0 * sum(closed_7) / NULLIF(sum(findings) - sum(expired), 0), 1) AS "Fixed in 7 days %",
+               round(100.0 * sum(closed_14) / NULLIF(sum(findings) - sum(expired), 0), 1) AS "14 days %",
+               round(100.0 * sum(closed_30) / NULLIF(sum(findings) - sum(expired), 0), 1) AS "30 days %",
+               round(100.0 * sum(closed_60) / NULLIF(sum(findings) - sum(expired), 0), 1) AS "60 days %",
+               round(100.0 * sum(closed_now) / NULLIF(sum(findings) - sum(expired), 0), 1) AS "Fixed so far %",
+               max(days_elapsed) AS "Days since"
+        FROM patch_cohort_metrics WHERE {IMP_SITES} GROUP BY 1 ORDER BY 1 DESC""", h=7,
+            overrides=[bg(c, "continuous-RdYlGr") for c in ("Fixed in 7 days %", "14 days %", "30 days %", "60 days %", "Fixed so far %")])
+
+    b.row("Action log")
+    b.table("Action log", """
+        SELECT found AS "Found", what AS "What was found", source AS "How", site_label AS "Site", severity AS "Severity",
+               action AS "Action", owner_team AS "Owner", status AS "Status", closed AS "Closed", ticket_ref AS "Ticket"
+        FROM impact_actions
+        ORDER BY CASE WHEN status IN ('Done', 'Accepted risk') THEN 1 ELSE 0 END, found DESC NULLS LAST""", h=12,
+            overrides=[{"matcher": {"id": "byName", "options": "Status"},
+                        "properties": [{"id": "custom.cellOptions", "value": {"type": "color-text"}},
+                                       {"id": "mappings", "value": [{"type": "value", "options": {
+                                           "Done": {"color": "green", "index": 0},
+                                           "Accepted risk": {"color": "blue", "index": 1},
+                                           "In progress": {"color": "orange", "index": 2},
+                                           "Open": {"color": "red", "index": 3}}}]}]}, sev_cell()])
+    return dashboard("secops-impact", "Programme impact", "What this programme found and what changed since Day 0: "
+                     "scorecard, Patch Tuesday remediation cohorts and the action log.", b, help=IMPACT_HELP,
+                     time_from="now-90d")
+
+
 def main():
     for fname, fn in (("secops-overview.json", overview),
                       ("secops-endpoint-identity.json", endpoint_identity),
                       ("secops-email-external.json", email_external),
                       ("secops-worklist.json", worklist),
                       ("vuln-dashboard.json", vuln),
-                      ("secops-servers.json", servers)):
+                      ("secops-servers.json", servers),
+                      ("secops-impact.json", impact)):
         path = os.path.join(HERE, fname)
         with open(path, "w") as f:
             json.dump(fn(), f, indent=2)

@@ -337,6 +337,15 @@ backup:
       base_path: "secops-dashboard"
       encrypt: true
 
+# Programme impact (impact.py): Impact dashboard + monthly Impact report.
+impact:
+  # baseline_date: "2026-10-15"     # Day 0; default = first day with impact metrics
+  cohort_start: "2026-10-01"        # first Patch Tuesday month to track
+  cohort_vendor: "microsoft"        # product_vendor of the findings a Patch Tuesday cohort counts
+  cohort_window_days: 7             # findings first found within this many days of release
+  action_log: "Impact/Impact action log.xlsx"   # on the publish share; created with headers if missing
+  exclude_sites: ["TEST"]           # left out of region totals in the dashboard / report
+
 database:
   engine: "postgres"
   host: "127.0.0.1"
