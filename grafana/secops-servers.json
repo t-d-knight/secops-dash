@@ -1,0 +1,1342 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_POSTGRESQL",
+      "label": "PostgreSQL",
+      "description": "Postgres datasource pointing at the secops_dashboard database",
+      "type": "datasource",
+      "pluginId": "postgres",
+      "pluginName": "PostgreSQL"
+    }
+  ],
+  "__requires": [
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "10.0.0"
+    },
+    {
+      "type": "datasource",
+      "id": "postgres",
+      "name": "PostgreSQL",
+      "version": "1.0.0"
+    }
+  ],
+  "id": null,
+  "uid": "secops-servers",
+  "title": "Servers",
+  "description": "Server patching, reboots, risk, applications and capacity for the infrastructure, applications and database teams.",
+  "tags": [
+    "secops"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "1h",
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "type": "dashboards",
+      "tags": [
+        "secops"
+      ],
+      "asDropdown": false,
+      "title": "SecOps",
+      "includeVars": true,
+      "keepTime": true
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "site",
+        "type": "query",
+        "label": "Site",
+        "datasource": {
+          "type": "postgres",
+          "uid": "${DS_POSTGRESQL}"
+        },
+        "query": "SELECT site_label FROM dim_site ORDER BY site_label = 'Ungrouped', site_label",
+        "definition": "SELECT site_label FROM dim_site",
+        "refresh": 1,
+        "sort": 0,
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 2,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "For the infrastructure, applications and database teams: which servers are behind on patching, waiting on a reboot, carrying the most risk, or running short of disk. Point-in-time (the time picker doesn't apply). **Last patch confirmed** is Falcon's date for the most recent patch it saw installed (the console's Exposure Management > Patches). Hover the **i** on any panel for exactly what it counts."
+      }
+    },
+    {
+      "id": 3,
+      "type": "row",
+      "title": "Patching",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 2,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 4,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Monthly patching means anything past **35 days** has missed a cycle. **Reboot pending** = installed but not yet applied."
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Servers (active 7d)",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM assets a LEFT JOIN host_patch_status p ON p.aid = a.source_asset_id LEFT JOIN host_insights i ON i.aid = a.source_asset_id LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = a.source_asset_id WHERE a.source = 'falcon' AND NOT a.retired AND a.product_type IN ('server','domain_controller') AND a.last_seen > now() - interval '7 days' AND a.site_label IN ($site)"
+        }
+      ],
+      "description": "Servers and domain controllers with a Falcon sensor seen in the last 7 days."
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Not patched 35+ days",
+      "gridPos": {
+        "x": 4,
+        "y": 5,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 25
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM assets a LEFT JOIN host_patch_status p ON p.aid = a.source_asset_id LEFT JOIN host_insights i ON i.aid = a.source_asset_id LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = a.source_asset_id WHERE a.source = 'falcon' AND NOT a.retired AND a.product_type IN ('server','domain_controller') AND a.last_seen > now() - interval '7 days' AND a.site_label IN ($site) AND p.last_patch_confirmed < now() - interval '35 days'"
+        }
+      ],
+      "description": "Servers whose last patch Falcon confirmed was more than 35 days ago: they've missed at least one monthly cycle."
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Not patched 90+ days",
+      "gridPos": {
+        "x": 8,
+        "y": 5,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM assets a LEFT JOIN host_patch_status p ON p.aid = a.source_asset_id LEFT JOIN host_insights i ON i.aid = a.source_asset_id LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = a.source_asset_id WHERE a.source = 'falcon' AND NOT a.retired AND a.product_type IN ('server','domain_controller') AND a.last_seen > now() - interval '7 days' AND a.site_label IN ($site) AND p.last_patch_confirmed < now() - interval '90 days'"
+        }
+      ],
+      "description": "Servers with no confirmed patch in 90+ days: three or more monthly cycles missed."
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Reboot pending",
+      "gridPos": {
+        "x": 12,
+        "y": 5,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM assets a LEFT JOIN host_patch_status p ON p.aid = a.source_asset_id LEFT JOIN host_insights i ON i.aid = a.source_asset_id LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = a.source_asset_id WHERE a.source = 'falcon' AND NOT a.retired AND a.product_type IN ('server','domain_controller') AND a.last_seen > now() - interval '7 days' AND a.site_label IN ($site) AND p.reboot_required"
+        }
+      ],
+      "description": "Patched but waiting on a restart before the patch takes effect."
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "Up 35+ days",
+      "gridPos": {
+        "x": 16,
+        "y": 5,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 25
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM assets a LEFT JOIN host_patch_status p ON p.aid = a.source_asset_id LEFT JOIN host_insights i ON i.aid = a.source_asset_id LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = a.source_asset_id WHERE a.source = 'falcon' AND NOT a.retired AND a.product_type IN ('server','domain_controller') AND a.last_seen > now() - interval '7 days' AND a.site_label IN ($site) AND a.last_reboot < now() - interval '35 days'"
+        }
+      ],
+      "description": "Servers not restarted in 35+ days. Windows cumulative updates need a restart, so long uptime usually means patches installed but not applied."
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Unsupported OS",
+      "gridPos": {
+        "x": 20,
+        "y": 5,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM assets a LEFT JOIN host_patch_status p ON p.aid = a.source_asset_id LEFT JOIN host_insights i ON i.aid = a.source_asset_id LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = a.source_asset_id WHERE a.source = 'falcon' AND NOT a.retired AND a.product_type IN ('server','domain_controller') AND a.last_seen > now() - interval '7 days' AND a.site_label IN ($site) AND i.os_is_eol"
+        }
+      ],
+      "description": "Servers on an operating system the vendor no longer patches."
+    },
+    {
+      "id": 11,
+      "type": "bargauge",
+      "title": "Days since last confirmed patch",
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "showUnfilled": true,
+        "reduceOptions": {
+          "values": true,
+          "calcs": [],
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT band AS \"Last patched\", count(*) AS \"Servers\" FROM ( SELECT CASE WHEN p.last_patch_confirmed IS NULL THEN '6 never / unknown' WHEN floor(EXTRACT(EPOCH FROM now() - p.last_patch_confirmed) / 86400)::int <= 7 THEN '1 within 7 days' WHEN floor(EXTRACT(EPOCH FROM now() - p.last_patch_confirmed) / 86400)::int <= 35 THEN '2 8-35 days' WHEN floor(EXTRACT(EPOCH FROM now() - p.last_patch_confirmed) / 86400)::int <= 90 THEN '3 36-90 days' WHEN floor(EXTRACT(EPOCH FROM now() - p.last_patch_confirmed) / 86400)::int <= 180 THEN '4 91-180 days' ELSE '5 over 180 days' END AS band FROM assets a LEFT JOIN host_patch_status p ON p.aid = a.source_asset_id LEFT JOIN host_insights i ON i.aid = a.source_asset_id LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = a.source_asset_id WHERE a.source = 'falcon' AND NOT a.retired AND a.product_type IN ('server','domain_controller') AND a.last_seen > now() - interval '7 days' AND a.site_label IN ($site)) x GROUP BY band ORDER BY band"
+        }
+      ],
+      "description": "Servers by how long since Falcon last confirmed a patch installed."
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Patch level by OS build",
+      "gridPos": {
+        "x": 8,
+        "y": 9,
+        "w": 16,
+        "h": 8
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Median days since patched"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT a.os_version AS \"OS\", a.kernel_version AS \"Build\", count(*) AS \"Servers\", percentile_disc(0.5) WITHIN GROUP (ORDER BY floor(EXTRACT(EPOCH FROM now() - p.last_patch_confirmed) / 86400)::int) AS \"Median days since patched\", count(*) FILTER (WHERE p.reboot_required) AS \"Reboot pending\" FROM assets a LEFT JOIN host_patch_status p ON p.aid = a.source_asset_id LEFT JOIN host_insights i ON i.aid = a.source_asset_id LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = a.source_asset_id WHERE a.source = 'falcon' AND NOT a.retired AND a.product_type IN ('server','domain_controller') AND a.last_seen > now() - interval '7 days' AND a.site_label IN ($site) GROUP BY 1, 2 ORDER BY 1, CASE WHEN a.kernel_version ~ '^[0-9]+(\\.[0-9]+)*$' THEN string_to_array(a.kernel_version, '.')::int[] END DESC NULLS LAST, 2"
+        }
+      ],
+      "description": "Each OS version's builds in use (Windows: the number after the last dot is the monthly update level -- higher is newer) and how long since those servers were patched."
+    },
+    {
+      "id": 13,
+      "type": "row",
+      "title": "Servers",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 17,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 14,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "One row per active server. **Crit / High / KEV** = open vulnerabilities from the last nightly rollup. Use the column filters (funnel icon) to cut to one team's servers."
+      }
+    },
+    {
+      "id": 15,
+      "type": "table",
+      "title": "Servers",
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 14
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Days since patched"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 36
+                    },
+                    {
+                      "color": "red",
+                      "value": 91
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Days up"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 36
+                    },
+                    {
+                      "color": "red",
+                      "value": 91
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "KEV"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Disk %"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 85
+                    },
+                    {
+                      "color": "red",
+                      "value": 95
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT a.hostname AS \"Server\", a.site_label AS \"Site\", a.os_version AS \"OS\", a.kernel_version AS \"Build\", floor(EXTRACT(EPOCH FROM now() - p.last_patch_confirmed) / 86400)::int AS \"Days since patched\", p.reboot_required AS \"Reboot pending\", p.pending_patches AS \"Pending patches\", floor(EXTRACT(EPOCH FROM now() - a.last_reboot) / 86400)::int AS \"Days up\", r.open_critical AS \"Crit\", r.open_high AS \"High\", r.open_kev_count AS \"KEV\", i.disk_used_pct AS \"Disk %\", i.cpu_avg_pct AS \"CPU avg %\", i.mem_avg_pct AS \"Mem avg %\", array_to_string(i.asset_roles, ', ') AS \"Roles (Falcon)\", CASE WHEN a.product_type = 'domain_controller' THEN 'DC' ELSE i.form_factor END AS \"Type\", a.model AS \"Model\", a.ous[1] AS \"OU\", a.last_login_user AS \"Last login\" FROM assets a LEFT JOIN host_patch_status p ON p.aid = a.source_asset_id LEFT JOIN host_insights i ON i.aid = a.source_asset_id LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = a.source_asset_id WHERE a.source = 'falcon' AND NOT a.retired AND a.product_type IN ('server','domain_controller') AND a.last_seen > now() - interval '7 days' AND a.site_label IN ($site) ORDER BY p.last_patch_confirmed NULLS FIRST, r.open_kev_count DESC NULLS LAST LIMIT 1500"
+        }
+      ],
+      "description": "Every active server, worst-patched first. Sort or filter any column; Site, OU and Roles help find the owning team."
+    },
+    {
+      "id": 16,
+      "type": "row",
+      "title": "What to fix",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 17,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 35,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Where one change clears the most. Fix titles are Falcon's remediation text."
+      }
+    },
+    {
+      "id": 18,
+      "type": "table",
+      "title": "Top missing fixes on servers",
+      "gridPos": {
+        "x": 0,
+        "y": 37,
+        "w": 12,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Servers"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT COALESCE(max(vf.fix_title), max(vf.title)) AS \"Fix\", max(vf.product_family) AS \"Product\", count(DISTINCT vf.source_asset_id) AS \"Servers\", count(*) AS \"Crit/high findings\", count(*) FILTER (WHERE vf.severity = 'critical') AS \"Critical\" FROM vuln_findings vf JOIN assets a ON a.source = 'falcon' AND a.source_asset_id = vf.source_asset_id AND a.product_type IN ('server','domain_controller') AND NOT a.retired WHERE vf.source = 'falcon_spotlight' AND vf.state IN ('OPEN','REOPENED') AND vf.severity IN ('critical','high') AND a.site_label IN ($site) AND vf.fix_id IS NOT NULL GROUP BY vf.fix_id ORDER BY 3 DESC, 4 DESC LIMIT 25"
+        }
+      ],
+      "description": "The fixes that would close the most critical/high findings on servers, by how many servers each applies to."
+    },
+    {
+      "id": 19,
+      "type": "table",
+      "title": "Applications on servers",
+      "gridPos": {
+        "x": 12,
+        "y": 37,
+        "w": 12,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Servers"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT vf.product_family AS \"Product family\", count(DISTINCT vf.source_asset_id) AS \"Servers\", count(*) FILTER (WHERE vf.severity = 'critical') AS \"Critical\", count(*) FILTER (WHERE vf.severity = 'high') AS \"High\" FROM vuln_findings vf JOIN assets a ON a.source = 'falcon' AND a.source_asset_id = vf.source_asset_id AND a.product_type IN ('server','domain_controller') AND NOT a.retired WHERE vf.source = 'falcon_spotlight' AND vf.state IN ('OPEN','REOPENED') AND vf.severity IN ('critical','high') AND a.site_label IN ($site) AND vf.product_family NOT LIKE 'Microsoft Windows OS%' GROUP BY 1 ORDER BY 2 DESC LIMIT 25"
+        }
+      ],
+      "description": "Critical/high findings on servers by product family, excluding the Windows OS itself: what the applications and database teams own."
+    },
+    {
+      "id": 20,
+      "type": "table",
+      "title": "Database and middleware servers",
+      "gridPos": {
+        "x": 0,
+        "y": 47,
+        "w": 24,
+        "h": 9
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Critical"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT x.hostname AS \"Server\", x.site_label AS \"Site\", x.products AS \"Products with crit/high\", x.crit AS \"Critical\", x.high AS \"High\", floor(EXTRACT(EPOCH FROM now() - p.last_patch_confirmed) / 86400)::int AS \"Days since patched\" FROM (SELECT a.source_asset_id, a.hostname, a.site_label, string_agg(DISTINCT vf.product_family, ', ') AS products, count(*) FILTER (WHERE vf.severity = 'critical') AS crit, count(*) FILTER (WHERE vf.severity = 'high') AS high FROM vuln_findings vf JOIN assets a ON a.source = 'falcon' AND a.source_asset_id = vf.source_asset_id AND a.product_type IN ('server','domain_controller') AND NOT a.retired WHERE vf.source = 'falcon_spotlight' AND vf.state IN ('OPEN','REOPENED') AND vf.severity IN ('critical','high') AND a.site_label IN ($site) AND vf.product_family IN ('Microsoft SQL & Data Platform', 'PostgreSQL', 'MySQL / MariaDB', 'Oracle Database', 'Java Runtime (JRE/JDK)', 'Apache Tomcat', 'Microsoft .NET Core / ASP.NET', 'Java / Middleware - Log4j', 'Apache HTTP Server', 'Microsoft Sharepoint') GROUP BY 1, 2, 3) x LEFT JOIN host_patch_status p ON p.aid = x.source_asset_id ORDER BY x.crit DESC, x.high DESC LIMIT 300"
+        }
+      ],
+      "description": "Servers with open findings in a database or middleware product (SQL Server, PostgreSQL, MySQL, Oracle, Java, Tomcat, IIS/.NET)."
+    },
+    {
+      "id": 21,
+      "type": "row",
+      "title": "Capacity and health",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 56,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 22,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 57,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "From Falcon's system insights (refreshed nightly): disk is the fullest reported volume, CPU and memory are Falcon's recent averages."
+      }
+    },
+    {
+      "id": 23,
+      "type": "table",
+      "title": "Disk 85%+ full",
+      "gridPos": {
+        "x": 0,
+        "y": 59,
+        "w": 8,
+        "h": 9
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Disk %"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT a.hostname AS \"Server\", a.site_label AS \"Site\", i.disk_used_pct AS \"Disk %\", i.disk_free_gb AS \"Free GB\", i.disk_total_gb AS \"Total GB\" FROM assets a LEFT JOIN host_patch_status p ON p.aid = a.source_asset_id LEFT JOIN host_insights i ON i.aid = a.source_asset_id LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = a.source_asset_id WHERE a.source = 'falcon' AND NOT a.retired AND a.product_type IN ('server','domain_controller') AND a.last_seen > now() - interval '7 days' AND a.site_label IN ($site) AND i.disk_used_pct >= 85 ORDER BY i.disk_used_pct DESC LIMIT 200"
+        }
+      ],
+      "description": "Servers with a disk 85% or more used, per Falcon's latest system insights."
+    },
+    {
+      "id": 24,
+      "type": "table",
+      "title": "Busy servers",
+      "gridPos": {
+        "x": 8,
+        "y": 59,
+        "w": 10,
+        "h": 9
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU avg %"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Mem avg %"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT a.hostname AS \"Server\", a.site_label AS \"Site\", i.cpu_avg_pct AS \"CPU avg %\", i.cpu_max_pct AS \"CPU max %\", i.mem_avg_pct AS \"Mem avg %\", i.mem_total_mb / 1024 AS \"RAM GB\" FROM assets a LEFT JOIN host_patch_status p ON p.aid = a.source_asset_id LEFT JOIN host_insights i ON i.aid = a.source_asset_id LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = a.source_asset_id WHERE a.source = 'falcon' AND NOT a.retired AND a.product_type IN ('server','domain_controller') AND a.last_seen > now() - interval '7 days' AND a.site_label IN ($site) AND (i.cpu_avg_pct >= 70 OR i.mem_avg_pct >= 90) ORDER BY greatest(i.cpu_avg_pct, i.mem_avg_pct) DESC LIMIT 200"
+        }
+      ],
+      "description": "Highest average CPU or memory use, per Falcon's system insights."
+    },
+    {
+      "id": 25,
+      "type": "bargauge",
+      "title": "Server roles (Falcon)",
+      "gridPos": {
+        "x": 18,
+        "y": 59,
+        "w": 6,
+        "h": 9
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "showUnfilled": true,
+        "reduceOptions": {
+          "values": true,
+          "calcs": [],
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT role AS \"Role\", count(*) AS \"Servers\" FROM assets a LEFT JOIN host_patch_status p ON p.aid = a.source_asset_id LEFT JOIN host_insights i ON i.aid = a.source_asset_id LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = a.source_asset_id CROSS JOIN LATERAL unnest(i.asset_roles) AS role WHERE a.source = 'falcon' AND NOT a.retired AND a.product_type IN ('server','domain_controller') AND a.last_seen > now() - interval '7 days' AND a.site_label IN ($site) GROUP BY 1 ORDER BY 2 DESC LIMIT 12"
+        }
+      ],
+      "description": "Falcon's own guess at what each server does, from its network behaviour. Rough: use it to find, not to decide."
+    },
+    {
+      "id": 26,
+      "type": "row",
+      "title": "Domain controllers",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 68,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 27,
+      "type": "table",
+      "title": "Domain controllers",
+      "gridPos": {
+        "x": 0,
+        "y": 69,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Days since patched"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 36
+                    },
+                    {
+                      "color": "red",
+                      "value": 91
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "KEV"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT a.hostname AS \"DC\", a.site_label AS \"Site\", a.os_version AS \"OS\", a.kernel_version AS \"Build\", floor(EXTRACT(EPOCH FROM now() - p.last_patch_confirmed) / 86400)::int AS \"Days since patched\", p.reboot_required AS \"Reboot pending\", floor(EXTRACT(EPOCH FROM now() - a.last_reboot) / 86400)::int AS \"Days up\", r.open_critical AS \"Crit\", r.open_high AS \"High\", r.open_kev_count AS \"KEV\", i.os_is_eol AS \"Unsupported OS\" FROM assets a LEFT JOIN host_patch_status p ON p.aid = a.source_asset_id LEFT JOIN host_insights i ON i.aid = a.source_asset_id LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = a.source_asset_id WHERE a.source = 'falcon' AND NOT a.retired AND a.product_type IN ('server','domain_controller') AND a.last_seen > now() - interval '7 days' AND a.site_label IN ($site) AND a.product_type = 'domain_controller' ORDER BY i.os_is_eol DESC NULLS LAST, p.last_patch_confirmed NULLS FIRST"
+        }
+      ],
+      "description": "Every domain controller: the servers whose compromise is everyone's compromise."
+    }
+  ]
+}

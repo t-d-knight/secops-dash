@@ -1466,12 +1466,174 @@ def vuln():
                      "external).", b, help=VULN_HELP, tags=("kev", "mttr", "vuln-management"), time_from="now-90d")
 
 
+# =====================================================================
+#  6. Servers (infrastructure, applications and database teams)
+# =====================================================================
+SERVERS_HELP = {
+    "Servers (active 7d)": "Servers and domain controllers with a Falcon sensor seen in the last 7 days.",
+    "Not patched 35+ days": "Servers whose last patch Falcon confirmed was more than 35 days ago: they've missed "
+                            "at least one monthly cycle.",
+    "Not patched 90+ days": "Servers with no confirmed patch in 90+ days: three or more monthly cycles missed.",
+    "Reboot pending": "Patched but waiting on a restart before the patch takes effect.",
+    "Up 35+ days": "Servers not restarted in 35+ days. Windows cumulative updates need a restart, so long uptime "
+                   "usually means patches installed but not applied.",
+    "Unsupported OS": "Servers on an operating system the vendor no longer patches.",
+    "Days since last confirmed patch": "Servers by how long since Falcon last confirmed a patch installed.",
+    "Patch level by OS build": "Each OS version's builds in use (Windows: the number after the last dot is the "
+                               "monthly update level -- higher is newer) and how long since those servers were "
+                               "patched.",
+    "Servers": "Every active server, worst-patched first. Sort or filter any column; Site, OU and Roles help "
+               "find the owning team.",
+    "Top missing fixes on servers": "The fixes that would close the most critical/high findings on servers, by "
+                                    "how many servers each applies to.",
+    "Applications on servers": "Critical/high findings on servers by product family, excluding the Windows OS "
+                               "itself: what the applications and database teams own.",
+    "Database and middleware servers": "Servers with open findings in a database or middleware product (SQL "
+                                       "Server, PostgreSQL, MySQL, Oracle, Java, Tomcat, IIS/.NET).",
+    "Disk 85%+ full": "Servers with a disk 85% or more used, per Falcon's latest system insights.",
+    "Busy servers": "Highest average CPU or memory use, per Falcon's system insights.",
+    "Server roles (Falcon)": "Falcon's own guess at what each server does, from its network behaviour. Rough: "
+                             "use it to find, not to decide.",
+    "Domain controllers": "Every domain controller: the servers whose compromise is everyone's compromise.",
+}
+
+SRV_BASE = ("assets a LEFT JOIN host_patch_status p ON p.aid = a.source_asset_id "
+            "LEFT JOIN host_insights i ON i.aid = a.source_asset_id "
+            "LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = a.source_asset_id")
+SRV_WHERE = ("a.source = 'falcon' AND NOT a.retired AND a.product_type IN ('server','domain_controller') "
+             "AND a.last_seen > now() - interval '7 days' AND a.site_label IN ($site)")
+DAYS_PATCHED = "floor(EXTRACT(EPOCH FROM now() - p.last_patch_confirmed) / 86400)::int"
+DAYS_UP = "floor(EXTRACT(EPOCH FROM now() - a.last_reboot) / 86400)::int"
+DB_FAMILIES = ("'Microsoft SQL & Data Platform', 'PostgreSQL', 'MySQL / MariaDB', 'Oracle Database', "
+               "'Java Runtime (JRE/JDK)', 'Apache Tomcat', 'Microsoft .NET Core / ASP.NET', 'Java / Middleware - Log4j', "
+               "'Apache HTTP Server', 'Microsoft Sharepoint'")
+
+
+def servers():
+    b = Builder()
+    b.text("For the infrastructure, applications and database teams: which servers are behind on patching, "
+           "waiting on a reboot, carrying the most risk, or running short of disk. Point-in-time (the time picker "
+           f"doesn't apply). **Last patch confirmed** is Falcon's date for the most recent patch it saw installed "
+           f"(the console's Exposure Management > Patches). {HOVER}", h=2)
+
+    b.row("Patching", note="Monthly patching means anything past **35 days** has missed a cycle. **Reboot pending** = "
+          "installed but not yet applied.")
+    days_bands = [{"color": "green", "value": None}, {"color": "orange", "value": 1}, {"color": "red", "value": 25}]
+    b.stat("Servers (active 7d)", f"SELECT count(*) FROM {SRV_BASE} WHERE {SRV_WHERE}", thresholds=NEUTRAL)
+    b.stat("Not patched 35+ days", f"SELECT count(*) FROM {SRV_BASE} WHERE {SRV_WHERE} "
+           "AND p.last_patch_confirmed < now() - interval '35 days'", thresholds=days_bands)
+    b.stat("Not patched 90+ days", f"SELECT count(*) FROM {SRV_BASE} WHERE {SRV_WHERE} "
+           "AND p.last_patch_confirmed < now() - interval '90 days'", thresholds=BAD_UP)
+    b.stat("Reboot pending", f"SELECT count(*) FROM {SRV_BASE} WHERE {SRV_WHERE} AND p.reboot_required",
+           thresholds=BAD_UP)
+    b.stat("Up 35+ days", f"SELECT count(*) FROM {SRV_BASE} WHERE {SRV_WHERE} "
+           "AND a.last_reboot < now() - interval '35 days'", thresholds=days_bands)
+    b.stat("Unsupported OS", f"SELECT count(*) FROM {SRV_BASE} WHERE {SRV_WHERE} AND i.os_is_eol", thresholds=BAD_UP)
+    b.bars("Days since last confirmed patch", f"""
+        SELECT band AS "Last patched", count(*) AS "Servers" FROM (
+          SELECT CASE WHEN p.last_patch_confirmed IS NULL THEN '6 never / unknown'
+                      WHEN {DAYS_PATCHED} <= 7 THEN '1 within 7 days' WHEN {DAYS_PATCHED} <= 35 THEN '2 8-35 days'
+                      WHEN {DAYS_PATCHED} <= 90 THEN '3 36-90 days' WHEN {DAYS_PATCHED} <= 180 THEN '4 91-180 days'
+                      ELSE '5 over 180 days' END AS band
+          FROM {SRV_BASE} WHERE {SRV_WHERE}) x
+        GROUP BY band ORDER BY band""", w=8, h=8, thresholds=[{"color": "orange", "value": None}])
+    b.table("Patch level by OS build", f"""
+        SELECT a.os_version AS "OS", a.kernel_version AS "Build", count(*) AS "Servers",
+               percentile_disc(0.5) WITHIN GROUP (ORDER BY {DAYS_PATCHED}) AS "Median days since patched",
+               count(*) FILTER (WHERE p.reboot_required) AS "Reboot pending"
+        FROM {SRV_BASE} WHERE {SRV_WHERE}
+        GROUP BY 1, 2
+        ORDER BY 1, CASE WHEN a.kernel_version ~ '^[0-9]+(\\.[0-9]+)*$'
+                         THEN string_to_array(a.kernel_version, '.')::int[] END DESC NULLS LAST, 2""", w=16, h=8,
+            overrides=[bg("Median days since patched")])
+
+    b.row("Servers", note="One row per active server. **Crit / High / KEV** = open vulnerabilities from the last "
+          "nightly rollup. Use the column filters (funnel icon) to cut to one team's servers.")
+    b.table("Servers", f"""
+        SELECT a.hostname AS "Server", a.site_label AS "Site", a.os_version AS "OS", a.kernel_version AS "Build",
+               {DAYS_PATCHED} AS "Days since patched", p.reboot_required AS "Reboot pending",
+               p.pending_patches AS "Pending patches", {DAYS_UP} AS "Days up",
+               r.open_critical AS "Crit", r.open_high AS "High", r.open_kev_count AS "KEV",
+               i.disk_used_pct AS "Disk %", i.cpu_avg_pct AS "CPU avg %", i.mem_avg_pct AS "Mem avg %",
+               array_to_string(i.asset_roles, ', ') AS "Roles (Falcon)",
+               CASE WHEN a.product_type = 'domain_controller' THEN 'DC' ELSE i.form_factor END AS "Type",
+               a.model AS "Model", a.ous[1] AS "OU", a.last_login_user AS "Last login"
+        FROM {SRV_BASE} WHERE {SRV_WHERE}
+        ORDER BY p.last_patch_confirmed NULLS FIRST, r.open_kev_count DESC NULLS LAST LIMIT 1500""", h=14,
+            overrides=[thresh_bg("Days since patched", [{"color": "transparent", "value": None},
+                                                        {"color": "orange", "value": 36}, {"color": "red", "value": 91}]),
+                       thresh_bg("Days up", [{"color": "transparent", "value": None},
+                                             {"color": "orange", "value": 36}, {"color": "red", "value": 91}]),
+                       thresh_bg("KEV", [{"color": "transparent", "value": None}, {"color": "red", "value": 1}]),
+                       thresh_bg("Disk %", [{"color": "transparent", "value": None},
+                                            {"color": "orange", "value": 85}, {"color": "red", "value": 95}])])
+
+    b.row("What to fix", note="Where one change clears the most. Fix titles are Falcon's remediation text.")
+    srv_findings = ("vuln_findings vf JOIN assets a ON a.source = 'falcon' AND a.source_asset_id = vf.source_asset_id "
+                    "AND a.product_type IN ('server','domain_controller') AND NOT a.retired "
+                    "WHERE vf.source = 'falcon_spotlight' AND vf.state IN ('OPEN','REOPENED') "
+                    "AND vf.severity IN ('critical','high') AND a.site_label IN ($site)")
+    b.table("Top missing fixes on servers", f"""
+        SELECT COALESCE(max(vf.fix_title), max(vf.title)) AS "Fix", max(vf.product_family) AS "Product",
+               count(DISTINCT vf.source_asset_id) AS "Servers", count(*) AS "Crit/high findings",
+               count(*) FILTER (WHERE vf.severity = 'critical') AS "Critical"
+        FROM {srv_findings} AND vf.fix_id IS NOT NULL
+        GROUP BY vf.fix_id ORDER BY 3 DESC, 4 DESC LIMIT 25""", w=12, h=10, overrides=[bg("Servers")])
+    b.table("Applications on servers", f"""
+        SELECT vf.product_family AS "Product family", count(DISTINCT vf.source_asset_id) AS "Servers",
+               count(*) FILTER (WHERE vf.severity = 'critical') AS "Critical", count(*) FILTER (WHERE vf.severity = 'high') AS "High"
+        FROM {srv_findings} AND vf.product_family NOT LIKE 'Microsoft Windows OS%%'
+        GROUP BY 1 ORDER BY 2 DESC LIMIT 25""".replace("%%", "%"), w=12, h=10, overrides=[bg("Servers")])
+    b.table("Database and middleware servers", f"""
+        SELECT x.hostname AS "Server", x.site_label AS "Site", x.products AS "Products with crit/high",
+               x.crit AS "Critical", x.high AS "High",
+               floor(EXTRACT(EPOCH FROM now() - p.last_patch_confirmed) / 86400)::int AS "Days since patched"
+        FROM (SELECT a.source_asset_id, a.hostname, a.site_label, string_agg(DISTINCT vf.product_family, ', ') AS products,
+                     count(*) FILTER (WHERE vf.severity = 'critical') AS crit, count(*) FILTER (WHERE vf.severity = 'high') AS high
+              FROM {srv_findings} AND vf.product_family IN ({DB_FAMILIES})
+              GROUP BY 1, 2, 3) x
+        LEFT JOIN host_patch_status p ON p.aid = x.source_asset_id
+        ORDER BY x.crit DESC, x.high DESC LIMIT 300""", h=9, overrides=[bg("Critical")])
+
+    b.row("Capacity and health", note="From Falcon's system insights (refreshed nightly): disk is the fullest "
+          "reported volume, CPU and memory are Falcon's recent averages.")
+    b.table("Disk 85%+ full", f"""
+        SELECT a.hostname AS "Server", a.site_label AS "Site", i.disk_used_pct AS "Disk %",
+               i.disk_free_gb AS "Free GB", i.disk_total_gb AS "Total GB"
+        FROM {SRV_BASE} WHERE {SRV_WHERE} AND i.disk_used_pct >= 85 ORDER BY i.disk_used_pct DESC LIMIT 200""",
+            w=8, h=9, overrides=[bg("Disk %")])
+    b.table("Busy servers", f"""
+        SELECT a.hostname AS "Server", a.site_label AS "Site", i.cpu_avg_pct AS "CPU avg %", i.cpu_max_pct AS "CPU max %",
+               i.mem_avg_pct AS "Mem avg %", i.mem_total_mb / 1024 AS "RAM GB"
+        FROM {SRV_BASE} WHERE {SRV_WHERE} AND (i.cpu_avg_pct >= 70 OR i.mem_avg_pct >= 90)
+        ORDER BY greatest(i.cpu_avg_pct, i.mem_avg_pct) DESC LIMIT 200""", w=10, h=9,
+            overrides=[bg("CPU avg %"), bg("Mem avg %")])
+    b.bars("Server roles (Falcon)", f"""
+        SELECT role AS "Role", count(*) AS "Servers"
+        FROM {SRV_BASE} CROSS JOIN LATERAL unnest(i.asset_roles) AS role WHERE {SRV_WHERE}
+        GROUP BY 1 ORDER BY 2 DESC LIMIT 12""", w=6, h=9, thresholds=[{"color": "blue", "value": None}])
+
+    b.row("Domain controllers")
+    b.table("Domain controllers", f"""
+        SELECT a.hostname AS "DC", a.site_label AS "Site", a.os_version AS "OS", a.kernel_version AS "Build",
+               {DAYS_PATCHED} AS "Days since patched", p.reboot_required AS "Reboot pending", {DAYS_UP} AS "Days up",
+               r.open_critical AS "Crit", r.open_high AS "High", r.open_kev_count AS "KEV", i.os_is_eol AS "Unsupported OS"
+        FROM {SRV_BASE} WHERE {SRV_WHERE} AND a.product_type = 'domain_controller'
+        ORDER BY i.os_is_eol DESC NULLS LAST, p.last_patch_confirmed NULLS FIRST""", h=10,
+            overrides=[thresh_bg("Days since patched", [{"color": "transparent", "value": None},
+                                                        {"color": "orange", "value": 36}, {"color": "red", "value": 91}]),
+                       thresh_bg("KEV", [{"color": "transparent", "value": None}, {"color": "red", "value": 1}])])
+    return dashboard("secops-servers", "Servers", "Server patching, reboots, risk, applications and capacity for the "
+                     "infrastructure, applications and database teams.", b, help=SERVERS_HELP)
+
+
 def main():
     for fname, fn in (("secops-overview.json", overview),
                       ("secops-endpoint-identity.json", endpoint_identity),
                       ("secops-email-external.json", email_external),
                       ("secops-worklist.json", worklist),
-                      ("vuln-dashboard.json", vuln)):
+                      ("vuln-dashboard.json", vuln),
+                      ("secops-servers.json", servers)):
         path = os.path.join(HERE, fname)
         with open(path, "w") as f:
             json.dump(fn(), f, indent=2)

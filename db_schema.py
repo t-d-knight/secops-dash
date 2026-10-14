@@ -229,6 +229,48 @@ DDL_STATEMENTS = [
     # filled for managed hosts (primary MAC) so an unmanaged record sharing a
     # managed host's MAC can be recognised as that host's secondary IP.
     "ALTER TABLE assets ADD COLUMN IF NOT EXISTS mac_addresses TEXT[];",
+    # managed hosts: reboot / patch level / model / last user (servers dashboard)
+    "ALTER TABLE assets ADD COLUMN IF NOT EXISTS last_reboot TIMESTAMPTZ;",
+    "ALTER TABLE assets ADD COLUMN IF NOT EXISTS kernel_version TEXT;",     # Windows: 10.0.<build>.<UBR>
+    "ALTER TABLE assets ADD COLUMN IF NOT EXISTS model TEXT;",              # system_product_name
+    "ALTER TABLE assets ADD COLUMN IF NOT EXISTS last_login_user TEXT;",
+    # --- patch status + server load (falcon_patches) ----------------------
+    # Spotlight's installed-patches view, one row per managed host: the
+    # console's "Last patch confirmed date", pending/active counts, reboot needed.
+    """
+    CREATE TABLE IF NOT EXISTS host_patch_status (
+        aid                  TEXT PRIMARY KEY,
+        hostname             TEXT,
+        device_type          TEXT,
+        reboot_required      BOOLEAN,
+        active_patches       INTEGER,
+        pending_patches      INTEGER,
+        last_patch_confirmed TIMESTAMPTZ,
+        installed_patches    JSONB,               -- [{id, status}]
+        collected_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    """,
+    # Discover system insights for servers: disk, CPU, memory, roles.
+    """
+    CREATE TABLE IF NOT EXISTS host_insights (
+        aid                 TEXT PRIMARY KEY,
+        disk_used_pct       NUMERIC,
+        disk_total_gb       NUMERIC,
+        disk_free_gb        NUMERIC,
+        cpu_avg_pct         NUMERIC,
+        cpu_max_pct         NUMERIC,
+        mem_avg_pct         NUMERIC,
+        mem_max_pct         NUMERIC,
+        mem_total_mb        NUMERIC,
+        asset_roles         TEXT[],               -- Falcon's computed roles (web, database, backup, ...)
+        criticality         TEXT,
+        os_is_eol           BOOLEAN,
+        internet_exposure   TEXT,
+        encryption_status   TEXT,
+        form_factor         TEXT,                 -- Virtual machine | Desktop | ...
+        collected_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    """,
     "ALTER TABLE assets ADD COLUMN IF NOT EXISTS mac_vendor TEXT;",
     "ALTER TABLE assets ADD COLUMN IF NOT EXISTS data_providers TEXT[];",
     "ALTER TABLE assets ADD COLUMN IF NOT EXISTS ad_uac INTEGER;",

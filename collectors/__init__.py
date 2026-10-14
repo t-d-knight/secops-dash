@@ -12,6 +12,7 @@ from collectors import (
     falcon_alerts,
     falcon_hosts,
     falcon_identity,
+    falcon_patches,
     falcon_spotlight,
     falcon_usb,
     hadrian,
@@ -20,6 +21,7 @@ from collectors import (
 REGISTRY = {m.NAME: m for m in (
     falcon_hosts,
     falcon_spotlight,
+    falcon_patches,
     falcon_alerts,
     falcon_identity,
     falcon_usb,

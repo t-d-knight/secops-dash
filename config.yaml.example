@@ -138,6 +138,9 @@ collectors:
   # the scans Falcon runs when a drive is plugged in (ODS). Scopes: NGSIEM
   # read + write (starting a search counts as a write), NGSIEM Lookup Files
   # read, On-demand scans (ODS) read.
+  falcon_patches:
+    enabled: true                 # installed patches (Spotlight read) + server load (Discover read)
+    server_insights: true         # disk / CPU / memory / roles for servers and DCs
   falcon_usb:
     enabled: true
     mode: api                     # api | csv
