@@ -96,6 +96,12 @@ def run(ctx: RunContext) -> Dict[str, Any]:
                 "password_last_change": parse_ts((ad.get("passwordAttributes") or {}).get("lastChange")),
                 "account_created": parse_ts(ad.get("creationTime") or cloud.get("creationTime")),
                 "last_activity": max(activity) if activity else None,
+                # roster fields for the action pack's All accounts tab
+                "title": ad.get("title") or cloud.get("title"),
+                "department": ad.get("department") or cloud.get("department"),
+                "account_expires": parse_ts(ad.get("expirationTime")),
+                "password_never_expires": ("DONT_EXPIRE_PASSWORD" in as_list(ad.get("userAccountControlFlags"))
+                                           if ad else None),
                 "site_label": m.label,
                 "site_tag": m.key,
                 "site_matched_by": m.matched_by,

@@ -244,6 +244,10 @@ def main() -> int:
     en = dict(q(cur, "SELECT entity_id, (enabled, last_activity IS NOT NULL) FROM identity_entities "
                      "WHERE entity_id IN ('e3', 'e5')"))
     check(en == {"e3": "(,f)", "e5": "(f,t)"}, f"cloud-only account takes enabled/activity from Entra: {en}")
+    ros = {r[0]: r[1:] for r in q(cur, "SELECT entity_id, title, department, account_expires IS NOT NULL, "
+                                       "password_never_expires FROM identity_entities WHERE entity_id IN ('e1','e2')")}
+    check(ros == {"e1": (None, None, False, True), "e2": ("Registered Nurse", "Ward 3", True, False)},
+          f"roster fields: title, department, expiry, password-never-expires flag: {ros}")
     acc = dict(q(cur, "SELECT entity_id, access_account FROM identity_entities WHERE access_account IS NOT NULL"))
     check(acc == {"e4": "vpn"}, f"shared-domain VPN-only account tagged: {acc}")
     kinds = dict(q(cur, "SELECT entity_id, account_kind FROM identity_entities"))
@@ -350,6 +354,12 @@ def main() -> int:
         drives = {r[2]: r for r in wb["USB drives"].iter_rows(min_row=2, values_only=True)}
         check("Shared drive" in (drives.get("SER1") or ("",) * 14)[13], f"SER1 used by two people flagged shared: {drives}")
         check(wb["USB malware"].max_row == 2, "USB malware tab lists the detection")
+        acc = [dict(zip([c.value for c in wb["All accounts"][1]], [c.value for c in r]))
+               for r in wb["All accounts"].iter_rows(min_row=2)]
+        check(acc and acc[0]["Display name"] == "Svc Backup" and acc[0]["Stale"] == "Yes"
+              and acc[0]["Password never expires"] == "Yes"
+              and any(a["Title"] == "Registered Nurse" and a["Department"] == "Ward 3" for a in acc),
+              f"All accounts tab: every account, enabled + stale first, with title/department: {acc[:2]}")
 
     print("== dashboard SQL")
     n = 0

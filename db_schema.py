@@ -385,6 +385,11 @@ DDL_STATEMENTS = [
     "ALTER TABLE identity_entities ADD COLUMN IF NOT EXISTS access_account TEXT;",
     # Falcon's mostRecentActivity, latest of the AD and Entra accounts.
     "ALTER TABLE identity_entities ADD COLUMN IF NOT EXISTS last_activity TIMESTAMPTZ;",
+    # Roster fields for the action pack's All accounts tab (AD, or Entra for cloud-only).
+    "ALTER TABLE identity_entities ADD COLUMN IF NOT EXISTS title TEXT;",
+    "ALTER TABLE identity_entities ADD COLUMN IF NOT EXISTS department TEXT;",
+    "ALTER TABLE identity_entities ADD COLUMN IF NOT EXISTS account_expires TIMESTAMPTZ;",
+    "ALTER TABLE identity_entities ADD COLUMN IF NOT EXISTS password_never_expires BOOLEAN;",
     """
     CREATE TABLE IF NOT EXISTS identity_risk_factors (
         source           TEXT NOT NULL,

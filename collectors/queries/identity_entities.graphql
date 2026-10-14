@@ -28,6 +28,10 @@ query ($after: Cursor) {
           enabled
           creationTime
           mostRecentActivity
+          title
+          department
+          expirationTime
+          userAccountControlFlags
           passwordAttributes {
             lastChange
           }
@@ -41,6 +45,8 @@ query ($after: Cursor) {
           enabled
           creationTime
           mostRecentActivity
+          title
+          department
         }
       }
     }
