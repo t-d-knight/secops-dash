@@ -143,7 +143,8 @@ TABS: List[Tuple[str, str, List[str], str]] = [
      ["Display name", "UPN", "Account (SAM)", "Used for", "Enabled", "Stale", "OU", "Access groups", "Other risk factors"],
      "Second accounts in the shared domain that exist only for VPN or remote apps (MANAD). Enabled + stale ones are "
      "listed first: disable them now. Legacy = in neither a VPN nor a remote-app group; confirm and remove."),
-    # Every account at the site -- the roster sites otherwise build by hand from AD exports.
+    # Every enabled account at the site -- the roster sites otherwise build by hand from AD
+    # exports, but across every OU (vendor and other accounts outside the usual user OU too).
     # Enabled-but-stale first: those are the ones to confirm or disable.
     ("All accounts", f"""
         SELECT e.site_label, e.display_name, e.upn, e.sam_account_name, e.title, e.department, {KIND_LABEL},
@@ -155,14 +156,14 @@ TABS: List[Tuple[str, str, List[str], str]] = [
                (SELECT string_agg(o.factor_type, ', ' ORDER BY o.factor_type) FROM identity_risk_factors o
                  WHERE o.source = e.source AND o.entity_id = e.entity_id)
         FROM identity_entities e
-        WHERE NOT e.retired AND COALESCE(e.account_kind, 'human') <> 'out_of_scope'
+        WHERE NOT e.retired AND e.enabled IS NOT FALSE AND COALESCE(e.account_kind, 'human') <> 'out_of_scope'
           AND {SITE.format(col="e.site_label")}
-        ORDER BY e.enabled IS FALSE, NOT EXISTS (SELECT 1 FROM identity_risk_factors o WHERE o.source = e.source AND o.entity_id = e.entity_id AND o.factor_type = 'STALE_ACCOUNT'), e.display_name""",
+        ORDER BY NOT EXISTS (SELECT 1 FROM identity_risk_factors o WHERE o.source = e.source AND o.entity_id = e.entity_id AND o.factor_type = 'STALE_ACCOUNT'), e.display_name""",
      ["Display name", "UPN", "Account (SAM)", "Title", "Department", "Account type", "Enabled", "Stale",
       "Last activity", "Password last changed", "Password never expires", "Account expires", "OU", "AD groups",
       "Risk factors"],
-     "Every account at the site, for checking who should still have one. Enabled + stale accounts come first: "
-     "confirm they're still needed, or disable them. Last activity is Falcon's most recent sign-in or use of the "
+     "Every enabled account at the site, in any OU, for checking who should still have one. Stale accounts come "
+     "first: confirm they're still needed, or disable them. Last activity is Falcon's most recent sign-in or use of the "
      "account. Manager and employee ID aren't included -- take them from AD if needed."),
     ("Stale sensors", f"""
         SELECT site_label, hostname, product_type, os_version, last_seen::date,

@@ -358,8 +358,9 @@ def main() -> int:
                for r in wb["All accounts"].iter_rows(min_row=2)]
         check(acc and acc[0]["Display name"] == "Svc Backup" and acc[0]["Stale"] == "Yes"
               and acc[0]["Password never expires"] == "Yes"
-              and any(a["Title"] == "Registered Nurse" and a["Department"] == "Ward 3" for a in acc),
-              f"All accounts tab: every account, enabled + stale first, with title/department: {acc[:2]}")
+              and any(a["Title"] == "Registered Nurse" and a["Department"] == "Ward 3" for a in acc)
+              and all(a["Enabled"] != "No" for a in acc),
+              f"All accounts tab: enabled accounts only, stale first, with title/department: {acc[:2]}")
 
     print("== dashboard SQL")
     n = 0
