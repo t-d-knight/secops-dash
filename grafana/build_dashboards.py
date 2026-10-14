@@ -1600,13 +1600,17 @@ def servers():
         SELECT a.hostname AS "Server", a.site_label AS "Site", i.disk_used_pct AS "Disk %",
                i.disk_free_gb AS "Free GB", i.disk_total_gb AS "Total GB"
         FROM {SRV_BASE} WHERE {SRV_WHERE} AND i.disk_used_pct >= 85 ORDER BY i.disk_used_pct DESC LIMIT 200""",
-            w=12, h=9, overrides=[bg("Disk %")])
+            w=11, h=9, overrides=[thresh_bg("Disk %", [{"color": "transparent", "value": None},
+                                                       {"color": "orange", "value": 85}, {"color": "red", "value": 95}])])
     b.table("Busy servers", f"""
         SELECT a.hostname AS "Server", a.site_label AS "Site", i.cpu_avg_pct AS "CPU avg %", i.cpu_max_pct AS "CPU max %",
-               i.mem_avg_pct AS "Mem avg %", i.mem_total_mb / 1024 AS "RAM GB"
+               i.mem_avg_pct AS "Mem avg %", round(i.mem_total_mb / 1024)::int AS "RAM GB"
         FROM {SRV_BASE} WHERE {SRV_WHERE} AND (i.cpu_avg_pct >= 70 OR i.mem_avg_pct >= 90)
-        ORDER BY greatest(i.cpu_avg_pct, i.mem_avg_pct) DESC LIMIT 200""", w=12, h=9,
-            overrides=[bg("CPU avg %"), bg("Mem avg %")])
+        ORDER BY greatest(i.cpu_avg_pct, i.mem_avg_pct) DESC LIMIT 200""", w=13, h=9,
+            overrides=[thresh_bg("CPU avg %", [{"color": "transparent", "value": None},
+                                               {"color": "orange", "value": 70}, {"color": "red", "value": 90}]),
+                       thresh_bg("Mem avg %", [{"color": "transparent", "value": None},
+                                               {"color": "orange", "value": 90}, {"color": "red", "value": 95}])])
 
     b.row("Domain controllers")
     b.table("Domain controllers", f"""

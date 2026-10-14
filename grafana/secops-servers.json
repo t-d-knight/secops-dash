@@ -1035,7 +1035,7 @@
       "gridPos": {
         "x": 0,
         "y": 59,
-        "w": 12,
+        "w": 11,
         "h": 9
       },
       "datasource": {
@@ -1058,9 +1058,29 @@
                 }
               },
               {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 85
+                    },
+                    {
+                      "color": "red",
+                      "value": 95
+                    }
+                  ]
+                }
+              },
+              {
                 "id": "color",
                 "value": {
-                  "mode": "continuous-GrYlRd"
+                  "mode": "thresholds"
                 }
               }
             ]
@@ -1089,9 +1109,9 @@
       "type": "table",
       "title": "Busy servers",
       "gridPos": {
-        "x": 12,
+        "x": 11,
         "y": 59,
-        "w": 12,
+        "w": 13,
         "h": 9
       },
       "datasource": {
@@ -1114,9 +1134,29 @@
                 }
               },
               {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 70
+                    },
+                    {
+                      "color": "red",
+                      "value": 90
+                    }
+                  ]
+                }
+              },
+              {
                 "id": "color",
                 "value": {
-                  "mode": "continuous-GrYlRd"
+                  "mode": "thresholds"
                 }
               }
             ]
@@ -1134,9 +1174,29 @@
                 }
               },
               {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 90
+                    },
+                    {
+                      "color": "red",
+                      "value": 95
+                    }
+                  ]
+                }
+              },
+              {
                 "id": "color",
                 "value": {
-                  "mode": "continuous-GrYlRd"
+                  "mode": "thresholds"
                 }
               }
             ]
@@ -1155,7 +1215,7 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT a.hostname AS \"Server\", a.site_label AS \"Site\", i.cpu_avg_pct AS \"CPU avg %\", i.cpu_max_pct AS \"CPU max %\", i.mem_avg_pct AS \"Mem avg %\", i.mem_total_mb / 1024 AS \"RAM GB\" FROM assets a LEFT JOIN host_patch_status p ON p.aid = a.source_asset_id LEFT JOIN host_insights i ON i.aid = a.source_asset_id LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = a.source_asset_id WHERE a.source = 'falcon' AND NOT a.retired AND a.product_type IN ('server','domain_controller') AND a.last_seen > now() - interval '7 days' AND a.site_label IN ($site) AND (i.cpu_avg_pct >= 70 OR i.mem_avg_pct >= 90) ORDER BY greatest(i.cpu_avg_pct, i.mem_avg_pct) DESC LIMIT 200"
+          "rawSql": "SELECT a.hostname AS \"Server\", a.site_label AS \"Site\", i.cpu_avg_pct AS \"CPU avg %\", i.cpu_max_pct AS \"CPU max %\", i.mem_avg_pct AS \"Mem avg %\", round(i.mem_total_mb / 1024)::int AS \"RAM GB\" FROM assets a LEFT JOIN host_patch_status p ON p.aid = a.source_asset_id LEFT JOIN host_insights i ON i.aid = a.source_asset_id LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = a.source_asset_id WHERE a.source = 'falcon' AND NOT a.retired AND a.product_type IN ('server','domain_controller') AND a.last_seen > now() - interval '7 days' AND a.site_label IN ($site) AND (i.cpu_avg_pct >= 70 OR i.mem_avg_pct >= 90) ORDER BY greatest(i.cpu_avg_pct, i.mem_avg_pct) DESC LIMIT 200"
         }
       ],
       "description": "Highest average CPU or memory use, per Falcon's system insights."
