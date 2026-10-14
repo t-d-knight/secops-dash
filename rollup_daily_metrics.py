@@ -593,25 +593,48 @@ def rollup_vuln_flow_metrics(cur, start: dt.date, snapshot_date: dt.date) -> Non
     period" sums -- unlike daily_product_metrics.new_*/fixed_*, which are
     rolling N-day windows (every finding repeats across N snapshots, so
     summing them over a period overcounts ~N times). EXPIRED isn't
-    "opened": Spotlight expires huge volumes of short-lived records."""
+    "opened": Spotlight expires huge volumes of short-lived records.
+
+    opened_new_host: findings first found on the day their host was first
+    assessed (the host's earliest finding, any state) -- coverage growing,
+    not new vulnerabilities. daily_vuln_coverage_metrics counts those hosts."""
     cur.execute("DELETE FROM daily_vuln_flow_metrics WHERE snapshot_date BETWEEN %s AND %s", (start, snapshot_date))
+    cur.execute("DELETE FROM daily_vuln_coverage_metrics WHERE snapshot_date BETWEEN %s AND %s", (start, snapshot_date))
     cur.execute(
         """
-        INSERT INTO daily_vuln_flow_metrics (snapshot_date, site_label, severity, source, opened, fixed)
-        SELECT d, site_label, severity, source, sum(opened), sum(fixed) FROM (
-            SELECT first_found::date AS d, site_label, severity, source, count(*) AS opened, 0 AS fixed
-            FROM vuln_findings
-            WHERE state IN ('OPEN','REOPENED','FIXED')
-              AND first_found >= %(start)s::date AND first_found < %(snap)s::date + INTERVAL '1 day'
+        CREATE TEMP TABLE host_first ON COMMIT DROP AS
+        SELECT source, source_asset_id, min(first_found)::date AS d, max(site_label) AS site_label
+        FROM vuln_findings GROUP BY 1, 2
+        """
+    )
+    cur.execute("CREATE INDEX ON host_first (source, source_asset_id)")
+    cur.execute(
+        """
+        INSERT INTO daily_vuln_flow_metrics (snapshot_date, site_label, severity, source, opened, fixed, opened_new_host)
+        SELECT d, site_label, severity, source, sum(opened), sum(fixed), sum(opened_new_host) FROM (
+            SELECT vf.first_found::date AS d, vf.site_label, vf.severity, vf.source, count(*) AS opened, 0 AS fixed,
+                   count(*) FILTER (WHERE vf.first_found::date = hf.d) AS opened_new_host
+            FROM vuln_findings vf
+            JOIN host_first hf ON hf.source = vf.source AND hf.source_asset_id = vf.source_asset_id
+            WHERE vf.state IN ('OPEN','REOPENED','FIXED')
+              AND vf.first_found >= %(start)s::date AND vf.first_found < %(snap)s::date + INTERVAL '1 day'
             GROUP BY 1, 2, 3, 4
             UNION ALL
-            SELECT last_fixed::date, site_label, severity, source, 0, count(*)
+            SELECT last_fixed::date, site_label, severity, source, 0, count(*), 0
             FROM vuln_findings
             WHERE state = 'FIXED'
               AND last_fixed >= %(start)s::date AND last_fixed < %(snap)s::date + INTERVAL '1 day'
             GROUP BY 1, 2, 3, 4
         ) x
         GROUP BY 1, 2, 3, 4
+        """,
+        {"start": start, "snap": snapshot_date},
+    )
+    cur.execute(
+        """
+        INSERT INTO daily_vuln_coverage_metrics (snapshot_date, site_label, source, new_hosts)
+        SELECT d, site_label, source, count(*) FROM host_first
+        WHERE d BETWEEN %(start)s AND %(snap)s GROUP BY 1, 2, 3
         """,
         {"start": start, "snap": snapshot_date},
     )

@@ -731,6 +731,18 @@ DDL_STATEMENTS = [
     # separately -- Grafana panels SUM across sources and are unaffected.
     # Existing rows are all Spotlight (Hadrian had never run when added).
     "ALTER TABLE daily_vuln_flow_metrics ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'falcon_spotlight';",
+    # Coverage vs new: of `opened`, how many were found on the day their host was
+    # first assessed (its very first finding) -- coverage growth, not new vulns.
+    "ALTER TABLE daily_vuln_flow_metrics ADD COLUMN IF NOT EXISTS opened_new_host INTEGER NOT NULL DEFAULT 0;",
+    """
+    CREATE TABLE IF NOT EXISTS daily_vuln_coverage_metrics (
+        snapshot_date   DATE NOT NULL,        -- day the hosts were first assessed
+        site_label      TEXT NOT NULL,
+        source          TEXT NOT NULL,
+        new_hosts       INTEGER NOT NULL,
+        PRIMARY KEY (snapshot_date, site_label, source)
+    );
+    """,
     """
     DO $$ BEGIN
         ALTER TABLE daily_vuln_flow_metrics DROP CONSTRAINT daily_vuln_flow_metrics_pkey;

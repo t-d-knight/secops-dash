@@ -645,10 +645,10 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT (COALESCE(sum(opened),0) - COALESCE(sum(fixed),0))::int AS \"Net Change\" FROM daily_vuln_flow_metrics WHERE site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date"
+          "rawSql": "SELECT (COALESCE(sum(opened - opened_new_host),0) - COALESCE(sum(fixed),0))::int AS \"Net Change\" FROM daily_vuln_flow_metrics WHERE site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date"
         }
       ],
-      "description": "Findings opened minus fixed in the selected range, by the day each happened (as the exec reports count them; expired records aren't 'opened'). Positive = backlog growing."
+      "description": "Findings opened minus fixed in the selected range, by the day each happened (as the exec reports count them; expired records and findings on newly assessed hosts aren't 'opened'). Positive = backlog growing."
     },
     {
       "id": 13,
@@ -669,6 +669,9 @@
           "unit": "short",
           "custom": {
             "fillOpacity": 80,
+            "stacking": {
+              "mode": "normal"
+            },
             "drawStyle": "bars"
           }
         },
@@ -684,6 +687,21 @@
                 "value": {
                   "mode": "fixed",
                   "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Newly assessed hosts"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
                 }
               }
             ]
@@ -717,10 +735,10 @@
           "format": "time_series",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT snapshot_date::timestamp AS time, sum(opened) AS \"Opened\", -sum(fixed) AS \"Closed\" FROM daily_vuln_flow_metrics WHERE site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1 ORDER BY 1"
+          "rawSql": "SELECT snapshot_date::timestamp AS time, sum(opened - opened_new_host) AS \"Opened\", sum(opened_new_host) AS \"Newly assessed hosts\", -sum(fixed) AS \"Closed\" FROM daily_vuln_flow_metrics WHERE site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1 ORDER BY 1"
         }
       ],
-      "description": "Findings first detected (up) and fixed (down) per day, from the nightly rollup."
+      "description": "Findings first detected (up) and fixed (down) per day, from the nightly rollup. Opened = new findings on hosts already being assessed; newly assessed hosts = everything found on a host's first day of assessment (coverage, not new vulns)."
     },
     {
       "id": 14,

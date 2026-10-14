@@ -187,19 +187,27 @@ def fetch_vulns(cur, p: Period, site: Optional[str], days_last_seen: int = 30, f
     # daily_vuln_flow_metrics is per event day, so summing over the period
     # is right (daily_product_metrics.new_*/fixed_* are rolling windows and
     # must not be summed -- see rollup_daily_metrics.py).
+    # "opened" = new findings on hosts already being assessed; findings on a host's
+    # first-assessed day and anything in a bulk-load day are coverage, reported apart
+    new = "opened - opened_new_host"
     movement = q1(cur, f"""
-        SELECT COALESCE(SUM(opened) FILTER (WHERE {NOT_BULK}),0), COALESCE(SUM(fixed),0),
-               COALESCE(SUM(opened) FILTER (WHERE severity='critical' AND {NOT_BULK}),0),
-               COALESCE(SUM(opened) FILTER (WHERE severity='high' AND {NOT_BULK}),0),
+        SELECT COALESCE(SUM({new}) FILTER (WHERE {NOT_BULK}),0), COALESCE(SUM(fixed),0),
+               COALESCE(SUM({new}) FILTER (WHERE severity='critical' AND {NOT_BULK}),0),
+               COALESCE(SUM({new}) FILTER (WHERE severity='high' AND {NOT_BULK}),0),
                COALESCE(SUM(fixed) FILTER (WHERE severity='critical'),0),
                COALESCE(SUM(fixed) FILTER (WHERE severity='high'),0),
-               COALESCE(SUM(opened) FILTER (WHERE NOT {NOT_BULK}),0)
+               COALESCE(SUM(opened) FILTER (WHERE NOT {NOT_BULK}),0),
+               COALESCE(SUM(opened_new_host) FILTER (WHERE {NOT_BULK}),0)
         FROM daily_vuln_flow_metrics WHERE snapshot_date BETWEEN %(since)s AND %(until)s AND {SITE} AND {ENDPOINT}
     """, since=p.since, until=p.until, site=site, bulk=BULK_DATES)
+    new_hosts = q1(cur, f"""
+        SELECT COALESCE(SUM(new_hosts),0) FROM daily_vuln_coverage_metrics
+        WHERE snapshot_date BETWEEN %(since)s AND %(until)s AND {SITE} AND {ENDPOINT}
+          AND {NOT_BULK}""", since=p.since, until=p.until, site=site, bulk=BULK_DATES)[0]
     bucket = "day" if p.kind == "week" else "week"
     buckets = qall(cur, f"""
         SELECT GREATEST(date_trunc('{bucket}', snapshot_date)::date, %(since)s::date) AS b,
-               COALESCE(SUM(opened) FILTER (WHERE {NOT_BULK}),0), COALESCE(SUM(fixed),0)
+               COALESCE(SUM({new}) FILTER (WHERE {NOT_BULK}),0), COALESCE(SUM(fixed),0)
         FROM daily_vuln_flow_metrics WHERE snapshot_date BETWEEN %(since)s AND %(until)s AND {SITE} AND {ENDPOINT}
         GROUP BY 1 ORDER BY 1
     """, since=p.since, until=p.until, site=site, bulk=BULK_DATES)
@@ -254,6 +262,7 @@ def fetch_vulns(cur, p: Period, site: Optional[str], days_last_seen: int = 30, f
         "opened": movement[0], "fixed": movement[1],
         "opened_crit": movement[2], "opened_high": movement[3],
         "fixed_crit": movement[4], "fixed_high": movement[5], "bulk_opened": movement[6],
+        "coverage_opened": movement[7], "new_hosts": new_hosts,
         "buckets": buckets, "bucket": bucket,
         "kev_open": kev[0], "kev_crit": kev[1], "kev_high": kev[2],
         "kev_ransomware": kev[3], "kev_past_due": kev[4],
@@ -1086,10 +1095,15 @@ def build_page1(p: Period, scope: str, site: Optional[str], v: dict, products: L
     by = "day" if v["bucket"] == "day" else "week"
     scope_note = "Org-wide figures across all sites" if site is None else f"Figures for {html.escape(site)} only"
     history_note = f" ({tr['vuln_history_start']:%d %b %Y})" if tr.get("vuln_history_start") else ""
-    bulk_note = (f'<p class="legend-row">"Opened" excludes {v["bulk_opened"]:,} findings first detected in a bulk '
-                 f'load ({", ".join(d.strftime("%d %b") for d in BULK_DATES if p.since <= d <= p.until)}) '
-                 f'-- coverage starting or expanding, '
-                 f'not new vulnerabilities.</p>' if v.get("bulk_opened") else "")
+    cov = []
+    if v.get("coverage_opened"):
+        cov.append(f'{v["coverage_opened"]:,} findings on {v["new_hosts"]:,} host'
+                   f'{"s" if v["new_hosts"] != 1 else ""} assessed for the first time')
+    if v.get("bulk_opened"):
+        cov.append(f'{v["bulk_opened"]:,} first detected in a bulk load '
+                   f'({", ".join(d.strftime("%d %b") for d in BULK_DATES if p.since <= d <= p.until)})')
+    bulk_note = (f'<p class="legend-row">"Opened" counts new findings on hosts already being assessed. Not '
+                 f'included: {"; ".join(cov)} -- coverage growing, not new vulnerabilities.</p>' if cov else "")
     site_section = "" if site is not None else f"""
 <h2>Open critical+high, by site</h2>
 {_sev_table(sites, "Site")}"""

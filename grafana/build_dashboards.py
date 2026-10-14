@@ -1241,9 +1241,11 @@ VULN_HELP = {
     "Open findings by severity": "Open findings per day by severity, from the nightly snapshot. Step changes are "
                                  "usually coverage (more devices assessed), not risk.",
     "Net change (opened − fixed)": "Findings opened minus fixed in the selected range, by the day each happened "
-                                   "(as the exec reports count them; expired records aren't 'opened'). Positive = "
-                                   "backlog growing.",
-    "Opened vs remediated per day": "Findings first detected (up) and fixed (down) per day, from the nightly rollup.",
+                                   "(as the exec reports count them; expired records and findings on newly assessed "
+                                   "hosts aren't 'opened'). Positive = backlog growing.",
+    "Opened vs remediated per day": "Findings first detected (up) and fixed (down) per day, from the nightly rollup. "
+                                    "Opened = new findings on hosts already being assessed; newly assessed hosts = "
+                                    "everything found on a host's first day of assessment (coverage, not new vulns).",
     "Open findings: change over 7 days": "Open findings now minus 7 days ago. Any rise is red.",
     "Critical + high: change over 7 days": "Open critical + high findings now minus 7 days ago.",
     "SLA breaches: change over 7 days": "Findings past SLA now minus 7 days ago: the count behind the rate, which "
@@ -1315,13 +1317,15 @@ def vuln():
         FROM daily_site_metrics WHERE site_label IN ($site) AND {rng_d('snapshot_date::date')}
         GROUP BY snapshot_date ORDER BY time""", w=24, colors=SEV4, stack=True)
     b.stat("Net change (opened − fixed)", f"""
-        SELECT (COALESCE(sum(opened),0) - COALESCE(sum(fixed),0))::int AS "Net Change"
+        SELECT (COALESCE(sum(opened - opened_new_host),0) - COALESCE(sum(fixed),0))::int AS "Net Change"
         FROM daily_vuln_flow_metrics WHERE site_label IN ($site) AND {rng_d('snapshot_date')}""", w=6, h=8,
            thresholds=[{"color": "green", "value": None}, {"color": "red", "value": 1}])
     b.ts("Opened vs remediated per day", f"""
-        SELECT snapshot_date::timestamp AS time, sum(opened) AS "Opened", -sum(fixed) AS "Closed"
+        SELECT snapshot_date::timestamp AS time, sum(opened - opened_new_host) AS "Opened",
+               sum(opened_new_host) AS "Newly assessed hosts", -sum(fixed) AS "Closed"
         FROM daily_vuln_flow_metrics WHERE site_label IN ($site) AND {rng_d('snapshot_date')}
-        GROUP BY 1 ORDER BY 1""", w=18, bars=True, colors={"Opened": "red", "Closed": "green"})
+        GROUP BY 1 ORDER BY 1""", w=18, bars=True, stack=True,
+         colors={"Opened": "red", "Newly assessed hosts": "blue", "Closed": "green"})
 
     b.row("Change over 7 days", collapsed=True, note="Today's figure minus the figure 7 days ago. Rates are in "
           "percentage points (**pts**): 10% -> 12% is +2 pts, not +20%. Any rise is red. Straight after a coverage "
