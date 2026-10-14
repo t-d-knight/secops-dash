@@ -2,10 +2,10 @@
 #   sed "s#/opt/secops-dashboard#$PWD#g" crontab.example | crontab -
 # Times are the server's local time.
 #
-# Everything after the 02:00 collection waits on its lock (flock -w) rather
+# Everything after the 01:00 collection waits on its lock (flock -w) rather
 # than starting at a fixed time, so a long collection never leaves a report,
 # publish, backup or maintenance run working on half-collected data. The
-# collector itself uses flock -n: if something still holds the lock at 02:00
+# collector itself uses flock -n: if something still holds the lock at 01:00
 # it skips the night, so nothing heavy is ever scheduled before it.
 #
 # Logs: logs/*.log (rotated and pruned by maintenance.sh).
@@ -13,7 +13,7 @@
 # publish.py call it themselves.
 
 # Nightly collection + rollups
-0  2 * * *        /opt/secops-dashboard/run_collector.sh >> /opt/secops-dashboard/logs/collector.log 2>&1
+0  1 * * *        /opt/secops-dashboard/run_collector.sh >> /opt/secops-dashboard/logs/collector.log 2>&1
 # Catch-up: finish today's pipeline if the night run was cut short (power, reboot, Postgres restart);
 # silent no-op when it finished. Waits for the lock, so a slow night run completes first.
 0 10 * * *        /opt/secops-dashboard/run_collector.sh --catch-up >> /opt/secops-dashboard/logs/collector.log 2>&1

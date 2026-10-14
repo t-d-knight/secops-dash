@@ -162,7 +162,7 @@ sed "s#/opt/secops-dashboard#$PWD#g" crontab.example | crontab -
 
 | When | Job | Log |
 |---|---|---|
-| 02:00 daily | `run_collector.sh`: KEV/EPSS, all enabled collectors, NVD backfill, rollups | `logs/collector.log` |
+| 01:00 daily | `run_collector.sh`: KEV/EPSS, all enabled collectors, NVD backfill, rollups | `logs/collector.log` |
 | 03:30 Mondays | Weekly exec reports, region + every site (HTML + PDF) | `logs/report.log` |
 | 03:30, 1 Jan/Apr/Jul/Oct | Quarterly exec reports | `logs/report.log` |
 | 03:45 Mondays | `server_report.py`: Servers report (PDF + Excel, whole region) for the infrastructure, applications and database teams -> `Servers/Weekly/` | `logs/report.log` |
@@ -172,7 +172,7 @@ sed "s#/opt/secops-dashboard#$PWD#g" crontab.example | crontab -
 | 10:00 daily | `run_collector.sh --catch-up`: finishes any stage the night run didn't (power loss, reboot, Postgres restart); silent no-op otherwise | `logs/collector.log` |
 | 10:00 Sundays | `maintenance.sh`: retention pruning, `VACUUM`, log rotation, deploy `*.bak-YYYYMMDD` copies over 14 days | `logs/maintenance.log` |
 
-Everything after the collection waits on its lock (`flock -w`) instead of starting at a fixed time, so a long collection never leaves a later job working on half-collected data. The collector itself skips the night if the lock is still held at 02:00, so nothing heavy is scheduled before it.
+Everything after the collection waits on its lock (`flock -w`) instead of starting at a fixed time, so a long collection never leaves a later job working on half-collected data. The collector itself skips the night if the lock is still held at 01:00, so nothing heavy is scheduled before it.
 
 `backup.sh` and `maintenance.sh` call `pg_dump`/`psql` and need password-free auth as the database user -- a `~/.pgpass` (mode 600) for the service account:
 

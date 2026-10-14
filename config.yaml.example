@@ -301,7 +301,7 @@ notify:
   enabled: false
   healthcheck_url: null   # e.g. "https://hc-ping.com/<uuid>"
   stale_hours: 36         # a feed with no successful run for this long alerts
-  max_run_hours: 6        # nightly run longer than this alerts
+  max_run_hours: 7        # nightly run longer than this alerts (Patch Tuesday nights run long)
   disk_warn_pct: 85
   identity_console_url: null   # optional link in the nightly identity digest, e.g. the child CID's
                                # Identity Protection detections page

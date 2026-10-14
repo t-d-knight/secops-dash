@@ -2,7 +2,7 @@
 set -uo pipefail
 
 # run_collector.sh -- nightly pipeline. Cron example (runs from wherever the repo lives):
-#   0 2 * * * /opt/secops-dashboard/run_collector.sh >> /opt/secops-dashboard/logs/collector.log 2>&1
+#   0 1 * * * /opt/secops-dashboard/run_collector.sh >> /opt/secops-dashboard/logs/collector.log 2>&1
 #
 # A failing vendor feed does NOT stop the run: collect.py isolates each
 # collector, the rollups still run on whatever did arrive, and this script

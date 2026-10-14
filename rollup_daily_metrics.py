@@ -403,7 +403,7 @@ def write_epss_metrics(cur, snapshot_date: dt.date, data: Dict[str, Dict[str, An
 
 def rollup_mttr_metrics(cur, start: dt.date, snapshot_date: dt.date) -> List[Dict[str, Any]]:
     """One row per (last_fixed day, site, severity) for every day in
-    [start, snapshot_date] -- not just the run day, which a 02:00 cron run
+    [start, snapshot_date] -- not just the run day, which an early-morning cron run
     would have almost nothing fixed on yet (and yesterday's fixes would
     never be counted). Late-arriving fixes land within the window."""
     cur.execute(
@@ -540,7 +540,7 @@ def rollup_asset_metrics(cur, cfg: Dict[str, Any], snapshot_date: dt.date) -> No
 def rollup_alert_metrics(cur, start: dt.date, snapshot_date: dt.date) -> None:
     """new_*/closed_today/median per EVENT day, recomputed for every day in
     [start, snapshot_date] -- counting only the run day itself lost nearly
-    a full day of alerts to a 02:00 cron run. open_* is point-in-time, so
+    a full day of alerts to an early-morning cron run. open_* is point-in-time, so
     only the run day's row gets it; other days keep whatever their own run
     recorded (NULL if none ran -- see db_schema.py)."""
     cur.execute(
