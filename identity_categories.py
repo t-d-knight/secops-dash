@@ -31,12 +31,12 @@ class Category(NamedTuple):
 
 
 GROUPS: Dict[str, str] = {
-    "compromise": "Signs of compromise or attack -- act now",
+    "compromise": "Indicators of compromise or attack -- review first",
     "exposure": "Exposure -- fix to reduce risk",
 }
 
 CATEGORIES: List[Category] = [
-    Category("stolen_credentials", "compromise", "Stolen credentials", ["CREDENTIAL_THEFT"],
+    Category("stolen_credentials", "compromise", "Credential theft indicators", ["CREDENTIAL_THEFT"],
              "Reset the password and revoke sessions; check recent sign-ins and the device it was taken from."),
     Category("password_attacks", "compromise", "Targeted by password attacks",
              ["PASSWORD_BRUTE_FORCE", "CREDENTIAL_SCANNING"],

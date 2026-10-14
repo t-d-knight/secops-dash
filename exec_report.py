@@ -231,7 +231,8 @@ def fetch_vulns(cur, p: Period, site: Optional[str], days_last_seen: int = 30, f
                COUNT(*) FILTER (WHERE age > COALESCE(sp.threshold_days, 60) AND vf.severity = 'critical'),
                COUNT(*) FILTER (WHERE age > COALESCE(sp.threshold_days, 60) AND vf.severity = 'high'),
                COUNT(*) FILTER (WHERE vf.is_remote_no_auth AND vf.severity IN ('critical','high')),
-               COUNT(*) FILTER (WHERE vf.severity IN ('critical','high'))
+               COUNT(*) FILTER (WHERE vf.severity IN ('critical','high')),
+               COUNT(*) FILTER (WHERE vf.severity = 'critical'), COUNT(*) FILTER (WHERE vf.severity = 'high')
         FROM (SELECT severity, site_label, source, state, last_found, is_remote_no_auth,
                      EXTRACT(EPOCH FROM now() - first_found) / 86400.0 AS age FROM vuln_findings) vf
         LEFT JOIN sla_policy sp ON sp.severity = vf.severity
@@ -247,6 +248,7 @@ def fetch_vulns(cur, p: Period, site: Optional[str], days_last_seen: int = 30, f
         "open_now": open_now,
         "sla_breach": exposure[0], "sla_breach_crit": exposure[1], "sla_breach_high": exposure[2],
         "sla_breach_ch": exposure[1] + exposure[2], "remote_ch": exposure[3], "open_ch_windowed": exposure[4],
+        "open_crit_windowed": exposure[5], "open_high_windowed": exposure[6],
         "sla_days": dict(qall(cur, "SELECT severity, threshold_days FROM sla_policy")),
         "managed_hosts": sensors[0], "stale_sensors": sensors[1],
         "opened": movement[0], "fixed": movement[1],
@@ -280,6 +282,15 @@ def fetch_alerts(cur, p: Period, site: Optional[str]) -> dict:
         FROM daily_alert_metrics WHERE snapshot_date BETWEEN %(since)s AND %(until)s AND {SITE}
         GROUP BY 1 ORDER BY 1
     """, since=p.since, until=p.until, site=site)
+    # open now, live: endpoint (Falcon Insight, OverWatch, ...) apart from identity
+    # detections, which live in the child CID's console and pile up untriaged
+    split = q1(cur, f"""
+        SELECT COUNT(*) FILTER (WHERE product IS DISTINCT FROM 'idp'),
+               COUNT(*) FILTER (WHERE product IS DISTINCT FROM 'idp' AND severity IN ('critical','high')),
+               COUNT(*) FILTER (WHERE product = 'idp'),
+               COUNT(*) FILTER (WHERE product = 'idp' AND severity IN ('critical','high','medium'))
+        FROM security_alerts WHERE status IS DISTINCT FROM 'closed' AND severity <> 'info' AND {SITE}
+    """, site=site)
     disposition = qall(cur, f"""
         SELECT COALESCE(disposition, status, 'unknown') AS disp, COUNT(*)
         FROM security_alerts WHERE closed_at >= %(since)s AND closed_at < %(until_excl)s AND {SITE}
@@ -289,6 +300,7 @@ def fetch_alerts(cur, p: Period, site: Optional[str]) -> dict:
         "new_crit": new_counts[0], "new_high": new_counts[1],
         "new_med": new_counts[2], "new_low": new_counts[3], "closed": new_counts[4],
         "open_total": open_now[0], "open_crit_high": open_now[1],
+        "open_endpoint": split[0], "open_endpoint_ch": split[1], "open_identity": split[2], "open_identity_hm": split[3],
         "buckets": buckets, "bucket": bucket, "disposition": disposition,
     }
 
@@ -859,8 +871,9 @@ def tile(label: str, value: str, color: str = INK, sub: str = "", trend: str = "
             f'<div class="tile-label">{html.escape(label)}</div>{sub_html}{trend}</div>')
 
 
-def _change(old: int, new: int, up_is_bad: bool = True) -> str:
-    """'▲ 367 (+0.1%)' coloured by whether the move is good or bad."""
+def _change(old: int, new: int, up_is_bad: Optional[bool] = True) -> str:
+    """'▲ 367 (+0.1%)' coloured by whether the move is good or bad; up_is_bad=None
+    for neutral counts (devices managed, assets monitored), which stay grey."""
     delta = int(new) - int(old)
     if delta == 0:
         return f'<span style="color:{MUTED}">&#9644; no change</span>'
@@ -871,21 +884,21 @@ def _change(old: int, new: int, up_is_bad: bool = True) -> str:
         pct_txt = f' ({"+" if pc > 0 else "-"}{"&lt;0.1" if abs(pc) < 0.1 else f"{abs(pc):.1f}"}%)'
     else:
         pct_txt = ""
-    return (f'<span style="color:{SEVERITY_COLOR["critical"] if worse else GOOD}">'
-            f'{arrow} {abs(delta)}{pct_txt}</span>')
+    color = MUTED if up_is_bad is None else (SEVERITY_COLOR["critical"] if worse else GOOD)
+    return f'<span style="color:{color}">{arrow} {abs(delta):,}{pct_txt}</span>'
 
 
-def trend_line(t: Optional[dict]) -> str:
-    """Point-in-time tiles: '▲ 367 (+0.1%) since 05 Oct'. Every one is a
-    count of bad things, so up is red and down is green (same reserved-
-    green rule as the tile values)."""
+def trend_line(t: Optional[dict], up_is_bad: Optional[bool] = True) -> str:
+    """Point-in-time tiles: '▲ 367 (+0.1%) since 05 Oct'. Counts of bad things:
+    up is red, down green (same reserved-green rule as the tile values).
+    up_is_bad=None for neutral counts -- more devices managed isn't worse."""
     if t is None:
         return f'<div class="tile-trend" style="color:{FAINT}">No earlier snapshot to compare yet</div>'
-    return (f'<div class="tile-trend">{_change(t["from"], t["to"])} '
+    return (f'<div class="tile-trend">{_change(t["from"], t["to"], up_is_bad)} '
             f'<span style="color:{MUTED}">since {t["since"].strftime("%d %b")}</span></div>')
 
 
-def flow_line(prev: Optional[int], now: int, prev_word: str, up_is_bad: bool = True) -> str:
+def flow_line(prev: Optional[int], now: int, prev_word: str, up_is_bad: Optional[bool] = True) -> str:
     """Period-count tiles: '▲ 12 (+8.0%) vs previous week'."""
     if prev is None:
         return f'<div class="tile-trend" style="color:{FAINT}">No full {prev_word} to compare yet</div>'
@@ -986,12 +999,16 @@ def sla_gap_note(v: dict) -> str:
     d = v["sla_days"]
     if not v["open_ch_windowed"] or "critical" not in d or "high" not in d:
         return ""
-    share = 100.0 * v["sla_breach_ch"] / v["open_ch_windowed"]
-    if v["sla_breach_ch"] < v["open_ch_windowed"]:
-        share = min(share, 99.9)   # never round "almost all" up to a literal 100%
+    def share(n: int, of: int) -> str:
+        if not of:
+            return "n/a"
+        pc = 100.0 * n / of
+        return f"{min(pc, 99.9) if n < of else pc:.1f}%"   # never round "almost all" up to a literal 100%
+    # one share per severity: combined, the (far more numerous) highs hide that nearly every critical is late
     return (f'<p class="legend-row">Policy: critical within {d["critical"]} days, high within {d["high"]} days. '
-            f'{share:.1f}% of open critical/high currently exceed it '
-            f'({v["sla_breach_crit"]:,} critical, {v["sla_breach_high"]:,} high).</p>')
+            f'Currently past it: {share(v["sla_breach_crit"], v["open_crit_windowed"])} of open critical '
+            f'({v["sla_breach_crit"]:,}) and {share(v["sla_breach_high"], v["open_high_windowed"])} of open high '
+            f'({v["sla_breach_high"]:,}).</p>')
 
 
 def build_page_estate(p: Period, scope: str, site: Optional[str], es: dict, tr: dict) -> str:
@@ -1025,7 +1042,7 @@ def build_page_estate(p: Period, scope: str, site: Optional[str], es: dict, tr: 
 <div class="tiles tiles-3">
   {tile("Managed devices", f"{es['devices']:,}", INK,
         f"{es['workstations']:,} workstations, {es['servers']:,} servers, {es['dcs']:,} DCs -- "
-        f"{es['active']:,} active this week", trend_line(tr.get("devices")))}
+        f"{es['active']:,} active this week", trend_line(tr.get("devices"), None))}
   {tile("Devices on an unsupported OS", f"{es['unsupported']:,}",
         SEVERITY_COLOR["critical"] if es["unsupported"] else GOOD,
         ", ".join(f"{n:,} {name}" for name, n in worst) or "none", trend_line(tr.get("unsupported_os")))}
@@ -1035,8 +1052,8 @@ def build_page_estate(p: Period, scope: str, site: Optional[str], es: dict, tr: 
   {tile("Machines missing a sensor", f"{es['missing_named']:,}",
         SEVERITY_COLOR["high"] if es["missing_named"] else GOOD,
         f"in-use servers/workstations in AD -- plus {es['missing_network']:,} unidentified network devices")}
-  {tile("Internet-facing domains", f"{es['domains']:,}", INK, "monitored by Hadrian", trend_line(tr.get("ext_domains")))}
-  {tile("Public IP addresses", f"{es['ips']:,}", INK, "monitored by Hadrian", trend_line(tr.get("ext_ips")))}
+  {tile("Internet-facing domains", f"{es['domains']:,}", INK, "monitored by Hadrian", trend_line(tr.get("ext_domains"), None))}
+  {tile("Public IP addresses", f"{es['ips']:,}", INK, "monitored by Hadrian", trend_line(tr.get("ext_ips"), None))}
 </div>
 
 <h2>Operating systems (Falcon-managed devices)</h2>
@@ -1087,7 +1104,10 @@ def build_page1(p: Period, scope: str, site: Optional[str], v: dict, products: L
   {tile("Opened vs fixed this period", f"{v['opened']} / {v['fixed']}", net_color,
         f"net {'+' if net_vuln>0 else ''}{net_vuln:,}", opened_fixed_line(tr["prev_opened"], tr["prev_fixed"], tr["prev_word"], v["opened"], v["fixed"]))}
   {tile("Known exploited (KEV) open", v["kev_open"], SEVERITY_COLOR["critical"] if v["kev_open"] else GOOD,
-        f"{v['kev_past_due']:,} past due, {v['kev_ransomware']:,} ransomware-linked", trend_line(tr["kev_open"]))}
+        (f"all past CISA's due date; {v['kev_ransomware']:,} ransomware-linked"
+         if v["kev_open"] and v["kev_past_due"] == v["kev_open"] else
+         f"{v['kev_past_due']:,} past CISA's due date, {v['kev_ransomware']:,} ransomware-linked"),
+        trend_line(tr["kev_open"]))}
   {top_family_tile(products, crit_open + high_open, tr, site is None)}
   {tile("Remotely exploitable, no auth", v["remote_ch"], SEVERITY_COLOR["critical"] if v["remote_ch"] else GOOD,
         "critical/high reachable over the network without credentials", trend_line(tr["remote_ch"]))}
@@ -1126,6 +1146,7 @@ def build_page_email(p: Period, scope: str, site: Optional[str], em: dict, flow:
     st = funnel_stages(flow)
     has_flow = bool(st["inbound"])
     in_total = em["totals"].get("inbound", [0, 0])
+    in_mal = [sum(r[i] for r in em["by_direction"].get("inbound", []) if "malware" in r[0]) for i in (1, 2)]
     out_total = em["totals"].get("outbound", [0, 0])
     classified = sum(t[0] for d, t in em["totals"].items() if d != "unknown")
     unclassified = em["totals"].get("unknown", [0, 0])[0]
@@ -1154,19 +1175,22 @@ def build_page_email(p: Period, scope: str, site: Optional[str], em: dict, flow:
 <div class="tiles tiles-3">
   {tile("Emails handled", f"{st['inbound']:,}" if has_flow else "n/a", INK,
         f"{st['external']:,} from outside, {st['internal']:,} internal" if has_flow else "mail-flow collector not run",
-        flow_line(tr["prev_flow_inbound"], st["inbound"], tr["prev_word"], up_is_bad=False) if has_flow else "")}
+        flow_line(tr["prev_flow_inbound"], st["inbound"], tr["prev_word"], up_is_bad=None) if has_flow else "")}
   {tile("Filtered before reaching users", pct(st["filtered"], st["inbound"]) if has_flow else "n/a", INK,
         f"{st['filtered']:,} emails quarantined by Microsoft or Check Point" if has_flow else "")}
   {tile("Phishing + malware caught", f"{st['malicious']:,}" if has_flow else "n/a",
         SEVERITY_COLOR["critical"] if st["malicious"] else INK,
-        f"phishing + malware ({st['malware']:,} malware), {st['suspicious']:,} suspicious" if has_flow else "",
+        ("Check Point's per-email verdict"
+         + (f"; {st['suspicious']:,} more marked suspicious" if st["suspicious"] else "")) if has_flow else "",
         flow_line(tr["prev_flow_malicious"], st["malicious"], tr["prev_word"]) if has_flow else "")}
   {tile("Inbound email threats", in_total[0], SEVERITY_COLOR["high"] if in_total[1] else INK,
         f"{in_total[1]:,} high+ severity", flow_line(tr["prev_inbound"], in_total[0], tr["prev_word"]))}
   {tile("Outbound email threats", out_total[0], SEVERITY_COLOR["high"] if out_total[1] else INK,
         f"{out_total[1]} high+ severity", flow_line(tr["prev_outbound"], out_total[0], tr["prev_word"]))}
   {tile("DMARC pass rate", pct(em["dmarc_pass"], em["dmarc_messages"]), INK,
-        f"{em['dmarc_messages']} messages seen")}
+        f"{em['dmarc_messages']:,} messages seen") if em["dmarc_messages"] else
+   tile("Malware emails", in_mal[0], SEVERITY_COLOR["critical"] if in_mal[0] else GOOD,
+        f"inbound malware events (incl. suspected), {in_mal[1]:,} high+ severity")}
 </div>
 
 <h2>Inbound mail flow (this period)</h2>
@@ -1214,6 +1238,8 @@ def build_page_external(p: Period, scope: str, site: Optional[str], x: dict, tr:
         f'<tr><td>{html.escape(c.replace("-", " "))}</td><td class="num">{conf}</td><td class="num">{unv}</td></tr>'
         for c, (conf, unv) in x["categories"])
     net = x["opened"] - x["fixed"]
+    # the category table counts every leak finding; the tile only those naming an enabled account
+    leak_findings = sum(conf + unv for c, (conf, unv) in x["categories"] if c.replace("-", " ") == "leaked credentials")
     sla_rows = "".join(
         f'<tr><td style="color:{SEVERITY_COLOR.get(sev, INK)}">{sev.title()}</td>'
         f'<td class="num">{f"{days}d" if days is not None else "n/a"}</td>'
@@ -1228,14 +1254,15 @@ def build_page_external(p: Period, scope: str, site: Optional[str], x: dict, tr:
 <h2>Headline</h2>
 <div class="tiles tiles-3">
   {tile("External assets monitored", x["domains"] + x["ips"], INK,
-        f"{x['domains']} domains, {x['ips']} IPs", trend_line(tr["ext_assets"]))}
+        f"{x['domains']} domains, {x['ips']} IPs", trend_line(tr["ext_assets"], None))}
   {tile("Open external risks", x["open_total"], SEVERITY_COLOR["medium"] if x["open_total"] else GOOD,
         f"{x['confirmed']} confirmed, {x['unverified']} unverified (potential)", trend_line(tr["ext_open"]))}
   {tile("Confirmed risks open", x["confirmed"], SEVERITY_COLOR["high"] if x["confirmed_crit_high"] else
         (SEVERITY_COLOR["medium"] if x["confirmed"] else GOOD),
         f"{x['confirmed_crit_high']} critical/high, {x['confirmed_medium']} medium")}
   {tile("Leaked credentials", x["leaked_creds"], SEVERITY_COLOR["critical"] if x["leaked_creds"] else GOOD,
-        "infostealer leaks naming a still-enabled account of ours")}
+        f"infostealer leaks naming a still-enabled account of ours"
+        + (f" -- of {leak_findings:,} open leaked-credential findings" if leak_findings else ""))}
   {tile("Critical / high open (any type)", x["crit_high_any"],
         SEVERITY_COLOR["high"] if x["crit_high_any"] else GOOD)}
   {tile("Opened vs fixed this period", f"{x['opened']} / {x['fixed']}",
@@ -1305,11 +1332,12 @@ def build_page2(p: Period, scope: str, site: Optional[str], a: dict, idn: dict, 
         INK, f"{a['open_crit_high']} crit/high open now", flow_line(tr["prev_alerts"], alerts_opened, tr["prev_word"]))}
   {tile("True / false positive rate", pct(tp, closed_with_verdict) + " / " + pct(fp, closed_with_verdict),
         INK, f"{closed_with_verdict} alerts closed with a verdict")}
-  {tile("Open alerts now", a["open_total"], SEVERITY_COLOR["high"] if a["open_crit_high"] else INK,
-        f"{a['open_crit_high']} crit/high", trend_line(tr["open_alerts"]))}
-  {tile("Accounts showing signs of compromise", f"{groups['compromise']:,}",
-        SEVERITY_COLOR["critical"] if groups["compromise"] else GOOD,
-        "stolen credentials, password attacks, suspicious sign-ins, attacker techniques",
+  {tile("Open endpoint alerts", a["open_endpoint"], SEVERITY_COLOR["high"] if a["open_endpoint_ch"] else INK,
+        f"{a['open_endpoint_ch']:,} crit/high -- plus {a['open_identity']:,} identity detections awaiting triage "
+        f"({a['open_identity_hm']:,} high/medium)" if a["open_identity"] else f"{a['open_endpoint_ch']:,} crit/high")}
+  {tile("Accounts with compromise indicators", f"{groups['compromise']:,}",
+        SEVERITY_COLOR["high"] if groups["compromise"] else GOOD,
+        "Falcon Identity risk flags to review -- not confirmed compromises",
         trend_line(idt.get("group:compromise")))}
   {tile("Stale accounts still enabled", f"{cats['stale_accounts']:,}",
         SEVERITY_COLOR["medium"] if cats["stale_accounts"] else GOOD,
@@ -1334,7 +1362,9 @@ accounts (excluding service, mailbox and generic accounts and shared-domain VPN 
 {pct(tot['stale_people'], tot['enabled_people'])} of those are stale.</p>
 
 <footer>Page 5 of 6 &mdash; secops-dashboard. {scope_note}; alert counts and the bar chart cover the report
-period only and exclude informational-severity alerts. Identity risk (Falcon Identity Protection) is current as of
+period only and exclude informational-severity alerts. Open endpoint alerts leave out identity detections, which
+are triaged in the Identity Protection console and counted separately. Identity risk (Falcon Identity Protection) is
+current as of
 generation time and counts enabled accounts (or unknown status), grouped into actionable categories; the full
 risk-factor list is on the SecOps dashboards and in the site action packs.
 {TREND_NOTE.format(prev_word=html.escape(tr["prev_word"]))}</footer>
@@ -1416,12 +1446,13 @@ def build_page_usb(p: Period, scope: str, site: Optional[str], u: dict, tr: dict
         f"medical images, archives", flow_line(tr.get("prev_usb_biz"), u["biz_files"], tr["prev_word"]))}
   {tile("Email & medical images written", u["sensitive_files"],
         SEVERITY_COLOR["high"] if u["sensitive_files"] else GOOD,
-        f"{u['sensitive_people']:,} people -- mailbox exports, messages, DICOM")}
+        f"{u['sensitive_people']:,} {'person' if u['sensitive_people'] == 1 else 'people'} -- mailbox exports, "
+        f"messages, DICOM")}
   {tile("USB drives used", u["devices"], INK, new_dev)}
   {tile("USB insertions scanned", u["scans"], INK,
         f"{u['scans_incomplete']:,} didn't finish (usually the drive was removed)" if u["scans"] else
         "Falcon scans each drive when it's plugged in", flow_line(tr.get("prev_usb_scans"), u["scans"],
-                                                                   tr["prev_word"], up_is_bad=False))}
+                                                                   tr["prev_word"], up_is_bad=None))}
   {tile("Malware found on USB drives", u["detections"], SEVERITY_COLOR["critical"] if u["detections"] else GOOD,
         f"{u['quarantined']:,} quarantined; found on {u['scans_malicious']:,} insertions",
         flow_line(tr.get("prev_usb_detections"), u["detections"], tr["prev_word"]))}
