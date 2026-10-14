@@ -1492,13 +1492,9 @@ masked here (site reports only); names, PCs, drives and file names are in the mo
 </div>"""
 
 
-def build_html(p: Period, scope: str, site: Optional[str], v: dict, a: dict, idn: dict,
-               em: dict, products: List[Tuple], sites: List[Tuple], x: dict, flow: Dict[str, int], es: dict,
-               tr: dict, u: dict) -> str:
-    return f"""<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8">
-<title>Security Posture Report -- {html.escape(scope)} -- {html.escape(p.label)}</title>
-<style>
+def page_css() -> str:
+    """The report stylesheet (A4 print rules, tiles, tables), shared with server_report.py."""
+    return f"""
   :root {{ color-scheme: light; }}
   * {{ box-sizing: border-box; }}
   body {{ font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: {INK};
@@ -1554,6 +1550,17 @@ def build_html(p: Period, scope: str, site: Optional[str], v: dict, a: dict, idn
     h2 {{ break-after: avoid; }}
     .row, .tiles, tr, svg {{ break-inside: avoid; }}
   }}
+"""
+
+
+def build_html(p: Period, scope: str, site: Optional[str], v: dict, a: dict, idn: dict,
+               em: dict, products: List[Tuple], sites: List[Tuple], x: dict, flow: Dict[str, int], es: dict,
+               tr: dict, u: dict) -> str:
+    return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Security Posture Report -- {html.escape(scope)} -- {html.escape(p.label)}</title>
+<style>
+{page_css()}
 </style></head>
 <body>
 {build_page_estate(p, scope, site, es, tr)}

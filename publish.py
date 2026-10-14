@@ -48,6 +48,7 @@ SETS = {
     "week": ("Weekly", "Security Report"),
     "quarter": ("Quarterly", "Security Report"),
     "monthly": ("Monthly", "Action Pack"),
+    "servers": ("Weekly", "Report"),          # server_report.py: Servers/Weekly/<date> Servers Report.*
 }
 
 
@@ -60,7 +61,7 @@ def _site_name(stem: str, kind: str) -> str:
 def candidates(reports_dir: str, formats: Optional[List[str]] = None) -> Iterator[Tuple[str, str]]:
     """(local path, destination path relative to base) for every publishable file."""
     for d in sorted(os.listdir(reports_dir)):
-        m = re.match(r"^(week|quarter|monthly)-(.+)$", d)
+        m = re.match(r"^(week|quarter|monthly|servers)-(.+)$", d)
         full = os.path.join(reports_dir, d)
         if not m or not os.path.isdir(full):
             continue
@@ -168,7 +169,7 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true", help="list what would be published, change nothing")
     ap.add_argument("--check", action="store_true", help="only test that the destination is writable")
     ap.add_argument("--force", action="store_true", help="re-publish everything, ignoring the manifest")
-    ap.add_argument("--sets", help="only these kinds, comma-separated: week,quarter,monthly (default: all)")
+    ap.add_argument("--sets", help="only these kinds, comma-separated: week,quarter,monthly,servers (default: all)")
     args = ap.parse_args()
     print(f"[{dt.datetime.now().astimezone().isoformat(timespec='seconds')}] publish start: {' '.join(sys.argv[1:])}", flush=True)
 

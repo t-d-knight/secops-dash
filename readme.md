@@ -165,6 +165,7 @@ sed "s#/opt/secops-dashboard#$PWD#g" crontab.example | crontab -
 | 02:00 daily | `run_collector.sh`: KEV/EPSS, all enabled collectors, NVD backfill, rollups | `logs/collector.log` |
 | 03:30 Mondays | Weekly exec reports, region + every site (HTML + PDF) | `logs/report.log` |
 | 03:30, 1 Jan/Apr/Jul/Oct | Quarterly exec reports | `logs/report.log` |
+| 03:45 Mondays | `server_report.py`: Servers report (PDF + Excel, whole region) for the infrastructure, applications and database teams -> `Servers/Weekly/` | `logs/report.log` |
 | 04:00, 1st of the month | Monthly action packs (Excel) | `logs/report.log` |
 | 07:30 daily | `publish.py`: anything new to the file share | `logs/publish.log` |
 | 09:00 daily | `backup.sh`: `pg_dump`, last 7 days kept in `backups/`; with `backup.offsite` enabled, also copied to an SMB share (`backup_offsite.py`, `keep_days` there) | `logs/backup.log` |

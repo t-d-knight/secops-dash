@@ -1479,11 +1479,11 @@ SERVERS_HELP = {
                    "usually means patches installed but not applied.",
     "Unsupported OS": "Servers on an operating system the vendor no longer patches.",
     "Days since last confirmed patch": "Servers by how long since Falcon last confirmed a patch installed.",
-    "Patch level by OS build": "Each OS version's builds in use (Windows: the number after the last dot is the "
-                               "monthly update level -- higher is newer) and how long since those servers were "
-                               "patched.",
-    "Servers": "Every active server, worst-patched first. Sort or filter any column; Site, OU and Roles help "
-               "find the owning team.",
+    "Patching by OS version": "Per OS version: how long since its servers were patched, how many have missed "
+                              "a cycle, are waiting on a reboot or have no patch data (Falcon's patch status covers "
+                              "Windows). The exact build per server is in the Servers table.",
+    "Servers": "Every active server, worst-patched first. Sort or filter any column; Site and OU help find the "
+               "owning team.",
     "Top missing fixes on servers": "The fixes that would close the most critical/high findings on servers, by "
                                     "how many servers each applies to.",
     "Applications on servers": "Critical/high findings on servers by product family, excluding the Windows OS "
@@ -1492,8 +1492,6 @@ SERVERS_HELP = {
                                        "Server, PostgreSQL, MySQL, Oracle, Java, Tomcat, IIS/.NET).",
     "Disk 85%+ full": "Servers with a disk 85% or more used, per Falcon's latest system insights.",
     "Busy servers": "Highest average CPU or memory use, per Falcon's system insights.",
-    "Server roles (Falcon)": "Falcon's own guess at what each server does, from its network behaviour. Rough: "
-                             "use it to find, not to decide.",
     "Domain controllers": "Every domain controller: the servers whose compromise is everyone's compromise.",
 }
 
@@ -1517,7 +1515,8 @@ def servers():
            f"(the console's Exposure Management > Patches). {HOVER}", h=2)
 
     b.row("Patching", note="Monthly patching means anything past **35 days** has missed a cycle. **Reboot pending** = "
-          "installed but not yet applied.")
+          "installed but not yet applied. Falcon's patch tracking starts 2 Sep 2025, so the longest figure (~400+ "
+          "days) means nothing confirmed since then -- it may be longer.")
     days_bands = [{"color": "green", "value": None}, {"color": "orange", "value": 1}, {"color": "red", "value": 25}]
     b.stat("Servers (active 7d)", f"SELECT count(*) FROM {SRV_BASE} WHERE {SRV_WHERE}", thresholds=NEUTRAL)
     b.stat("Not patched 35+ days", f"SELECT count(*) FROM {SRV_BASE} WHERE {SRV_WHERE} "
@@ -1537,15 +1536,16 @@ def servers():
                       ELSE '5 over 180 days' END AS band
           FROM {SRV_BASE} WHERE {SRV_WHERE}) x
         GROUP BY band ORDER BY band""", w=8, h=8, thresholds=[{"color": "orange", "value": None}])
-    b.table("Patch level by OS build", f"""
-        SELECT a.os_version AS "OS", a.kernel_version AS "Build", count(*) AS "Servers",
+    b.table("Patching by OS version", f"""
+        SELECT a.os_version AS "OS", count(*) AS "Servers",
                percentile_disc(0.5) WITHIN GROUP (ORDER BY {DAYS_PATCHED}) AS "Median days since patched",
-               count(*) FILTER (WHERE p.reboot_required) AS "Reboot pending"
+               count(*) FILTER (WHERE p.last_patch_confirmed < now() - interval '35 days') AS "Not patched 35+ d",
+               count(*) FILTER (WHERE p.last_patch_confirmed < now() - interval '90 days') AS "90+ d",
+               count(*) FILTER (WHERE p.reboot_required) AS "Reboot pending",
+               count(*) FILTER (WHERE a.last_reboot < now() - interval '35 days') AS "Up 35+ d",
+               count(*) FILTER (WHERE p.last_patch_confirmed IS NULL) AS "No patch data"
         FROM {SRV_BASE} WHERE {SRV_WHERE}
-        GROUP BY 1, 2
-        ORDER BY 1, CASE WHEN a.kernel_version ~ '^[0-9]+(\\.[0-9]+)*$'
-                         THEN string_to_array(a.kernel_version, '.')::int[] END DESC NULLS LAST, 2""", w=16, h=8,
-            overrides=[bg("Median days since patched")])
+        GROUP BY 1 ORDER BY 2 DESC""", w=16, h=8, overrides=[bg("Median days since patched")])
 
     b.row("Servers", note="One row per active server. **Crit / High / KEV** = open vulnerabilities from the last "
           "nightly rollup. Use the column filters (funnel icon) to cut to one team's servers.")
@@ -1555,7 +1555,6 @@ def servers():
                p.pending_patches AS "Pending patches", {DAYS_UP} AS "Days up",
                r.open_critical AS "Crit", r.open_high AS "High", r.open_kev_count AS "KEV",
                i.disk_used_pct AS "Disk %", i.cpu_avg_pct AS "CPU avg %", i.mem_avg_pct AS "Mem avg %",
-               array_to_string(i.asset_roles, ', ') AS "Roles (Falcon)",
                CASE WHEN a.product_type = 'domain_controller' THEN 'DC' ELSE i.form_factor END AS "Type",
                a.model AS "Model", a.ous[1] AS "OU", a.last_login_user AS "Last login"
         FROM {SRV_BASE} WHERE {SRV_WHERE}
@@ -1574,11 +1573,11 @@ def servers():
                     "WHERE vf.source = 'falcon_spotlight' AND vf.state IN ('OPEN','REOPENED') "
                     "AND vf.severity IN ('critical','high') AND a.site_label IN ($site)")
     b.table("Top missing fixes on servers", f"""
-        SELECT COALESCE(max(vf.fix_title), max(vf.title)) AS "Fix", max(vf.product_family) AS "Product",
+        SELECT vf.fix_title AS "Fix", max(vf.product_family) AS "Product",
                count(DISTINCT vf.source_asset_id) AS "Servers", count(*) AS "Crit/high findings",
                count(*) FILTER (WHERE vf.severity = 'critical') AS "Critical"
-        FROM {srv_findings} AND vf.fix_id IS NOT NULL
-        GROUP BY vf.fix_id ORDER BY 3 DESC, 4 DESC LIMIT 25""", w=12, h=10, overrides=[bg("Servers")])
+        FROM {srv_findings} AND vf.fix_title IS NOT NULL
+        GROUP BY 1 ORDER BY 3 DESC, 4 DESC LIMIT 25""", w=12, h=10, overrides=[bg("Servers")])
     b.table("Applications on servers", f"""
         SELECT vf.product_family AS "Product family", count(DISTINCT vf.source_asset_id) AS "Servers",
                count(*) FILTER (WHERE vf.severity = 'critical') AS "Critical", count(*) FILTER (WHERE vf.severity = 'high') AS "High"
@@ -1601,17 +1600,13 @@ def servers():
         SELECT a.hostname AS "Server", a.site_label AS "Site", i.disk_used_pct AS "Disk %",
                i.disk_free_gb AS "Free GB", i.disk_total_gb AS "Total GB"
         FROM {SRV_BASE} WHERE {SRV_WHERE} AND i.disk_used_pct >= 85 ORDER BY i.disk_used_pct DESC LIMIT 200""",
-            w=8, h=9, overrides=[bg("Disk %")])
+            w=12, h=9, overrides=[bg("Disk %")])
     b.table("Busy servers", f"""
         SELECT a.hostname AS "Server", a.site_label AS "Site", i.cpu_avg_pct AS "CPU avg %", i.cpu_max_pct AS "CPU max %",
                i.mem_avg_pct AS "Mem avg %", i.mem_total_mb / 1024 AS "RAM GB"
         FROM {SRV_BASE} WHERE {SRV_WHERE} AND (i.cpu_avg_pct >= 70 OR i.mem_avg_pct >= 90)
-        ORDER BY greatest(i.cpu_avg_pct, i.mem_avg_pct) DESC LIMIT 200""", w=10, h=9,
+        ORDER BY greatest(i.cpu_avg_pct, i.mem_avg_pct) DESC LIMIT 200""", w=12, h=9,
             overrides=[bg("CPU avg %"), bg("Mem avg %")])
-    b.bars("Server roles (Falcon)", f"""
-        SELECT role AS "Role", count(*) AS "Servers"
-        FROM {SRV_BASE} CROSS JOIN LATERAL unnest(i.asset_roles) AS role WHERE {SRV_WHERE}
-        GROUP BY 1 ORDER BY 2 DESC LIMIT 12""", w=6, h=9, thresholds=[{"color": "blue", "value": None}])
 
     b.row("Domain controllers")
     b.table("Domain controllers", f"""

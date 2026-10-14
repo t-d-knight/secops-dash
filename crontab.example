@@ -24,6 +24,8 @@
 # Quarterly exec reports (last calendar quarter) -> reports/quarter-YYYY-Qn/
 30 3 1 1,4,7,10 * cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock venv/bin/python3 exec_report.py --config config.yaml --period quarter --all-sites >> logs/report.log 2>&1 || venv/bin/python3 notify.py --config config.yaml send --priority 1 --title "quarterly reports failed" --message "See logs/report.log"
 
+# Weekly Servers report (PDF + Excel, whole region) for the infra / apps / DB teams -> reports/servers-YYYY-MM-DD/
+45 3 * * 1        cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock venv/bin/python3 server_report.py --config config.yaml >> logs/report.log 2>&1 || venv/bin/python3 notify.py --config config.yaml send --priority 1 --title "servers report failed" --message "See logs/report.log"
 # Monthly per-site action packs (Excel) -> reports/monthly-YYYY-MM/
 0  4 1 * *        cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock venv/bin/python3 action_pack.py --config config.yaml >> logs/report.log 2>&1 || venv/bin/python3 notify.py --config config.yaml send --priority 1 --title "monthly action packs failed" --message "See logs/report.log"
 

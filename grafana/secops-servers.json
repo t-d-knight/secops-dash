@@ -120,7 +120,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "Monthly patching means anything past **35 days** has missed a cycle. **Reboot pending** = installed but not yet applied."
+        "content": "Monthly patching means anything past **35 days** has missed a cycle. **Reboot pending** = installed but not yet applied. Falcon's patch tracking starts 2 Sep 2025, so the longest figure (~400+ days) means nothing confirmed since then -- it may be longer."
       }
     },
     {
@@ -531,7 +531,7 @@
     {
       "id": 12,
       "type": "table",
-      "title": "Patch level by OS build",
+      "title": "Patching by OS version",
       "gridPos": {
         "x": 8,
         "y": 9,
@@ -579,10 +579,10 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT a.os_version AS \"OS\", a.kernel_version AS \"Build\", count(*) AS \"Servers\", percentile_disc(0.5) WITHIN GROUP (ORDER BY floor(EXTRACT(EPOCH FROM now() - p.last_patch_confirmed) / 86400)::int) AS \"Median days since patched\", count(*) FILTER (WHERE p.reboot_required) AS \"Reboot pending\" FROM assets a LEFT JOIN host_patch_status p ON p.aid = a.source_asset_id LEFT JOIN host_insights i ON i.aid = a.source_asset_id LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = a.source_asset_id WHERE a.source = 'falcon' AND NOT a.retired AND a.product_type IN ('server','domain_controller') AND a.last_seen > now() - interval '7 days' AND a.site_label IN ($site) GROUP BY 1, 2 ORDER BY 1, CASE WHEN a.kernel_version ~ '^[0-9]+(\\.[0-9]+)*$' THEN string_to_array(a.kernel_version, '.')::int[] END DESC NULLS LAST, 2"
+          "rawSql": "SELECT a.os_version AS \"OS\", count(*) AS \"Servers\", percentile_disc(0.5) WITHIN GROUP (ORDER BY floor(EXTRACT(EPOCH FROM now() - p.last_patch_confirmed) / 86400)::int) AS \"Median days since patched\", count(*) FILTER (WHERE p.last_patch_confirmed < now() - interval '35 days') AS \"Not patched 35+ d\", count(*) FILTER (WHERE p.last_patch_confirmed < now() - interval '90 days') AS \"90+ d\", count(*) FILTER (WHERE p.reboot_required) AS \"Reboot pending\", count(*) FILTER (WHERE a.last_reboot < now() - interval '35 days') AS \"Up 35+ d\", count(*) FILTER (WHERE p.last_patch_confirmed IS NULL) AS \"No patch data\" FROM assets a LEFT JOIN host_patch_status p ON p.aid = a.source_asset_id LEFT JOIN host_insights i ON i.aid = a.source_asset_id LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = a.source_asset_id WHERE a.source = 'falcon' AND NOT a.retired AND a.product_type IN ('server','domain_controller') AND a.last_seen > now() - interval '7 days' AND a.site_label IN ($site) GROUP BY 1 ORDER BY 2 DESC"
         }
       ],
-      "description": "Each OS version's builds in use (Windows: the number after the last dot is the monthly update level -- higher is newer) and how long since those servers were patched."
+      "description": "Per OS version: how long since its servers were patched, how many have missed a cycle, are waiting on a reboot or have no patch data (Falcon's patch status covers Windows). The exact build per server is in the Servers table."
     },
     {
       "id": 13,
@@ -799,10 +799,10 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT a.hostname AS \"Server\", a.site_label AS \"Site\", a.os_version AS \"OS\", a.kernel_version AS \"Build\", floor(EXTRACT(EPOCH FROM now() - p.last_patch_confirmed) / 86400)::int AS \"Days since patched\", p.reboot_required AS \"Reboot pending\", p.pending_patches AS \"Pending patches\", floor(EXTRACT(EPOCH FROM now() - a.last_reboot) / 86400)::int AS \"Days up\", r.open_critical AS \"Crit\", r.open_high AS \"High\", r.open_kev_count AS \"KEV\", i.disk_used_pct AS \"Disk %\", i.cpu_avg_pct AS \"CPU avg %\", i.mem_avg_pct AS \"Mem avg %\", array_to_string(i.asset_roles, ', ') AS \"Roles (Falcon)\", CASE WHEN a.product_type = 'domain_controller' THEN 'DC' ELSE i.form_factor END AS \"Type\", a.model AS \"Model\", a.ous[1] AS \"OU\", a.last_login_user AS \"Last login\" FROM assets a LEFT JOIN host_patch_status p ON p.aid = a.source_asset_id LEFT JOIN host_insights i ON i.aid = a.source_asset_id LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = a.source_asset_id WHERE a.source = 'falcon' AND NOT a.retired AND a.product_type IN ('server','domain_controller') AND a.last_seen > now() - interval '7 days' AND a.site_label IN ($site) ORDER BY p.last_patch_confirmed NULLS FIRST, r.open_kev_count DESC NULLS LAST LIMIT 1500"
+          "rawSql": "SELECT a.hostname AS \"Server\", a.site_label AS \"Site\", a.os_version AS \"OS\", a.kernel_version AS \"Build\", floor(EXTRACT(EPOCH FROM now() - p.last_patch_confirmed) / 86400)::int AS \"Days since patched\", p.reboot_required AS \"Reboot pending\", p.pending_patches AS \"Pending patches\", floor(EXTRACT(EPOCH FROM now() - a.last_reboot) / 86400)::int AS \"Days up\", r.open_critical AS \"Crit\", r.open_high AS \"High\", r.open_kev_count AS \"KEV\", i.disk_used_pct AS \"Disk %\", i.cpu_avg_pct AS \"CPU avg %\", i.mem_avg_pct AS \"Mem avg %\", CASE WHEN a.product_type = 'domain_controller' THEN 'DC' ELSE i.form_factor END AS \"Type\", a.model AS \"Model\", a.ous[1] AS \"OU\", a.last_login_user AS \"Last login\" FROM assets a LEFT JOIN host_patch_status p ON p.aid = a.source_asset_id LEFT JOIN host_insights i ON i.aid = a.source_asset_id LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = a.source_asset_id WHERE a.source = 'falcon' AND NOT a.retired AND a.product_type IN ('server','domain_controller') AND a.last_seen > now() - interval '7 days' AND a.site_label IN ($site) ORDER BY p.last_patch_confirmed NULLS FIRST, r.open_kev_count DESC NULLS LAST LIMIT 1500"
         }
       ],
-      "description": "Every active server, worst-patched first. Sort or filter any column; Site, OU and Roles help find the owning team."
+      "description": "Every active server, worst-patched first. Sort or filter any column; Site and OU help find the owning team."
     },
     {
       "id": 16,
@@ -883,7 +883,7 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT COALESCE(max(vf.fix_title), max(vf.title)) AS \"Fix\", max(vf.product_family) AS \"Product\", count(DISTINCT vf.source_asset_id) AS \"Servers\", count(*) AS \"Crit/high findings\", count(*) FILTER (WHERE vf.severity = 'critical') AS \"Critical\" FROM vuln_findings vf JOIN assets a ON a.source = 'falcon' AND a.source_asset_id = vf.source_asset_id AND a.product_type IN ('server','domain_controller') AND NOT a.retired WHERE vf.source = 'falcon_spotlight' AND vf.state IN ('OPEN','REOPENED') AND vf.severity IN ('critical','high') AND a.site_label IN ($site) AND vf.fix_id IS NOT NULL GROUP BY vf.fix_id ORDER BY 3 DESC, 4 DESC LIMIT 25"
+          "rawSql": "SELECT vf.fix_title AS \"Fix\", max(vf.product_family) AS \"Product\", count(DISTINCT vf.source_asset_id) AS \"Servers\", count(*) AS \"Crit/high findings\", count(*) FILTER (WHERE vf.severity = 'critical') AS \"Critical\" FROM vuln_findings vf JOIN assets a ON a.source = 'falcon' AND a.source_asset_id = vf.source_asset_id AND a.product_type IN ('server','domain_controller') AND NOT a.retired WHERE vf.source = 'falcon_spotlight' AND vf.state IN ('OPEN','REOPENED') AND vf.severity IN ('critical','high') AND a.site_label IN ($site) AND vf.fix_title IS NOT NULL GROUP BY 1 ORDER BY 3 DESC, 4 DESC LIMIT 25"
         }
       ],
       "description": "The fixes that would close the most critical/high findings on servers, by how many servers each applies to."
@@ -1035,7 +1035,7 @@
       "gridPos": {
         "x": 0,
         "y": 59,
-        "w": 8,
+        "w": 12,
         "h": 9
       },
       "datasource": {
@@ -1089,9 +1089,9 @@
       "type": "table",
       "title": "Busy servers",
       "gridPos": {
-        "x": 8,
+        "x": 12,
         "y": 59,
-        "w": 10,
+        "w": 12,
         "h": 9
       },
       "datasource": {
@@ -1162,59 +1162,6 @@
     },
     {
       "id": 25,
-      "type": "bargauge",
-      "title": "Server roles (Falcon)",
-      "gridPos": {
-        "x": 18,
-        "y": 59,
-        "w": 6,
-        "h": 9
-      },
-      "datasource": {
-        "type": "postgres",
-        "uid": "${DS_POSTGRESQL}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "displayMode": "gradient",
-        "orientation": "horizontal",
-        "showUnfilled": true,
-        "reduceOptions": {
-          "values": true,
-          "calcs": [],
-          "fields": ""
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "format": "table",
-          "rawQuery": true,
-          "editorMode": "code",
-          "rawSql": "SELECT role AS \"Role\", count(*) AS \"Servers\" FROM assets a LEFT JOIN host_patch_status p ON p.aid = a.source_asset_id LEFT JOIN host_insights i ON i.aid = a.source_asset_id LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = a.source_asset_id CROSS JOIN LATERAL unnest(i.asset_roles) AS role WHERE a.source = 'falcon' AND NOT a.retired AND a.product_type IN ('server','domain_controller') AND a.last_seen > now() - interval '7 days' AND a.site_label IN ($site) GROUP BY 1 ORDER BY 2 DESC LIMIT 12"
-        }
-      ],
-      "description": "Falcon's own guess at what each server does, from its network behaviour. Rough: use it to find, not to decide."
-    },
-    {
-      "id": 26,
       "type": "row",
       "title": "Domain controllers",
       "collapsed": false,
@@ -1227,7 +1174,7 @@
       "panels": []
     },
     {
-      "id": 27,
+      "id": 26,
       "type": "table",
       "title": "Domain controllers",
       "gridPos": {

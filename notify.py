@@ -154,14 +154,15 @@ def published_summary(published: List[str]):
         site, folder, fname = (p.split("/") + ["", "", ""])[:3]
         stem, ext = os.path.splitext(fname)
         period = stem.split(" ", 1)[0]
-        kind = "Action Pack" if stem.endswith("Action Pack") else "Security Report"
+        kind = ("Action Pack" if stem.endswith("Action Pack") else
+                "Servers Report" if stem.endswith("Servers Report") else "Security Report")
         groups.setdefault((folder, period, kind, ext.lstrip(".").upper()), set()).add(site)
     lines, parts = [], []
     for (folder, period, kind, ext), sites in sorted(groups.items()):
         n = len(sites)
         lines.append(f"{folder} {period}: {n} {kind}{'s' if n != 1 else ''} ({ext}, "
                      f"{'region + ' if 'Region' in sites else ''}{_sites(n - ('Region' in sites))})")
-        parts.append(f"{n} {folder.lower()} {'action pack' if kind == 'Action Pack' else 'report'}{'s' if n != 1 else ''}")
+        parts.append(f"{n} {folder.lower()} {kind.lower() if kind != 'Security Report' else 'report'}{'s' if n != 1 else ''}")
     return lines, parts
 
 
