@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
 Servers report for the infrastructure, applications and database teams: the
-Servers dashboard as a PDF (three pages) plus an Excel workbook with the full
+Servers dashboard as a PDF (four pages) plus an Excel workbook with the full
 server list and one tab per view, for teams that don't use Grafana.
 
   Page 1  Patching    headline tiles, by site, how long since servers were patched
   Page 2  Servers     the longest-unpatched servers, and every domain controller
   Page 3  What to fix top missing fixes, applications, database / middleware, disk
+  Page 4  No sensor   DCs, servers and cloud instances Falcon Discover found with
+                      no sensor (validated classes only -- discovery_classes.py)
 
 Point-in-time ("as at" the run date), whole region with a Site column. Patch
 dates are Falcon's "last patch confirmed" (falcon_patches); vulnerability
@@ -29,6 +31,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from openpyxl import Workbook
 
 import config as config_mod
+import discovery_classes as dc
 import exec_report as er
 from action_pack import HEADER_FILL, HEADER_FONT, write_sheet
 from db import pg_connect
@@ -48,6 +51,11 @@ SRV_FINDINGS = ("FROM vuln_findings vf JOIN assets a ON a.source = 'falcon' AND 
 DB_FAMILIES = ("Microsoft SQL & Data Platform", "PostgreSQL", "MySQL / MariaDB", "Oracle Database",
                "Java Runtime (JRE/JDK)", "Apache Tomcat", "Microsoft .NET Core / ASP.NET",
                "Java / Middleware - Log4j", "Apache HTTP Server", "Microsoft Sharepoint")
+# Discover classes that are confirmed machines in the infrastructure team's
+# patch: enabled AD accounts that logged on in the last 60 days (DC / server
+# OS), or instances the cloud provider reports. vmware_nic / network_device are
+# only seen on the wire and may be appliances -- counted, not listed.
+NO_SENSOR = ("domain_controller_no_sensor", "server_no_sensor", "cloud_no_sensor")
 RED, ORANGE = er.SEVERITY_COLOR["critical"], er.SEVERITY_COLOR["high"]
 
 
@@ -123,6 +131,23 @@ def fetch(cur) -> Dict[str, Any]:
         ORDER BY x.crit DESC, x.high DESC""", fam=list(DB_FAMILIES))
     d["disk"] = [s for s in d["servers"] if s[17] is not None and s[17] >= 85]
     d["disk"].sort(key=lambda s: -s[17])
+    d["no_sensor"] = qall(cur, f"""
+        SELECT COALESCE(hostname, '(no hostname)'), site_label, {dc.sql_case()}, os_version,
+               last_seen::date, ad_created::date, array_to_string(ips, ', '), description,
+               array_to_string(ous, ' / '), domain, {dc.sql_case(part=1)}
+        FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND discovery_class IN {dc.sql_in(NO_SENSOR)}
+        ORDER BY CASE discovery_class WHEN 'domain_controller_no_sensor' THEN 1 WHEN 'server_no_sensor' THEN 2
+                                      ELSE 3 END, site_label, hostname""")
+    d["no_sensor_by_site"] = qall(cur, f"""
+        SELECT site_label, count(*) FILTER (WHERE discovery_class = 'domain_controller_no_sensor'),
+               count(*) FILTER (WHERE discovery_class = 'server_no_sensor'),
+               count(*) FILTER (WHERE discovery_class = 'cloud_no_sensor'), count(*)
+        FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND discovery_class IN {dc.sql_in(NO_SENSOR)}
+        GROUP BY 1 ORDER BY 5 DESC, 1""")
+    d["unverified"] = qall(cur, """
+        SELECT count(*) FILTER (WHERE discovery_class = 'vmware_nic'),
+               count(*) FILTER (WHERE discovery_class = 'network_device')
+        FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired""")[0]
     return d
 
 
@@ -210,6 +235,29 @@ def build_html(d: Dict[str, Any], as_at: dt.date) -> str:
     disk_rows = "".join(
         f'<tr><td>{html.escape(s[0] or "")}</td><td>{html.escape(s[1])}</td>{_num(s[17], 95)}'
         f'<td class="num">{s[18] if s[18] is not None else "&ndash;"}</td></tr>' for s in d["disk"][:15])
+    ns = d["no_sensor"]
+    ns_dc = sum(1 for r in ns if r[2] == dc.DISCOVERY_CLASSES["domain_controller_no_sensor"][0])
+    ns_srv = sum(1 for r in ns if r[2] == dc.DISCOVERY_CLASSES["server_no_sensor"][0])
+    ns_tiles = "".join([
+        er.tile("Domain controllers, no sensor", f"{ns_dc:,}", RED if ns_dc else er.GOOD,
+                "a DC without a sensor is a blind spot over every account"),
+        er.tile("Windows servers, no sensor", f"{ns_srv:,}", ORANGE if ns_srv else er.GOOD,
+                "enabled AD account, logged on in the last 60 days"),
+        er.tile("Cloud instances, no sensor", f"{len(ns) - ns_dc - ns_srv:,}",
+                ORANGE if len(ns) - ns_dc - ns_srv else er.GOOD, "reported by the cloud provider"),
+    ])
+    ns_site_rows = "".join(f'<tr><td>{html.escape(s)}</td>{_num(a, 1)}{_num(b)}{_num(c)}{_num(t)}</tr>'
+                           for s, a, b, c, t in d["no_sensor_by_site"])
+    ns_rows = "".join(
+        f'<tr><td>{html.escape(r[0])}</td><td>{html.escape(r[1])}</td><td>{html.escape(r[2])}</td>'
+        f'<td>{html.escape(r[3] or "")}</td><td>{r[4] or "&ndash;"}</td><td>{html.escape((r[7] or "")[:60])}</td></tr>'
+        for r in ns[:40])
+    vm_nic, net_dev = d["unverified"]
+    ns_note = (f"Showing {min(len(ns), 40)} of {len(ns)}; the full list (IPs, OU, AD created) is in the workbook. "
+               if len(ns) > 40 else "")
+    ns_note += (f"Not listed: {vm_nic:,} VMware network interfaces and {net_dev:,} other devices seen only on the "
+                "network -- possibly VMs without a sensor, possibly appliances; on the Endpoint &amp; Identity "
+                "dashboard until identified.")
     foot = ("secops-dashboard. Whole region, servers and domain controllers with a sensor seen in the last 7 days. "
             "Last patch = Falcon's last patch confirmed (Exposure Management &gt; Patches); uptime from the "
             "sensor's last reboot; vulnerabilities from the last nightly rollup. Full lists in the Excel workbook "
@@ -221,7 +269,7 @@ def build_html(d: Dict[str, Any], as_at: dt.date) -> str:
 {er.page_css()}
 </style></head><body>
 <div class="page">
-{header(as_at, "1 of 3 &mdash; Patching")}
+{header(as_at, "1 of 4 &mdash; Patching")}
 <h2>Headline</h2>
 <div class="tiles tiles-3">{tiles}</div>
 <h2>By site</h2>
@@ -237,11 +285,11 @@ def build_html(d: Dict[str, Any], as_at: dt.date) -> str:
 <table><tr><th>OS</th><th class="num">Servers</th><th class="num">Median days since patched</th>
 <th class="num">35+ d</th><th class="num">90+ d</th></tr>{os_rows}</table>
 </div></div>
-<footer>Page 1 of 3 &mdash; {foot}</footer>
+<footer>Page 1 of 4 &mdash; {foot}</footer>
 </div>
 
 <div class="page">
-{header(as_at, "2 of 3 &mdash; Servers")}
+{header(as_at, "2 of 4 &mdash; Servers")}
 <h2>Longest without a patch &mdash; top {len(worst)}</h2>
 <table><tr><th>Server</th><th>Site</th><th>OS</th><th class="num">Days since patched</th>
 <th class="num">Days up</th><th class="num">Crit</th><th class="num">KEV</th></tr>
@@ -252,11 +300,11 @@ def build_html(d: Dict[str, Any], as_at: dt.date) -> str:
 <th>Reboot pending</th><th class="num">Days up</th><th class="num">Crit</th><th class="num">KEV</th></tr>
 {dc_rows or '<tr><td colspan="9" class="empty">Every DC patched in the last 35 days and on a supported OS.</td></tr>'}</table>
 <p class="legend-row">Not patched in 35+ days or on an unsupported OS; every DC is in the workbook. {floor_note}</p>
-<footer>Page 2 of 3 &mdash; {foot}</footer>
+<footer>Page 2 of 4 &mdash; {foot}</footer>
 </div>
 
 <div class="page">
-{header(as_at, "3 of 3 &mdash; What to fix")}
+{header(as_at, "3 of 4 &mdash; What to fix")}
 <h2>Top missing fixes on servers</h2>
 <table><tr><th>Fix</th><th>Product</th><th class="num">Servers</th><th class="num">Crit/high findings</th>
 <th class="num">Critical</th></tr>{fix_rows}</table>
@@ -271,7 +319,27 @@ def build_html(d: Dict[str, Any], as_at: dt.date) -> str:
 <h2>Database and middleware servers &mdash; most critical first</h2>
 <table><tr><th>Server</th><th>Site</th><th>Products with crit/high</th><th class="num">Crit</th><th class="num">High</th>
 <th class="num">Days since patched</th></tr>{db_rows}</table>
-<footer>Page 3 of 3 &mdash; {foot}</footer>
+<footer>Page 3 of 4 &mdash; {foot}</footer>
+</div>
+
+<div class="page">
+{header(as_at, "4 of 4 &mdash; No sensor")}
+<h2>Servers with no Falcon sensor</h2>
+<div class="tiles tiles-3">{ns_tiles}</div>
+<p class="legend-row">Found by Falcon Discover and confirmed as real, in-use machines: not patch-tracked, not
+vulnerability-scanned and not protected, so they appear nowhere else in this report. Install a sensor, or record
+why it can't have one (vendor-supported system, being decommissioned).</p>
+<h2>By site</h2>
+<table><tr><th>Site</th><th class="num">DCs</th><th class="num">Servers</th><th class="num">Cloud</th>
+<th class="num">Total</th></tr>
+{ns_site_rows or '<tr><td colspan="5" class="empty">Every known server has a sensor.</td></tr>'}</table>
+<h2>Machines &mdash; domain controllers first</h2>
+<table><tr><th>Name</th><th>Site</th><th>Class</th><th>OS</th><th>Last AD logon</th><th>AD description</th></tr>
+{ns_rows or '<tr><td colspan="6" class="empty">None.</td></tr>'}</table>
+<p class="legend-row">{ns_note}</p>
+<footer>Page 4 of 4 &mdash; secops-dashboard. Falcon Discover's unmanaged assets, classified nightly
+(DCs and servers: enabled AD computer accounts with a server OS and a logon in the last 60 days; a name already
+on a managed host is excluded). Full list in the Excel workbook.</footer>
 </div>
 </body></html>"""
 
@@ -288,7 +356,8 @@ def build_workbook(d: Dict[str, Any], as_at: dt.date) -> Workbook:
     for row in (("Active servers (seen in 7 days)", n), ("Not patched in 35+ days", p35),
                 ("Not patched in 90+ days", p90), ("Reboot pending", reboot), ("Up 35+ days", up35),
                 ("Unsupported OS", eol), ("With known-exploited (KEV) vulnerabilities", kev_srv),
-                ("No patch date from Falcon", unknown)):
+                ("No patch date from Falcon", unknown),
+                ("Servers / DCs / cloud instances with no Falcon sensor", len(d["no_sensor"]))):
         ws.append(list(row))
     ws.append([])
     if d["floor"]:
@@ -316,6 +385,8 @@ def build_workbook(d: Dict[str, Any], as_at: dt.date) -> Workbook:
     write_sheet(wb, "Database & middleware", ["Server", "Site", "Products with crit/high", "Critical", "High",
                                               "Days since patched"], d["db"])
     write_sheet(wb, "Disk 85%+ full", server_cols, d["disk"])
+    write_sheet(wb, "No sensor", ["Name", "Site", "Class", "OS", "Last AD logon", "AD account created", "IPs",
+                                  "AD description", "OU", "Domain", "What to do"], d["no_sensor"])
     return wb
 
 

@@ -1494,6 +1494,9 @@ SERVERS_HELP = {
     "Disk 85%+ full": "Servers with a disk 85% or more used, per Falcon's latest system insights.",
     "Busy servers": "Highest average CPU or memory use, per Falcon's system insights.",
     "Domain controllers": "Every domain controller: the servers whose compromise is everyone's compromise.",
+    "Servers with no sensor": "DCs and Windows servers with an enabled AD account that logged on in the last 60 "
+                              "days, plus cloud instances, that have no Falcon sensor. Install one, or record why "
+                              "not. Classified by collectors/falcon_hosts.py.",
 }
 
 SRV_BASE = ("assets a LEFT JOIN host_patch_status p ON p.aid = a.source_asset_id "
@@ -1623,6 +1626,18 @@ def servers():
             overrides=[thresh_bg("Days since patched", [{"color": "transparent", "value": None},
                                                         {"color": "orange", "value": 36}, {"color": "red", "value": 91}]),
                        thresh_bg("KEV", [{"color": "transparent", "value": None}, {"color": "red", "value": 1}])])
+
+    b.row("No sensor", note="Machines Falcon Discover found that are confirmed real and in use but have no sensor: "
+          "not patch-tracked, not scanned, not protected, so they're in none of the panels above. Network-only "
+          "devices (unconfirmed) are on the Endpoint & Identity dashboard.")
+    b.table("Servers with no sensor", f"""
+        SELECT COALESCE(hostname, '(no hostname)') AS "Name", {dc.sql_case()} AS "Class", site_label AS "Site",
+               os_version AS "OS", last_seen::date AS "Last AD logon", ad_created::date AS "AD account created",
+               array_to_string(ips, ', ') AS "IPs", description AS "AD description", ous[1] AS "OU"
+        FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND site_label IN ($site)
+          AND discovery_class IN ('domain_controller_no_sensor', 'server_no_sensor', 'cloud_no_sensor')
+        ORDER BY CASE discovery_class WHEN 'domain_controller_no_sensor' THEN 1 WHEN 'server_no_sensor' THEN 2
+                                      ELSE 3 END, site_label, hostname""", h=10)
     return dashboard("secops-servers", "Servers", "Server patching, reboots, risk, applications and capacity for the "
                      "infrastructure, applications and database teams.", b, help=SERVERS_HELP)
 

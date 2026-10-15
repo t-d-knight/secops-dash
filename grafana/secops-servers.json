@@ -1344,6 +1344,69 @@
         }
       ],
       "description": "Every domain controller: the servers whose compromise is everyone's compromise."
+    },
+    {
+      "id": 27,
+      "type": "row",
+      "title": "No sensor",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 79,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 28,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 80,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Machines Falcon Discover found that are confirmed real and in use but have no sensor: not patch-tracked, not scanned, not protected, so they're in none of the panels above. Network-only devices (unconfirmed) are on the Endpoint & Identity dashboard."
+      }
+    },
+    {
+      "id": 29,
+      "type": "table",
+      "title": "Servers with no sensor",
+      "gridPos": {
+        "x": 0,
+        "y": 82,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT COALESCE(hostname, '(no hostname)') AS \"Name\", CASE discovery_class WHEN 'domain_controller_no_sensor' THEN 'Domain controller, no sensor' WHEN 'server_no_sensor' THEN 'Windows server, no sensor' WHEN 'workstation_no_sensor' THEN 'Windows workstation, no sensor' WHEN 'cloud_no_sensor' THEN 'Cloud instance, no sensor' WHEN 'vmware_nic' THEN 'VMware NIC seen on network' WHEN 'network_device' THEN 'Device seen on network' WHEN 'appliance_ad_account' THEN 'Appliance with an AD account' WHEN 'duplicate_of_managed' THEN 'Same name as a managed host' WHEN 'secondary_ip_of_managed' THEN 'Extra IP of a managed host' WHEN 'service_account' THEN 'Service account (gMSA/MSA)' WHEN 'cluster_name' THEN 'Cluster / listener name' WHEN 'out_of_scope' THEN 'Outside this Falcon tenant' WHEN 'disabled_ad_account' THEN 'Disabled AD computer account' WHEN 'stale_ad_account' THEN 'AD account, no logon in 60+ days' ELSE COALESCE(discovery_class, 'unclassified') END AS \"Class\", site_label AS \"Site\", os_version AS \"OS\", last_seen::date AS \"Last AD logon\", ad_created::date AS \"AD account created\", array_to_string(ips, ', ') AS \"IPs\", description AS \"AD description\", ous[1] AS \"OU\" FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND site_label IN ($site) AND discovery_class IN ('domain_controller_no_sensor', 'server_no_sensor', 'cloud_no_sensor') ORDER BY CASE discovery_class WHEN 'domain_controller_no_sensor' THEN 1 WHEN 'server_no_sensor' THEN 2 ELSE 3 END, site_label, hostname"
+        }
+      ],
+      "description": "DCs and Windows servers with an enabled AD account that logged on in the last 60 days, plus cloud instances, that have no Falcon sensor. Install one, or record why not. Classified by collectors/falcon_hosts.py."
     }
   ]
 }
