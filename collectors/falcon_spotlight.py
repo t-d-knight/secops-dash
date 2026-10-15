@@ -22,7 +22,7 @@ from typing import Any, Dict, Optional
 
 import cvss
 from collectors.base import RunContext, as_list, parse_ts
-from collectors.falcon_client import FalconClient
+from collectors.falcon_client import CursorExpired, FalconClient
 from collectors.falcon_hosts import host_site_map
 from findings_store import FindingsWriter, NormalizedFinding, expire_unseen
 from product_classify import classify_product
@@ -153,17 +153,27 @@ def run(ctx: RunContext) -> Dict[str, Any]:
     w = FindingsWriter(ctx.conn)
 
     def pull(fql: str, label: str) -> int:
+        """One full pass; if Falcon drops the cursor part-way, start again once
+        (writes are upserts, and the second pass is mostly unchanged rows)."""
         if extra:
             fql = f"{fql}+{extra}"
-        n = 0
-        for rec in fc.iter_after(PATH, {"filter": fql, "facet": FACETS, "limit": page}):
-            w.add(to_finding(rec, hosts, fc, ctx.resolver, require_exploit))
-            n += 1
-            if n % 50000 == 0:
-                ctx.log(f"{label}: {n} records...")
-        w.flush()
-        ctx.log(f"{label}: {n} records")
-        return n
+        for attempt in (1, 2):
+            n = 0
+            try:
+                for rec in fc.iter_after(PATH, {"filter": fql, "facet": FACETS, "limit": page}):
+                    w.add(to_finding(rec, hosts, fc, ctx.resolver, require_exploit))
+                    n += 1
+                    if n % 50000 == 0:
+                        ctx.log(f"{label}: {n} records...")
+                w.flush()
+                ctx.log(f"{label}: {n} records")
+                return n
+            except CursorExpired as e:
+                w.flush()
+                if attempt == 2:
+                    raise
+                ctx.log(f"{label}: cursor dropped after {n} records ({e}) -- restarting the pull")
+        return 0
 
     open_n = pull("status:['open','reopen']", "open")
     expired = expire_unseen(ctx.conn, SOURCE, ctx.run_started)

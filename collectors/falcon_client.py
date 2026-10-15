@@ -17,9 +17,15 @@ Scopes (API client, READ unless noted):
   NGSIEM Lookup Files, On-demand scans (ODS)
                                   -> falcon_usb
 """
+import time
+import requests
 from typing import Any, Dict, Iterator, List, Optional
 
 from http_client import TokenCache, make_session, raise_for_status
+
+
+class CursorExpired(RuntimeError):
+    """An `after` cursor stopped being accepted part-way through a pull."""
 
 
 class FalconClient:
@@ -101,13 +107,25 @@ class FalconClient:
                 break
 
     def iter_after(self, path: str, params: Dict[str, Any]) -> Iterator[Dict[str, Any]]:
-        """`after` cursor pagination (Spotlight combined endpoints)."""
+        """`after` cursor pagination (Spotlight combined endpoints). A 404 on a
+        cursor page is retried a few times (Falcon has returned one mid-pull);
+        if it persists the cursor is gone and CursorExpired says so, so the
+        caller can restart the pull."""
         after: Optional[str] = None
         while True:
             p = dict(params)
             if after:
                 p["after"] = after
-            j = self.get(path, p)
+            for attempt in range(4):
+                try:
+                    j = self.get(path, p)
+                    break
+                except requests.HTTPError as e:
+                    if not after or getattr(e.response, "status_code", None) != 404:
+                        raise
+                    if attempt == 3:
+                        raise CursorExpired(str(e)[:300]) from e
+                    time.sleep(30 * (attempt + 1))
             res = j.get("resources") or []
             yield from res
             after = (j.get("meta", {}).get("pagination") or {}).get("after")

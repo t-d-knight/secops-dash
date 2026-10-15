@@ -35,15 +35,30 @@ today="$(date +%F)"
 STAGES=(kev epss collect nvd rollup reclassify impact)
 stage_done() { [[ "$(cat "logs/.stage-$1" 2>/dev/null)" == "$today" ]]; }
 
+# Collectors whose latest run today failed (e.g. a vendor API dropping out mid-pull).
+failed_today() {
+    python3 - <<'PY'
+import datetime as dt, sys
+from config import load_config
+from db import pg_connect
+cur = pg_connect(load_config("config.yaml")).cursor()
+cur.execute("""SELECT DISTINCT ON (collector) collector, status FROM collector_runs
+               WHERE started_at::date = %s ORDER BY collector, started_at DESC""", (dt.date.today(),))
+print(",".join(c for c, s in cur.fetchall() if s not in ("ok", "partial")))
+PY
+}
+
 if [[ "$mode" == "--catch-up" ]]; then
     todo=()
     for s in "${STAGES[@]}"; do stage_done "$s" || todo+=("$s"); done
-    [[ ${#todo[@]} -eq 0 ]] && exit 0           # night run finished: nothing to log
+    retry=""
+    stage_done collect && retry="$(failed_today 2>/dev/null)"
+    [[ ${#todo[@]} -eq 0 && -z "$retry" ]] && exit 0     # night run finished cleanly: nothing to log
 fi
 
 started="$(date -Iseconds)"
 if [[ "$mode" == "--catch-up" ]]; then
-    echo "[$started] ===== catch-up run start (unfinished: ${todo[*]}) ====="
+    echo "[$started] ===== catch-up run start (unfinished: ${todo[*]:-none}; failed collectors: ${retry:-none}) ====="
 else
     echo "[$started] ===== collector run start ====="
 fi
@@ -61,6 +76,16 @@ stage() {
     if [[ $r -eq 0 || ( "$mark" == "done" && $r -lt 128 ) ]]; then echo "$today" > "logs/.stage-$name"; fi
     [[ $r -eq 0 ]] || rc=1
 }
+
+# Catch-up: re-pull collectors that failed overnight; if that works, the rollup and
+# impact stages run again on the fresh data.
+if [[ -n "${retry:-}" ]]; then
+    if python3 collect.py --config config.yaml --only "$retry"; then
+        rm -f logs/.stage-rollup logs/.stage-reclassify logs/.stage-impact
+    else
+        rc=1
+    fi
+fi
 
 # Enrichment catalogs first so today's rollup uses today's KEV/EPSS.
 stage kev  done python3 kev_sync.py --config config.yaml
