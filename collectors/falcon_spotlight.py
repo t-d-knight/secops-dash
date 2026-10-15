@@ -4,15 +4,26 @@ Falcon Exposure Management / Spotlight vulnerabilities -> vuln_findings
 (source='falcon_spotlight'). Replaces the Tenable export adapter.
 
 Each run:
-  1. Pulls EVERY open/reopened vuln (full, so anything that vanished can be
-     detected) with the cve / host_info / remediation facets.
+  1. Pulls open/reopened vulns with the cve / host_info / remediation facets:
+     EVERY one on a full pull (so anything that vanished can be detected), or
+     only those updated since the last good run on an incremental one (see
+     open_pull below).
   2. Pulls closed/expired vulns updated since the last good run (incremental),
      which is what feeds MTTR.
-  3. Marks rows that were open last time but absent from (1) as EXPIRED.
+  3. Full pulls only: marks rows that were open last time but absent from (1)
+     as EXPIRED.
   4. Sets last_found from the host's sensor last_seen, so the rollups'
      days_last_seen staleness rule means "host checked in recently" exactly
      as it did for Tenable -- Spotlight's own updated_timestamp only moves
      when the vuln changes, which would wrongly age out long-standing vulns.
+
+open_pull (config): "full" (default) pulls every open vuln every run. At
+~1.45M records/hour that grows with the estate's open count (11M+ after the
+Oct 2026 Patch Tuesday = 7-8 h, and a cursor expiring part-way doubles it).
+"incremental" pulls only what changed, with a full pull on full_pull_weekdays
+(default Saturday) or whenever the last good full pull is over 8 days old --
+that full pull is what catches vulns that vanish without being closed or
+expired. --full always does a full pull.
 
 Suppressed vulns (accepted risk / compensating control / false positive)
 land as state SUPPRESSED: visible, but excluded from open counts and SLA.
@@ -144,6 +155,18 @@ def to_finding(rec: Dict[str, Any], hosts, fc: FalconClient, resolver, require_e
     )
 
 
+def _full_open_pull(ctx: RunContext) -> bool:
+    if ctx.full or str(ctx.ccfg.get("open_pull", "full")).lower() != "incremental":
+        return True
+    if ctx.run_started.astimezone().weekday() in [int(d) for d in ctx.ccfg.get("full_pull_weekdays", [5])]:
+        return True
+    cur = ctx.conn.cursor()
+    cur.execute("""SELECT max(started_at) FROM collector_runs WHERE collector = %s AND status = 'ok'
+                   AND COALESCE(stats->>'open_pull', 'full') = 'full'""", (NAME,))
+    last_full = cur.fetchone()[0]
+    return last_full is None or ctx.run_started - last_full > dt.timedelta(days=8)
+
+
 def run(ctx: RunContext) -> Dict[str, Any]:
     fc = FalconClient(ctx.cfg, ctx.ccfg)
     hosts = host_site_map(ctx.conn)
@@ -175,12 +198,18 @@ def run(ctx: RunContext) -> Dict[str, Any]:
                 ctx.log(f"{label}: cursor dropped after {n} records ({e}) -- restarting the pull")
         return 0
 
-    open_n = pull("status:['open','reopen']", "open")
-    expired = expire_unseen(ctx.conn, SOURCE, ctx.run_started)
-
     since = ctx.since(NAME, default_days=int(ctx.ccfg.get("closed_lookback_days", 30)))
+    since_fql = since.strftime('%Y-%m-%dT%H:%M:%SZ')
+    full = _full_open_pull(ctx)
+    if full:
+        open_n = pull("status:['open','reopen']", "open")
+        expired = expire_unseen(ctx.conn, SOURCE, ctx.run_started)
+    else:
+        ctx.log(f"open: incremental, updated since {since_fql}")
+        open_n = pull(f"status:['open','reopen']+updated_timestamp:>'{since_fql}'", "open")
+        expired = 0
     closed_n = pull(
-        f"status:['closed','expired']+updated_timestamp:>'{since.strftime('%Y-%m-%dT%H:%M:%SZ')}'",
+        f"status:['closed','expired']+updated_timestamp:>'{since_fql}'",
         "closed",
     )
 
@@ -197,4 +226,4 @@ def run(ctx: RunContext) -> Dict[str, Any]:
         (SOURCE,),
     )
     ctx.conn.commit()
-    return {"open": open_n, "closed": closed_n, "expired": expired, "rows": w.written, "changed": w.changed}
+    return {"open_pull": "full" if full else "incremental", "open": open_n, "closed": closed_n, "expired": expired, "rows": w.written, "changed": w.changed}

@@ -150,6 +150,32 @@ def main() -> int:
     check(rc == 0, "collect.py exited 0")
     print("== collect.py second run (idempotency / incremental)")
     check(run("collect.py") == 0, "second collect.py run exited 0")
+    # incremental open pull: only changed vulns asked for, and nothing expired (the pull isn't complete)
+    cfg_inc = os.path.join(tmp, "config-incremental.yaml")
+    open(cfg_inc, "w").write(CONFIG.replace("falcon_spotlight: {enabled: true, page_size: 2}",
+                                            "falcon_spotlight: {enabled: true, page_size: 2, open_pull: incremental, "
+                                            "full_pull_weekdays: []}"))
+    cur.execute("""INSERT INTO vuln_findings (source, source_asset_id, source_rule_id, state, severity, first_found,
+                   last_found, site_label, last_seen_in_export)
+                   VALUES ('falcon_spotlight','aid9','gone2','OPEN','high', now()-interval '50 days',
+                           now()-interval '1 day','Ungrouped', now()-interval '1 day')""")
+    conn.commit()
+    n_calls = len(mock_vendors.CALLS)
+    r = subprocess.run([sys.executable, "collect.py", "--config", cfg_inc, "--only", "falcon_spotlight"],
+                       cwd=ROOT, capture_output=True, text=True)
+    check(r.returncode == 0, "incremental Spotlight run exited 0")
+    if r.returncode != 0:
+        print(r.stdout[-2000:], r.stderr[-2000:])
+    flts = [c[2].get("filter", [""])[0] for c in mock_vendors.CALLS[n_calls:]
+            if c[1] == "/falcon/spotlight/combined/vulnerabilities/v1" and "after" not in c[2]]
+    check(len(flts) == 2 and all("updated_timestamp:>" in f for f in flts),
+          f"incremental run asks only for updated open + closed vulns: {flts}")
+    mode = q(cur, "SELECT stats->>'open_pull' FROM collector_runs WHERE collector = 'falcon_spotlight' "
+                  "ORDER BY started_at DESC LIMIT 1")[0][0]
+    st2 = q(cur, "SELECT state FROM vuln_findings WHERE source_rule_id = 'gone2'")[0][0]
+    check(mode == "incremental" and st2 == "OPEN", f"incremental pull expires nothing ({mode}, gone2 {st2})")
+    cur.execute("DELETE FROM vuln_findings WHERE source_rule_id = 'gone2'")
+    conn.commit()
     print("== rollup_daily_metrics.py")
     check(run("rollup_daily_metrics.py") == 0, "rollup exited 0")
 
@@ -218,7 +244,7 @@ def main() -> int:
     lf = q(cur, "SELECT last_found > now() - interval '1 day' FROM vuln_findings WHERE source_rule_id='v1'")[0][0]
     check(lf, "last_found taken from host last_seen")
     runs = q(cur, "SELECT stats->>'rows', stats->>'changed' FROM collector_runs WHERE collector = 'falcon_spotlight' "
-                  "ORDER BY started_at")
+                  "AND stats->>'open_pull' = 'full' ORDER BY started_at")
     check(len(runs) == 2 and runs[1][1] == "0" and runs[1][0] != "0",
           f"second identical pull rewrites no findings (rows, changed per run: {runs})")
     desc = q(cur, "SELECT count(*) FROM cve_descriptions")[0][0]
@@ -334,7 +360,7 @@ def main() -> int:
     check("someone@riversidehealth.test" not in html_ and "Infostealer" not in html_,
           "low-severity infostealer risk left out of the external table, account never shown unmasked")
     check("Inbound + internal emails" in html_ and "Delivered to users" in html_, "exec report has the mail-flow funnel")
-    check("Signs of compromise or attack" in html_ and "Reused passwords" in html_ and "WATCHED" not in html_,
+    check("Indicators of compromise or attack" in html_ and "Reused passwords" in html_ and "WATCHED" not in html_,
           "exec report shows the identity categories, not raw factors")
     check(run("action_pack.py", "--out-dir", out, "--since", since, "--until", dt.date.today().isoformat()) == 0,
           "action_pack.py exited 0")

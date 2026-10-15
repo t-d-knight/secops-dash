@@ -95,6 +95,11 @@ collectors:
                                             # matters every night -- ~4x fewer round-trips for ~4x the data, with
                                             # roughly flat per-request latency (~5s regardless of 1000 vs 5000)
     closed_lookback_days: 30               # first run / --full window for closed vulns
+    open_pull: full                        # full | incremental. full = every open vuln every night (~1.45M
+                                            # records/h, grows with the open count). incremental = only vulns
+                                            # updated since the last good run, plus a full pull on
+                                            # full_pull_weekdays or when the last full one is 8+ days old
+    full_pull_weekdays: [5]                 # 0 = Mon .. 6 = Sun (local time); incremental mode only
     # filter: "host_info.platform_name:'Windows'"   # optional FQL ANDed onto every pull
 
   # Falcon alerts (endpoint + identity detections + anything else Falcon raises)
