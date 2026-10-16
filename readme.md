@@ -2,6 +2,8 @@
 
 Pulls security data from the tools we actually run, maps every record to a **site**, and stores it in PostgreSQL for Grafana (and Power BI) dashboards that filter per site.
 
+What it's for, who uses which output and how to read the numbers: [knowledge-base/ops-guide.md](knowledge-base/ops-guide.md). This readme covers setup and internals.
+
 | Feed | Collector | What it gives the dashboards |
 |---|---|---|
 | CrowdStrike Falcon hosts + Exposure Management unmanaged assets | `falcon_hosts` | Sensor coverage, stale/RFM sensors, unmanaged devices per site |
@@ -27,13 +29,13 @@ It grew out of the Tenable-only [tenable-vuln-dashboard](https://github.com/t-d-
  vendor APIs ──► collectors/<feed>.py ──► site_resolver ──► Postgres tables ──► rollup_daily_metrics.py ──► daily_* snapshots
                  (one per feed,            (one site per                          (trend history)                │
                   isolated failures)        record, + why)                                                       ▼
-                                                                                           Grafana: 4 dashboards, $site filter
+                                                                                           Grafana: 7 dashboards, $site filter
 ```
 
 * **`collect.py`** runs every enabled collector in order. Each is wrapped on its own: if HEC's API is down, Falcon and DMARC still land. Every run is recorded in `collector_runs`, and the **Data freshness** panel shows any feed that's gone stale — so a dead feed shows up as *stale*, not as a suspiciously quiet week.
 * **Vulnerability-shaped data** (Spotlight vulns and Hadrian external risks) goes into the one vendor-agnostic `vuln_findings` table, so SLA, KEV, EPSS, MTTR, the "worst devices" list and "top fixes" apply to both without any per-vendor logic.
 * **Everything else** has its own table (`assets`, `security_alerts`, `identity_entities`, `email_events`, `dmarc_daily`, …). Every table carries `site_label`, `site_tag` and `site_matched_by`.
-* **Incremental where it's safe**: alerts, HEC events, risk detections and closed vulns pull from the last good run (minus an overlap). Open vulns, identities, hosts and MFA state are pulled in full every run, because "what's still open" can only be known from a complete pull.
+* **Incremental where it's safe**: alerts, HEC events, risk detections and closed vulns pull from the last good run (minus an overlap). Identities, hosts and MFA state are pulled in full every run, because "what's still open" can only be known from a complete pull. Open vulns are full by default too; with `open_pull: incremental` (`falcon_spotlight`) they pull only what changed, plus a weekly full pull that expires anything that vanished -- worth it once the open count makes the full pull run for hours.
 
 ## 2. Install
 
@@ -256,9 +258,11 @@ All `daily_*` history is kept, so trend lines show an honest step at cutover. Di
 * **`cvss.is_remote_no_auth`** no longer treats a missing exploitability field as "exploit available". The old repo has that bug; it only stayed hidden because Tenable always sent the field.
 * **Power BI:** `daily_site_metrics`, `daily_sla_metrics`, `daily_product_metrics` and the views keep their names and columns; the asset page that compared `cs_assets_raw` with `tn_assets_raw` should point at `assets` instead.
 
-## 9. Per-site access for site contacts (next phase)
+## 9. Per-site access for site contacts
 
-Not built yet, but the data is shaped for it: every table has `site_label`, and `sites.contacts` holds each site's contacts. The intended design is **Postgres row-level security**, not Grafana variables, because a locked dashboard variable can be edited out of the URL:
+Sites get **reports, not Grafana**: the weekly/quarterly reports and monthly action packs, published to each site's folder. Grafana stays with the cyber team, because Grafana OSS can't filter rows per user -- any viewer can send arbitrary SQL to the data source, and a locked dashboard variable can be edited out of the URL.
+
+If per-site dashboards are ever needed, the data is shaped for it (every table has `site_label`, `sites.contacts` holds each site's contacts) and the design would be **Postgres row-level security**:
 
 1. One login role per site (or one role plus `SET app.site = …`), and an RLS policy per table: `USING (site_label = current_setting('app.site'))` / `site_tag IN (SELECT … role mapping)`.
 2. One Grafana datasource per site using that role, and one Grafana **team + folder** per site with dashboards bound to that datasource.
