@@ -17,8 +17,9 @@ set -euo pipefail
 #   - the database (pg_dump -Fc, as backup.sh) and the two app roles with their
 #     password hashes (pg_dumpall --globals-only, filtered to DB_USER and
 #     GRAFANA_DB_USER), so config.yaml / secrets.yaml / ~/.pgpass still match
-#   - the code as a git bundle (every branch, unpushed commits included), so the
-#     new box doesn't need to reach GitHub
+#   - the code: in a git checkout, as a git bundle (every branch, unpushed
+#     commits included), so the new box doesn't need to reach GitHub; in a
+#     plain copied-in app dir, every file in it
 #   - every untracked or ignored file in the app dir, plus uncommitted changes:
 #     config.yaml, secrets.yaml, reports/, logs/ (publish-manifest.json and the
 #     identity digest state -- without them the first run republishes every
@@ -133,13 +134,27 @@ if [[ -f $f ]]; then cp "$f" "$STAGE/ref/"; fi
 if command -v firewall-cmd >/dev/null; then firewall-cmd --list-all > "$STAGE/ref/firewalld.txt" 2>&1 || true; fi
 
 # --- code + local files ---
-log "code (git bundle) and local files"
-git_app bundle create "$STAGE/code/repo.bundle" --all
-{
-    git_app ls-files -o -z
-    git_app diff --name-only -z --diff-filter=ACMRT HEAD
-    printf '%s\0' .git/info/exclude
-} | grep -zvE '^(venv|backups)/|(^|/)__pycache__/|\.pyc$|^logs/\.collector\.lock$|^logs/\.stage-' \
+# A git checkout travels as a bundle plus its untracked/changed files; a plain
+# copied-in app dir travels whole. Either way venv/, backups/ and caches stay behind.
+GIT_HEAD="" GIT_BRANCH="" GIT_ORIGIN="" GIT_HOOKS_PATH=""
+if [[ -d "$APP_DIR/.git" ]]; then
+    log "code (git bundle) and local files"
+    git_app bundle create "$STAGE/code/repo.bundle" --all
+    GIT_HEAD="$(git_app rev-parse HEAD)"
+    GIT_BRANCH="$(git_app symbolic-ref --short -q HEAD || true)"
+    GIT_ORIGIN="$(git_app remote get-url origin 2>/dev/null || true)"
+    GIT_HOOKS_PATH="$(git_app config --local --get core.hooksPath || true)"
+    list_files() {
+        git_app ls-files -o -z
+        git_app diff --name-only -z --diff-filter=ACMRT HEAD
+        printf '%s\0' .git/info/exclude
+    }
+else
+    log "not a git checkout -- taking the whole app dir"
+    list_files() { (cd "$APP_DIR" && find . -mindepth 1 \( -type f -o -type l \) -printf '%P\0'); }
+fi
+list_files \
+  | grep -zvE '^(venv|backups)/|(^|/)__pycache__/|\.pyc$|^logs/\.collector\.lock$|^logs/\.stage-' \
   | sort -zu > "$STAGE/meta/app-files.lst"
 tar -C "$APP_DIR" --null -T "$STAGE/meta/app-files.lst" -cpf "$STAGE/app/app.tar"
 log "local files: $(tr -cd '\0' < "$STAGE/meta/app-files.lst" | wc -c), $(du -h "$STAGE/app/app.tar" | cut -f1)"
@@ -170,10 +185,6 @@ fi
 SRC_APP_DIR="$APP_DIR"
 HOST="$(hostname -f 2>/dev/null || hostname)"
 DATE="$(date -Iseconds)"
-GIT_HEAD="$(git_app rev-parse HEAD)"
-GIT_BRANCH="$(git_app symbolic-ref --short -q HEAD || true)"
-GIT_ORIGIN="$(git_app remote get-url origin 2>/dev/null || true)"
-GIT_HOOKS_PATH="$(git_app config --local --get core.hooksPath || true)"
 PG_VERSION_NUM="$(app_psql -Atc 'SHOW server_version_num')"
 PG_VERSION="$(app_psql -Atc 'SHOW server_version')"
 PY_VERSION="$("$APP_DIR/venv/bin/python3" -V 2>&1 || true)"

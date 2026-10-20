@@ -202,7 +202,7 @@ DB_ASIDE="${SRC_DB_NAME}_pre_migration_${TS//-/_}"
 
 cat <<EOF
 
-Bundle from $SRC_HOST, $SRC_DATE (commit ${SRC_GIT_HEAD:0:7}, Postgres $SRC_PG_VERSION, Grafana ${SRC_GF_VERSION:-none})
+Bundle from $SRC_HOST, $SRC_DATE (${SRC_GIT_HEAD:+commit ${SRC_GIT_HEAD:0:7}}${SRC_GIT_HEAD:-plain app dir, no git}, Postgres $SRC_PG_VERSION, Grafana ${SRC_GF_VERSION:-none})
   service account  $APP_USER$(id "$APP_USER" >/dev/null 2>&1 || echo "  [will be created, home $SRC_APP_HOME]")
   app dir          $APP_DIR$([[ -e $APP_DIR ]] && echo "  [exists -> moved to $APP_DIR.pre-migration-$TS]")
   database         $SRC_DB_NAME, roles $SRC_DB_USER + $SRC_GRAFANA_DB_USER$([[ -n $DB_EXISTS ]] && echo "  [exists -> renamed $DB_ASIDE]")
@@ -221,15 +221,19 @@ APP_HOME="$(getent passwd "$APP_USER" | cut -d: -f6)"
 
 if [[ -e $APP_DIR ]]; then mv "$APP_DIR" "$APP_DIR.pre-migration-$TS"; fi
 mkdir -p "$(dirname "$APP_DIR")"
-log "code -> $APP_DIR"
-git clone -q "$STAGE/code/repo.bundle" "$APP_DIR"
-if [[ -n $SRC_GIT_BRANCH ]]; then
-    git -C "$APP_DIR" checkout -q -B "$SRC_GIT_BRANCH" "$SRC_GIT_HEAD"
+if [[ -f "$STAGE/code/repo.bundle" ]]; then
+    log "code -> $APP_DIR"
+    git clone -q "$STAGE/code/repo.bundle" "$APP_DIR"
+    if [[ -n $SRC_GIT_BRANCH ]]; then
+        git -C "$APP_DIR" checkout -q -B "$SRC_GIT_BRANCH" "$SRC_GIT_HEAD"
+    else
+        git -C "$APP_DIR" checkout -q --detach "$SRC_GIT_HEAD"
+    fi
+    if [[ -n $SRC_GIT_ORIGIN ]]; then git -C "$APP_DIR" remote set-url origin "$SRC_GIT_ORIGIN"; fi
+    if [[ -n $SRC_GIT_HOOKS_PATH ]]; then git -C "$APP_DIR" config core.hooksPath "$SRC_GIT_HOOKS_PATH"; fi
 else
-    git -C "$APP_DIR" checkout -q --detach "$SRC_GIT_HEAD"
+    mkdir -p "$APP_DIR"   # old box wasn't a git checkout: app.tar is the whole app dir
 fi
-if [[ -n $SRC_GIT_ORIGIN ]]; then git -C "$APP_DIR" remote set-url origin "$SRC_GIT_ORIGIN"; fi
-if [[ -n $SRC_GIT_HOOKS_PATH ]]; then git -C "$APP_DIR" config core.hooksPath "$SRC_GIT_HOOKS_PATH"; fi
 
 log "config, secrets, reports, logs and local files"
 tar -C "$APP_DIR" -xpf "$STAGE/app/app.tar"
