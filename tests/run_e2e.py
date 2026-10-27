@@ -198,7 +198,14 @@ def main() -> int:
           and p[0].get("priority") == "1" and pings()[-1] == "/hc/abc/1",
           f"failed collector: one high-priority push naming it, failure ping ({p}, {pings()[-1:]})")
     cur.execute("DELETE FROM collector_runs WHERE error = 'HTTP 403 from vendor'")
+    # source gone quiet: the collector still succeeds, but its newest data is a week old
+    cur.execute("UPDATE dmarc_daily SET report_date = current_date - 7")
     conn.commit()
+    subprocess.run([sys.executable, "notify.py", "--config", cfgp, "run-end", "--rc", "0", "--started", started], cwd=ROOT)
+    p = pushes()
+    check(len(p) == 2 and "dmarc: runs OK but newest data is" in p[1].get("message", "")
+          and p[1].get("priority") == "0" and pings()[-1] == "/hc/abc/0",
+          f"quiet feed: normal-priority push naming it, success ping ({p[1:]}, {pings()[-1:]})")
     srv.shutdown()
 
     cur = conn.cursor()

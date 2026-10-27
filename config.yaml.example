@@ -306,6 +306,9 @@ notify:
   enabled: false
   healthcheck_url: null   # e.g. "https://hc-ping.com/<uuid>"
   stale_hours: 36         # a feed with no successful run for this long alerts
+  quiet_days: 3           # an event feed (DMARC, email, alerts, USB, Log Analytics) that runs fine
+                          # but has stored nothing newer than this alerts -- the source went silent.
+                          # Per feed: collectors.<name>.quiet_days (0 = off), e.g. more for a quiet feed
   max_run_hours: 7        # nightly run longer than this alerts (Patch Tuesday nights run long)
   disk_warn_pct: 85
   identity_console_url: null   # optional link in the nightly identity digest, e.g. the child CID's

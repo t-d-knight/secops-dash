@@ -7,7 +7,9 @@ still gets noticed: the service alerts when the nightly ping doesn't arrive.
 
 Quiet by design: nothing is sent when a run is healthy. What does send:
   run-end   a collector failed or a feed has had no successful run in
-            notify.stale_hours, the run exited non-zero or ran longer than
+            notify.stale_hours, an event feed runs fine but has stored
+            nothing new in notify.quiet_days (the source went silent),
+            the run exited non-zero or ran longer than
             notify.max_run_hours, or the disk is over notify.disk_warn_pct
   publish   reports published (low priority), or publishing failed (high)
   identity-digest
@@ -86,6 +88,44 @@ def enabled_collectors(cfg: Dict[str, Any]) -> List[str]:
     return [name for name, c in (cfg.get("collectors") or {}).items() if isinstance(c, dict) and c.get("enabled")]
 
 
+# Event feeds whose collector can keep succeeding while the source behind it
+# has gone quiet (parsedmarc stopped ingesting, a vendor API returning empty
+# pages): collector -> the newest record it has stored. Snapshot feeds (hosts,
+# Spotlight, identity) rewrite everything each run, so stale_hours covers them.
+NEWEST_DATA = {
+    "dmarc": "SELECT max(report_date) FROM dmarc_daily",
+    "checkpoint_hec": "SELECT max(created_at) FROM email_events WHERE source = 'checkpoint_hec'",
+    "checkpoint_hec_flow": "SELECT max(snapshot_date) FROM daily_email_flow_metrics",
+    "falcon_alerts": "SELECT max(created_at) FROM security_alerts WHERE source = 'falcon'",
+    "falcon_usb": "SELECT max(day) FROM usb_file_writes_daily",
+    "azure_log_analytics": "SELECT max(snapshot_date) FROM azure_log_metrics",
+}
+
+
+def quiet_feeds(cfg: Dict[str, Any], cur, skip: set) -> List[tuple]:
+    """Feeds that run fine but have stored nothing newer than notify.quiet_days
+    (per feed: collectors.<name>.quiet_days; 0 turns the check off)."""
+    out: List[tuple] = []
+    default = float(_cfg(cfg).get("quiet_days", 3))
+    today = dt.date.today()
+    for name in enabled_collectors(cfg):
+        if name not in NEWEST_DATA or name in skip:
+            continue
+        days = float(cfg["collectors"][name].get("quiet_days", default) or 0)
+        if days <= 0:
+            continue
+        cur.execute(NEWEST_DATA[name])
+        newest = cur.fetchone()[0]
+        if newest is None:
+            out.append((NORMAL, f"{name}: runs OK but has stored no data yet -- check the source"))
+            continue
+        day = newest.astimezone().date() if isinstance(newest, dt.datetime) else newest
+        if (today - day).days > days:
+            out.append((NORMAL, f"{name}: runs OK but newest data is {day:%d %b} "
+                                f"({(today - day).days} days) -- check the source is still sending"))
+    return out
+
+
 def run_problems(cfg: Dict[str, Any], rc: int, started: dt.datetime) -> List[tuple]:
     """(priority, line) for everything wrong with the run that started at `started`."""
     from db import pg_connect
@@ -104,11 +144,14 @@ def run_problems(cfg: Dict[str, Any], rc: int, started: dt.datetime) -> List[tup
         cur.execute("SELECT collector, last_success FROM collector_freshness")
         last_ok = dict(cur.fetchall())
         now = dt.datetime.now(dt.timezone.utc)
+        stale = set()
         for name in enabled_collectors(cfg):
             ts = last_ok.get(name)
             if ts is None or (now - ts).total_seconds() > stale_h * 3600:
                 when = ts.astimezone().strftime("%d %b %H:%M") if ts else "never"
                 out.append((HIGH, f"{name}: no successful run since {when}"))
+                stale.add(name)
+        out += quiet_feeds(cfg, cur, stale)
     finally:
         conn.close()
     hours = (dt.datetime.now(dt.timezone.utc) - started).total_seconds() / 3600

@@ -99,6 +99,7 @@ Every dashboard filters by site, and the dashboards link to each other, keeping 
 **Alerts (Pushover)**
 
 - The nightly run failing or running too long, a report failing, or a feed going stale.
+- A feed that still connects but has brought in nothing new for a few days (for example DMARC reports no longer arriving), which usually means the source has stopped sending.
 - A nightly identity digest. Falcon's identity detections may only show in a separate (child CID) console, so this digest is how they get seen.
 
 ## How to use it
