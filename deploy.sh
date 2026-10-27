@@ -1,5 +1,6 @@
 #!/bin/bash
-set -euo pipefail
+set -eEuo pipefail
+trap 'echo "!! deploy.sh stopped at: $BASH_COMMAND" >&2' ERR
 
 # deploy.sh -- update this install to the latest origin/main and check it
 # still works. Run as the service account (not root) from the app dir.
@@ -56,43 +57,46 @@ if [ "$CHECK_ONLY" -eq 0 ]; then
     timeout 120 git fetch -q origin main || die "can't fetch from $(git remote get-url origin) -- no route to it?"
     NEW="$(git rev-parse origin/main)"
 
-    # what's on disk now but differs from the commit we're about to deploy
-    if [ -z "$PREV" ]; then
-        git reset -q origin/main            # index only: the working tree stays as unpacked
-        CHANGED="$(git diff --name-only)"
-    else
-        CHANGED="$(git diff --name-only HEAD)"
-        if [ -n "$CHANGED" ] && [ "$FORCE" -eq 0 ]; then
-            echo "$CHANGED" | sed 's/^/   /'
-            die "tracked files edited locally (above) -- commit them upstream, or --force to back up and overwrite"
-        fi
+    [ -n "$PREV" ] || git reset -q origin/main    # first run: index only, the unpacked files stay
+    # tracked files edited here since the last deploy (a first run's whole copy counts)
+    EDITED="$(git diff --name-only HEAD)"
+    if [ -n "$PREV" ] && [ -n "$EDITED" ] && [ "$FORCE" -eq 0 ]; then
+        echo "$EDITED" | sed 's/^/   /'
+        die "tracked files edited locally (above) -- commit them upstream, or --force to back up and overwrite"
     fi
-    if [ -n "$CHANGED" ]; then
-        echo "$CHANGED" | while read -r f; do [ -e "$f" ] && echo "$f"; done \
-            | tar -cf "backups/deploy-$TS.tar" -T -
-        echo "   $(echo "$CHANGED" | wc -l | tr -d ' ') file(s) differing from origin/main saved to backups/deploy-$TS.tar"
+    # every file on disk the update will rewrite or remove -- compared with the
+    # files themselves, not the last commit, so an interrupted run can't hide any
+    WILL_CHANGE="$(git diff --name-only "$NEW")"
+    BACKUP=""
+    if [ -n "$WILL_CHANGE" ]; then
+        BACKUP="backups/deploy-$TS.tar"
+        echo "$WILL_CHANGE" | while read -r f; do if [ -e "$f" ]; then echo "$f"; fi; done \
+            | tar -cf "$BACKUP" -T -
+        echo "   $(echo "$WILL_CHANGE" | wc -l | tr -d ' ') file(s) to update; current copies saved to $BACKUP"
     fi
 
     echo
     echo "=== [2/4] Apply ${PREV:0:7}${PREV:+ -> }${NEW:0:7} ==="
-    if [ "$PREV" = "$NEW" ] && [ -z "$CHANGED" ]; then
+    git reset -q --hard origin/main
+    if [ -z "$WILL_CHANGE" ]; then
         echo "   already up to date"
     else
-        [ -n "$PREV" ] && git --no-pager log --oneline "$PREV..$NEW" | sed 's/^/   /'
-        git reset -q --hard origin/main
-        changed() { [ -z "$PREV" ] || ! git diff --quiet "$PREV" "$NEW" -- "$@"; }
-        if changed requirements.txt; then
+        if [ -n "$PREV" ] && [ "$PREV" != "$NEW" ]; then
+            git --no-pager log --oneline "$PREV..$NEW" | sed 's/^/   /'
+        fi
+        changed() { echo "$WILL_CHANGE" | grep -qxE "$1"; }
+        if changed 'requirements\.txt'; then
             echo "   requirements.txt changed: pip install"
             venv/bin/pip install -q -r requirements.txt
         fi
         echo "   schema"
         $PY -c "import config, db_schema; db_schema.ensure_schema(config.load_config('config.yaml'))"
-        if changed 'grafana/*.json'; then
+        if changed 'grafana/[^/]*\.json'; then
             echo "   dashboards changed: push to Grafana"
             $PY grafana/push_dashboards.py --config config.yaml --message "deploy.sh ${NEW:0:7}" \
                 || echo "!! dashboard push failed -- push by hand: grafana/push_dashboards.py"
         fi
-        if changed crontab.example; then
+        if changed 'crontab\.example'; then
             echo "!! crontab.example changed -- review it against \`crontab -l\` (not installed automatically)"
         fi
     fi
@@ -125,10 +129,10 @@ echo
 echo "=== [4/4] Summary ==="
 echo "   at $(git rev-parse --short HEAD 2>/dev/null || echo '(not a git checkout)'): $(git log -1 --format=%s 2>/dev/null)"
 if [ "$CHECK_ONLY" -eq 0 ]; then
-    if [ -n "${PREV:-}" ] && [ "$PREV" != "$NEW" ]; then
+    if [ -n "$PREV" ] && [ "$PREV" != "$NEW" ]; then
         echo "   roll back: git reset --hard ${PREV:0:7} && ./deploy.sh --check"
-    elif [ -n "${CHANGED:-}" ]; then
-        echo "   roll back: tar -xf backups/deploy-$TS.tar && ./deploy.sh --check"
+    elif [ -n "$BACKUP" ]; then
+        echo "   roll back: tar -xf $BACKUP && ./deploy.sh --check"
     fi
 fi
 [ "$FAIL" -eq 0 ] && echo "   all checks passed" || { echo "!! some checks failed (above)"; exit 1; }
