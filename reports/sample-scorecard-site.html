@@ -65,7 +65,7 @@
   .sum-label { font-size: 12px; color: #64748b; margin-top: 3px; }
   .lede { font-size: 13px; color: #334155; margin: 14px 0 0; line-height: 1.5; }
   td { vertical-align: top; }
-  th.num { white-space: nowrap; }
+  th.day { white-space: nowrap; }
   td.val { font-size: 15px; font-weight: 700; }
   td.then { color: #64748b; }
   tr.group td { background: #f8fafc; font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
@@ -80,8 +80,11 @@
   .pill.steady { color: #334155; background: #f1f5f9; }
   .pill.stuck { color: #92400e; background: #fef3c7; }
   .pill.new { color: #64748b; border: 1px dashed #e2e8f0; }
-  .matrix th { font-size: 9px; vertical-align: bottom; }
-  .matrix tr.total td { border-top: 2px solid #0f172a; font-weight: 700; background: #f8fafc; }
+  @page wide { size: A4 landscape; margin: 12mm; }
+  .page.wide { page: wide; }
+  @media screen { .page.wide { max-width: 1200px; } }
+  .matrix th.num, .matrix td.num { white-space: nowrap; padding-left: 4px; padding-right: 4px; }
+  .matrix .total { border-left: 1px solid #94a3b8; font-weight: 700; background: #f8fafc; }
   .matrix td.hot { color: #dc2626; font-weight: 700; }
   .ar { font-size: 11px; font-weight: 700; margin-left: 3px; }
   .ar.up { color: #16a34a; } .ar.down { color: #dc2626; }
@@ -93,7 +96,7 @@
 <header>
   <div><h1>Security Scorecard &mdash; Riverside Health</h1>
        <div class="period">October 2026 &middot; Monthly</div></div>
-  <div class="meta">Generated 2026-10-29 20:19<br>secops-dashboard</div>
+  <div class="meta">Generated 2026-10-29 21:02<br>secops-dashboard</div>
 </header>
 <div class="summary"><div class="sum" style="border-left-color:#16a34a"><div class="sum-value" style="color:#16a34a">1</div><div class="sum-label">improving</div></div><div class="sum" style="border-left-color:#94a3b8"><div class="sum-value" style="color:#334155">8</div><div class="sum-label">steady</div></div><div class="sum" style="border-left-color:#dc2626"><div class="sum-value" style="color:#dc2626">0</div><div class="sum-label">worsening</div></div><div class="sum" style="border-left-color:#e2e8f0"><div class="sum-value" style="color:#64748b">0</div><div class="sum-label">too early to call</div></div></div>
 <p class="lede">Nine measures that show whether security is getting better, each a share (so a large service isn't
@@ -101,12 +104,12 @@
   a move of less than 2 percentage points counts as steady.</p>
 <h2>The measures</h2>
 <table>
-  <thead><tr><th>Measure</th><th class="num">01 Oct</th><th class="num">29 Oct</th>
+  <thead><tr><th>Measure</th><th class="num day">01 Oct</th><th class="num day">29 Oct</th>
     <th>Change</th><th>Direction</th></tr></thead>
   <tbody>
 <tr class="group"><td colspan="5">Patching and platforms</td></tr>
-<tr><td><div class="m-name">Critical flaws fixed on time</div><div class="m-what">Share of critical vulnerabilities fixed within the 2-day policy, this month against last</div></td><td class="num then">77%</td><td class="num val">86%</td><td class="chg">696 fixes this month</td><td><span class="pill up">↗ Improving</span></td></tr>
-<tr><td><div class="m-name">High flaws fixed on time</div><div class="m-what">Share of high vulnerabilities fixed within the 14-day policy, this month against last</div></td><td class="num then">91%</td><td class="num val">90%</td><td class="chg">2,331 fixes this month</td><td><span class="pill steady">→ Steady</span></td></tr>
+<tr><td><div class="m-name">Critical flaws fixed on time</div><div class="m-what">Share of critical vulnerabilities fixed within the 2-day policy, this month against last</div></td><td class="num then">77%</td><td class="num val">86%</td><td class="chg">696 fixes in October</td><td><span class="pill up">↗ Improving</span></td></tr>
+<tr><td><div class="m-name">High flaws fixed on time</div><div class="m-what">Share of high vulnerabilities fixed within the 14-day policy, this month against last</div></td><td class="num then">91%</td><td class="num val">90%</td><td class="chg">2,333 fixes in October</td><td><span class="pill steady">→ Steady</span></td></tr>
 <tr><td><div class="m-name">Servers patched in the last 35 days</div><div class="m-what">Active servers with a confirmed patch inside one monthly cycle</div></td><td class="num then">69.0%</td><td class="num val">69.0%</td><td class="chg">no change in servers outside a monthly cycle</td><td><span class="pill steady">→ Steady</span></td></tr>
 <tr><td><div class="m-name">Devices on a supported operating system</div><div class="m-what">Still receiving security updates from the vendor</div></td><td class="num then">87.5%</td><td class="num val">88.7%</td><td class="chg">6 fewer unsupported devices</td><td><span class="pill steady">→ Steady</span></td></tr>
 <tr class="group"><td colspan="5">Visibility</td></tr>
@@ -120,7 +123,8 @@
   </tbody>
 </table>
 <footer>Measured from the security tools' nightly figures: the columns are the snapshots nearest the start and end of
-  the month. The two fix-on-time measures compare last month's fixes with this month's instead. "Too early" means
+  the month. The two fix-on-time measures compare last month's fixes with this month's instead, once a whole
+  previous month has been collected. "Too early" means
   there isn't a figure at both ends yet. Names, devices and accounts behind each number are in this month's action pack.
   No targets yet: these show direction only until targets are agreed.</footer>
 </section>

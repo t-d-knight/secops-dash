@@ -161,16 +161,20 @@ def direction(m: Measure, start: Optional[float], end: Optional[float], steady: 
 
 
 def build(cur, site: Optional[str], since: dt.date, until: dt.date, exclude: Tuple[str, ...],
-          days: Tuple[Optional[dt.date], Optional[dt.date]], steady: float) -> Dict[str, Any]:
+          days: Tuple[Optional[dt.date], Optional[dt.date]], steady: float, prev_ok: bool) -> Dict[str, Any]:
+    """prev_ok: vulnerability history covers the whole previous month (see main) -- otherwise its
+    fix rates are the start-up bulk load, not a month of patching, and aren't compared with."""
     prev_until = since - dt.timedelta(days=1)
     prev_since = prev_until.replace(day=1)
     m0, m1 = metrics_at(cur, days[0], site, exclude), metrics_at(cur, days[1], site, exclude)
     rows = []
     for m in MEASURES:
         if m.kind == "fix":
-            (a, fa), (b, fb) = (fix_rate(cur, m.args[0], prev_since, prev_until, site, exclude),
-                                fix_rate(cur, m.args[0], since, until, site, exclude))
-            change = f"{fb:,} fixes this month" if fb else "no fixes this month"
+            (a, fa) = fix_rate(cur, m.args[0], prev_since, prev_until, site, exclude) if prev_ok else (None, 0)
+            (b, fb) = fix_rate(cur, m.args[0], since, until, site, exclude)
+            change = f"{fb:,} fixes in {since:%B}" if fb else f"no fixes in {since:%B}"
+            if not prev_ok:
+                change += f" ({prev_since:%B} wasn't fully collected)"
         else:
             (a, ca), (b, cb) = value(m, m0), value(m, m1)
             change = ""
@@ -209,7 +213,7 @@ def css() -> str:
   .sum-label {{ font-size: 12px; color: {er.MUTED}; margin-top: 3px; }}
   .lede {{ font-size: 13px; color: #334155; margin: 14px 0 0; line-height: 1.5; }}
   td {{ vertical-align: top; }}
-  th.num {{ white-space: nowrap; }}
+  th.day {{ white-space: nowrap; }}
   td.val {{ font-size: 15px; font-weight: 700; }}
   td.then {{ color: {er.MUTED}; }}
   tr.group td {{ background: #f8fafc; font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
@@ -224,8 +228,11 @@ def css() -> str:
   .pill.steady {{ color: #334155; background: #f1f5f9; }}
   .pill.stuck {{ color: #92400e; background: #fef3c7; }}
   .pill.new {{ color: {er.MUTED}; border: 1px dashed {er.BORDER}; }}
-  .matrix th {{ font-size: 9px; vertical-align: bottom; }}
-  .matrix tr.total td {{ border-top: 2px solid {er.INK}; font-weight: 700; background: #f8fafc; }}
+  @page wide {{ size: A4 landscape; margin: 12mm; }}
+  .page.wide {{ page: wide; }}
+  @media screen {{ .page.wide {{ max-width: 1200px; }} }}
+  .matrix th.num, .matrix td.num {{ white-space: nowrap; padding-left: 4px; padding-right: 4px; }}
+  .matrix .total {{ border-left: 1px solid {er.FAINT}; font-weight: 700; background: #f8fafc; }}
   .matrix td.hot {{ color: #dc2626; font-weight: 700; }}
   .ar {{ font-size: 11px; font-weight: 700; margin-left: 3px; }}
   .ar.up {{ color: {er.GOOD}; }} .ar.down {{ color: #dc2626; }}
@@ -271,45 +278,55 @@ def page_main(scope: str, label: str, card: Dict[str, Any], days, sla: Dict[str,
   a move of less than {steady:g} percentage point{'s' if steady != 1 else ''} counts as steady.</p>
 <h2>The measures</h2>
 <table>
-  <thead><tr><th>Measure</th><th class="num">{_day(days[0])}</th><th class="num">{_day(days[1])}</th>
+  <thead><tr><th>Measure</th><th class="num day">{_day(days[0])}</th><th class="num day">{_day(days[1])}</th>
     <th>Change</th><th>Direction</th></tr></thead>
   <tbody>
 {chr(10).join(body)}
   </tbody>
 </table>
 <footer>Measured from the security tools' nightly figures: the columns are the snapshots nearest the start and end of
-  the month. The two fix-on-time measures compare last month's fixes with this month's instead. "Too early" means
+  the month. The two fix-on-time measures compare last month's fixes with this month's instead, once a whole
+  previous month has been collected. "Too early" means
   there isn't a figure at both ends yet. Names, devices and accounts behind each number are in this month's action pack.
   No targets yet: these show direction only until targets are agreed.</footer>
 </section>"""
 
 
 def page_matrix(label: str, by_site: List[Tuple[str, Dict[str, Any]]], region: Dict[str, Any]) -> str:
-    heads = "".join(f'<th class="num">{html.escape(m.name)}</th>' for m in MEASURES)
-    rows = []
-    for name, card in by_site + [("Whole of region", region)]:
-        cells = []
-        for r in card["rows"]:
-            m, v = r["m"], r["end"]
-            hot = m.kind == "count" and v
-            arrow = (f'<span class="ar {r["dir"]}">{"↗" if r["dir"] == "up" else "↘"}</span>'
-                     if r["dir"] in ("up", "down") and m.kind != "fix" else "")
-            cells.append(f'<td class="num{" hot" if hot else ""}">{_fmt(m, v)}{arrow}</td>')
-        cls = ' class="total"' if name == "Whole of region" else ""
-        rows.append(f'<tr{cls}><td><b>{html.escape(name)}</b></td>{"".join(cells)}</tr>')
-    return f"""<section class="page">
+    """Measures down the side, services across (with the region last), on a landscape page."""
+    cols = by_site + [("Region", region)]
+    heads = "".join(f'<th class="num{" total" if n == "Region" else ""}">{html.escape(n)}</th>' for n, _ in cols)
+    body = []
+    for g, gname in GROUPS:
+        body.append(f'<tr class="group"><td colspan="{len(cols) + 1}">{gname}</td></tr>')
+        for i, m in enumerate(MEASURES):
+            if m.group != g:
+                continue
+            cells = []
+            for name, card in cols:
+                r = card["rows"][i]
+                v = r["end"]
+                text = "–" if v is None else f"{v:,.0f}" if m.kind == "count" else f"{v:.0f}%"
+                arrow = (f'<span class="ar {r["dir"]}">{"↗" if r["dir"] == "up" else "↘"}</span>'
+                         if r["dir"] in ("up", "down") and m.kind != "fix" else "")
+                cls = "num" + (" hot" if m.kind == "count" and v else "") + (" total" if name == "Region" else "")
+                cells.append(f'<td class="{cls}">{text}{arrow}</td>')
+            body.append(f'<tr><td class="m-name">{html.escape(m.name)}</td>{"".join(cells)}</tr>')
+    return f"""<section class="page wide">
 {header("Whole of region", label, "By health service")}
-<p class="lede" style="margin-top:0">The same measures for each health service at the end of the month, listed in
-  configuration order, not ranked. Arrows show a move of more than {SITE_STEADY:g} points over the month (small services
-  swing on a handful of devices or accounts, so the bar is higher than the region's). Red counts should be zero.</p>
+<p class="lede" style="margin-top:0">Each measure at the end of the month for every health service, in configuration
+  order, not ranked. Arrows show a move of more than {SITE_STEADY:g} points over the month (small services swing on a
+  handful of devices or accounts, so the bar is higher than the region's {REGION_STEADY:g}). Red counts should be zero.</p>
+<h2>The measures by service</h2>
 <table class="matrix">
-  <thead><tr><th>Health service</th>{heads}</tr></thead>
+  <thead><tr><th>Measure</th>{heads}</tr></thead>
   <tbody>
-{chr(10).join(rows)}
+{chr(10).join(body)}
   </tbody>
 </table>
 <footer>For regional leadership: each service's own scorecard shows only its own figures. Region totals leave out test
-  sites. Fix-on-time is this month's fixes, pooled.</footer>
+  sites. Fix-on-time is the month's fixes, pooled. Shares are rounded to whole percentages here; the service's own
+  scorecard has one decimal place.</footer>
 </section>"""
 
 
@@ -364,11 +381,14 @@ def main() -> int:
     try:
         cur = conn.cursor()
         days = snapshot_days(cur, since, until)
+        er.BULK_DATES[:] = sorted(dt.date.fromisoformat(str(d)) for d in rep.get("vuln_bulk_load_dates") or [])
+        vulns_from = er.history_start(cur)["vulns"]
+        prev_ok = vulns_from is not None and vulns_from < (since - dt.timedelta(days=1)).replace(day=1)
         cur.execute("SELECT severity, threshold_days FROM sla_policy")
         sla = dict(cur.fetchall())
         jobs: List[Optional[str]] = [args.site] if args.site else [None] + labels
-        region = build(cur, None, since, until, exclude, days, REGION_STEADY) if None in jobs else None
-        by_site = [(s, build(cur, s, since, until, exclude, days, SITE_STEADY))
+        region = build(cur, None, since, until, exclude, days, REGION_STEADY, prev_ok) if None in jobs else None
+        by_site = [(s, build(cur, s, since, until, exclude, days, SITE_STEADY, prev_ok))
                    for s in labels if s not in exclude] if None in jobs else []
         written = 0
         for site in jobs:
@@ -377,7 +397,7 @@ def main() -> int:
                          page_matrix(label, by_site, region)]
             else:
                 card = next((c for s, c in by_site if s == site), None) or \
-                    build(cur, site, since, until, exclude, days, SITE_STEADY)
+                    build(cur, site, since, until, exclude, days, SITE_STEADY, prev_ok)
                 pages = [page_main(site, label, card, days, sla, SITE_STEADY, "Monthly")]
             scope = site or "Whole of region"
             path = os.path.join(out_dir, f"{er.safe_name(site or 'region')}-scorecard-{today:%Y-%m}.html")

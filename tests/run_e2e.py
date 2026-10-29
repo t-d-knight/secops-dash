@@ -406,12 +406,13 @@ def main() -> int:
           f"scorecard per site + region: {cards}")
     reg = next((os.path.join(sc_out, f) for f in cards if f.startswith("region-")), None)
     reg_html = open(reg).read() if reg else ""
-    check(reg_html.count('class="page"') == 2 and "By health service" in reg_html
+    check(reg_html.count('<section class="page') == 2 and 'class="page wide"' in reg_html
+          and "By health service" in reg_html
           and "Servers patched in the last 35 days" in reg_html and "Riverside Health" in reg_html,
-          "region scorecard: measures page + by-service table")
+          "region scorecard: measures page + landscape by-service table")
     one = next((os.path.join(sc_out, f) for f in cards if f.startswith("Riverside")), None)
     one_html = open(one).read() if one else ""
-    check(one_html.count('class="page"') == 1 and "Lakeside Health" not in one_html,
+    check(one_html.count('<section class="page') == 1 and "Lakeside Health" not in one_html,
           "a site's scorecard shows only that site")
     check("Too early" in one_html, "one day of snapshots: directions are 'too early', not invented")
     import publish

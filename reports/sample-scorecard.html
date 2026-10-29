@@ -65,7 +65,7 @@
   .sum-label { font-size: 12px; color: #64748b; margin-top: 3px; }
   .lede { font-size: 13px; color: #334155; margin: 14px 0 0; line-height: 1.5; }
   td { vertical-align: top; }
-  th.num { white-space: nowrap; }
+  th.day { white-space: nowrap; }
   td.val { font-size: 15px; font-weight: 700; }
   td.then { color: #64748b; }
   tr.group td { background: #f8fafc; font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
@@ -80,8 +80,11 @@
   .pill.steady { color: #334155; background: #f1f5f9; }
   .pill.stuck { color: #92400e; background: #fef3c7; }
   .pill.new { color: #64748b; border: 1px dashed #e2e8f0; }
-  .matrix th { font-size: 9px; vertical-align: bottom; }
-  .matrix tr.total td { border-top: 2px solid #0f172a; font-weight: 700; background: #f8fafc; }
+  @page wide { size: A4 landscape; margin: 12mm; }
+  .page.wide { page: wide; }
+  @media screen { .page.wide { max-width: 1200px; } }
+  .matrix th.num, .matrix td.num { white-space: nowrap; padding-left: 4px; padding-right: 4px; }
+  .matrix .total { border-left: 1px solid #94a3b8; font-weight: 700; background: #f8fafc; }
   .matrix td.hot { color: #dc2626; font-weight: 700; }
   .ar { font-size: 11px; font-weight: 700; margin-left: 3px; }
   .ar.up { color: #16a34a; } .ar.down { color: #dc2626; }
@@ -93,7 +96,7 @@
 <header>
   <div><h1>Security Scorecard &mdash; Whole of region</h1>
        <div class="period">October 2026 &middot; Region</div></div>
-  <div class="meta">Generated 2026-10-29 20:19<br>secops-dashboard</div>
+  <div class="meta">Generated 2026-10-29 21:02<br>secops-dashboard</div>
 </header>
 <div class="summary"><div class="sum" style="border-left-color:#16a34a"><div class="sum-value" style="color:#16a34a">5</div><div class="sum-label">improving</div></div><div class="sum" style="border-left-color:#94a3b8"><div class="sum-value" style="color:#334155">3</div><div class="sum-label">steady</div></div><div class="sum" style="border-left-color:#dc2626"><div class="sum-value" style="color:#dc2626">1</div><div class="sum-label">worsening</div></div><div class="sum" style="border-left-color:#e2e8f0"><div class="sum-value" style="color:#64748b">0</div><div class="sum-label">too early to call</div></div></div>
 <p class="lede">Nine measures that show whether security is getting better, each a share (so a large service isn't
@@ -101,12 +104,12 @@
   a move of less than 0.5 percentage points counts as steady.</p>
 <h2>The measures</h2>
 <table>
-  <thead><tr><th>Measure</th><th class="num">01 Oct</th><th class="num">29 Oct</th>
+  <thead><tr><th>Measure</th><th class="num day">01 Oct</th><th class="num day">29 Oct</th>
     <th>Change</th><th>Direction</th></tr></thead>
   <tbody>
 <tr class="group"><td colspan="5">Patching and platforms</td></tr>
-<tr><td><div class="m-name">Critical flaws fixed on time</div><div class="m-what">Share of critical vulnerabilities fixed within the 2-day policy, this month against last</div></td><td class="num then">57%</td><td class="num val">77%</td><td class="chg">1,624 fixes this month</td><td><span class="pill up">↗ Improving</span></td></tr>
-<tr><td><div class="m-name">High flaws fixed on time</div><div class="m-what">Share of high vulnerabilities fixed within the 14-day policy, this month against last</div></td><td class="num then">80%</td><td class="num val">77%</td><td class="chg">5,811 fixes this month</td><td><span class="pill down">↘ Worsening</span></td></tr>
+<tr><td><div class="m-name">Critical flaws fixed on time</div><div class="m-what">Share of critical vulnerabilities fixed within the 2-day policy, this month against last</div></td><td class="num then">57%</td><td class="num val">77%</td><td class="chg">1,625 fixes in October</td><td><span class="pill up">↗ Improving</span></td></tr>
+<tr><td><div class="m-name">High flaws fixed on time</div><div class="m-what">Share of high vulnerabilities fixed within the 14-day policy, this month against last</div></td><td class="num then">80%</td><td class="num val">77%</td><td class="chg">5,816 fixes in October</td><td><span class="pill down">↘ Worsening</span></td></tr>
 <tr><td><div class="m-name">Servers patched in the last 35 days</div><div class="m-what">Active servers with a confirmed patch inside one monthly cycle</div></td><td class="num then">62.9%</td><td class="num val">62.9%</td><td class="chg">no change in servers outside a monthly cycle</td><td><span class="pill steady">→ Steady</span></td></tr>
 <tr><td><div class="m-name">Devices on a supported operating system</div><div class="m-what">Still receiving security updates from the vendor</div></td><td class="num then">86.8%</td><td class="num val">87.9%</td><td class="chg">14 fewer unsupported devices</td><td><span class="pill up">↗ Improving</span></td></tr>
 <tr class="group"><td colspan="5">Visibility</td></tr>
@@ -120,31 +123,41 @@
   </tbody>
 </table>
 <footer>Measured from the security tools' nightly figures: the columns are the snapshots nearest the start and end of
-  the month. The two fix-on-time measures compare last month's fixes with this month's instead. "Too early" means
+  the month. The two fix-on-time measures compare last month's fixes with this month's instead, once a whole
+  previous month has been collected. "Too early" means
   there isn't a figure at both ends yet. Names, devices and accounts behind each number are in this month's action pack.
   No targets yet: these show direction only until targets are agreed.</footer>
 </section>
-<section class="page">
+<section class="page wide">
 <header>
   <div><h1>Security Scorecard &mdash; Whole of region</h1>
        <div class="period">October 2026 &middot; By health service</div></div>
-  <div class="meta">Generated 2026-10-29 20:19<br>secops-dashboard</div>
+  <div class="meta">Generated 2026-10-29 21:02<br>secops-dashboard</div>
 </header>
-<p class="lede" style="margin-top:0">The same measures for each health service at the end of the month, listed in
-  configuration order, not ranked. Arrows show a move of more than 2 points over the month (small services
-  swing on a handful of devices or accounts, so the bar is higher than the region's). Red counts should be zero.</p>
+<p class="lede" style="margin-top:0">Each measure at the end of the month for every health service, in configuration
+  order, not ranked. Arrows show a move of more than 2 points over the month (small services swing on a
+  handful of devices or accounts, so the bar is higher than the region's 0.5). Red counts should be zero.</p>
+<h2>The measures by service</h2>
 <table class="matrix">
-  <thead><tr><th>Health service</th><th class="num">Critical flaws fixed on time</th><th class="num">High flaws fixed on time</th><th class="num">Servers patched in the last 35 days</th><th class="num">Devices on a supported operating system</th><th class="num">Machines with a working security sensor</th><th class="num">People with multi-factor sign-in</th><th class="num">Enabled accounts actually in use</th><th class="num">Leaked passwords on live accounts</th><th class="num">Serious internet-facing risks overdue</th></tr></thead>
+  <thead><tr><th>Measure</th><th class="num">Riverside Health</th><th class="num">Lakeside Health</th><th class="num">Northgate Hospital</th><th class="num">Hillcrest Community Health</th><th class="num">Ungrouped</th><th class="num total">Region</th></tr></thead>
   <tbody>
-<tr><td><b>Riverside Health</b></td><td class="num">86%</td><td class="num">90%</td><td class="num">69.0%</td><td class="num">88.7%</td><td class="num">91.4%</td><td class="num">93.1%</td><td class="num">84.5%</td><td class="num">0</td><td class="num hot">1</td></tr>
-<tr><td><b>Lakeside Health</b></td><td class="num">64%</td><td class="num">66%</td><td class="num">55.6%</td><td class="num">86.2%</td><td class="num">92.6%</td><td class="num">91.9%</td><td class="num">85.0%</td><td class="num">0</td><td class="num">0</td></tr>
-<tr><td><b>Northgate Hospital</b></td><td class="num">84%</td><td class="num">81%</td><td class="num">60.5%</td><td class="num">86.5%</td><td class="num">93.8%</td><td class="num">93.9%</td><td class="num">85.2%</td><td class="num">0</td><td class="num">0</td></tr>
-<tr><td><b>Hillcrest Community Health</b></td><td class="num">50%</td><td class="num">49%</td><td class="num">61.9%</td><td class="num">92.7%</td><td class="num">96.8%</td><td class="num">94.8%</td><td class="num">81.2%</td><td class="num">0</td><td class="num">0</td></tr>
-<tr><td><b>Ungrouped</b></td><td class="num">45%</td><td class="num">32%</td><td class="num">50.0%</td><td class="num">80.8%</td><td class="num">85.7%</td><td class="num">97.4%</td><td class="num">86.0%<span class="ar up">↗</span></td><td class="num">0</td><td class="num">0</td></tr>
-<tr class="total"><td><b>Whole of region</b></td><td class="num">77%</td><td class="num">77%</td><td class="num">62.9%</td><td class="num">87.9%<span class="ar up">↗</span></td><td class="num">92.8%<span class="ar up">↗</span></td><td class="num">93.3%<span class="ar up">↗</span></td><td class="num">84.4%<span class="ar up">↗</span></td><td class="num">0</td><td class="num hot">1</td></tr>
+<tr class="group"><td colspan="7">Patching and platforms</td></tr>
+<tr><td class="m-name">Critical flaws fixed on time</td><td class="num">86%</td><td class="num">64%</td><td class="num">84%</td><td class="num">50%</td><td class="num">45%</td><td class="num total">77%</td></tr>
+<tr><td class="m-name">High flaws fixed on time</td><td class="num">90%</td><td class="num">66%</td><td class="num">81%</td><td class="num">49%</td><td class="num">32%</td><td class="num total">77%</td></tr>
+<tr><td class="m-name">Servers patched in the last 35 days</td><td class="num">69%</td><td class="num">56%</td><td class="num">60%</td><td class="num">62%</td><td class="num">50%</td><td class="num total">63%</td></tr>
+<tr><td class="m-name">Devices on a supported operating system</td><td class="num">89%</td><td class="num">86%</td><td class="num">86%</td><td class="num">93%</td><td class="num">81%</td><td class="num total">88%<span class="ar up">↗</span></td></tr>
+<tr class="group"><td colspan="7">Visibility</td></tr>
+<tr><td class="m-name">Machines with a working security sensor</td><td class="num">91%</td><td class="num">93%</td><td class="num">94%</td><td class="num">97%</td><td class="num">86%</td><td class="num total">93%<span class="ar up">↗</span></td></tr>
+<tr class="group"><td colspan="7">People and accounts</td></tr>
+<tr><td class="m-name">People with multi-factor sign-in</td><td class="num">93%</td><td class="num">92%</td><td class="num">94%</td><td class="num">95%</td><td class="num">97%</td><td class="num total">93%<span class="ar up">↗</span></td></tr>
+<tr><td class="m-name">Enabled accounts actually in use</td><td class="num">84%</td><td class="num">85%</td><td class="num">85%</td><td class="num">81%</td><td class="num">86%<span class="ar up">↗</span></td><td class="num total">84%<span class="ar up">↗</span></td></tr>
+<tr><td class="m-name">Leaked passwords on live accounts</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num total">0</td></tr>
+<tr class="group"><td colspan="7">Internet-facing</td></tr>
+<tr><td class="m-name">Serious internet-facing risks overdue</td><td class="num hot">1</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num hot total">1</td></tr>
   </tbody>
 </table>
 <footer>For regional leadership: each service's own scorecard shows only its own figures. Region totals leave out test
-  sites. Fix-on-time is this month's fixes, pooled.</footer>
+  sites. Fix-on-time is the month's fixes, pooled. Shares are rounded to whole percentages here; the service's own
+  scorecard has one decimal place.</footer>
 </section>
 </body></html>
