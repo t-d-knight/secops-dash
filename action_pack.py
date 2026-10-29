@@ -14,7 +14,8 @@ Tabs:
   No MFA - svc&mailbox the same for service accounts / mailboxes (usually a cloud-sync scope fix)
   Generic accounts     accounts classified generic (identity_categories.classify_account)
   VPN & remote-app     extra shared-domain accounts for VPN / MANAD over RDS (identity_categories.classify_access)
-  Stale sensors        managed hosts silent longer than reporting.stale_sensor_days
+  Sensors not reporting  managed hosts whose sensor is silent past its type's limit, or silent on a
+                       machine still logging on (sensor_health; reporting.silent_sensor_days)
   Missing sensors      machines with no Falcon sensor: in-use AD computer accounts (servers,
                        DCs, workstations) first, then devices only seen on the network
   External risks       Hadrian: confirmed risks (verified / unpatched tech / infected
@@ -56,6 +57,7 @@ from openpyxl.utils import get_column_letter
 import config as config_mod
 import discovery_classes as dc
 import identity_categories as ic
+import sensor_health
 import usb_categories as uc
 from db import pg_connect
 
@@ -166,17 +168,24 @@ TABS: List[Tuple[str, str, List[str], str]] = [
      "Every enabled account at the site, in any OU, for checking who should still have one. Stale accounts come "
      "first: confirm they're still needed, or disable them. Last activity is Falcon's most recent sign-in or use of the "
      "account. Manager and employee ID aren't included -- take them from AD if needed."),
-    ("Stale sensors", f"""
-        SELECT site_label, hostname, product_type, os_version, last_seen::date,
-               (now()::date - last_seen::date) AS days_silent, sensor_version,
-               array_to_string(ous, ' / '), array_to_string(groups, ', ')
-        FROM assets
-        WHERE source = 'falcon' AND NOT retired AND last_seen < now() - (%(stale_days)s || ' days')::interval
-          AND {SITE.format(col="site_label")}
-        ORDER BY last_seen""",
-     ["Hostname", "Type", "OS", "Last seen", "Days silent", "Sensor version", "OU", "Host groups"],
-     "Managed hosts whose Falcon sensor hasn't checked in. Decommissioned: remove from Falcon. "
-     "Still in use: fix the sensor -- these hosts are unprotected and unassessed."),
+    # __NOT_REPORTING__ is filled in by build_workbook with the configured per-type limits
+    ("Sensors not reporting", f"""
+        SELECT h.site_label,
+               CASE WHEN {sensor_health.in_use_sql("h")} THEN 'Sensor broken or removed: machine still in use'
+                    ELSE 'Probably switched off or retired' END,
+               h.hostname, h.product_type, h.os_version, h.last_seen::date,
+               (now()::date - h.last_seen::date) AS days_silent, {sensor_health.machine_seen_sql("h")}::date,
+               h.sensor_version, array_to_string(h.ous, ' / '), array_to_string(h.groups, ', ')
+        FROM assets h
+        WHERE h.source = 'falcon' AND NOT h.retired AND __NOT_REPORTING__
+          AND {SITE.format(col="h.site_label")}
+        ORDER BY {sensor_health.in_use_sql("h")} DESC, h.last_seen""",
+     ["Likely", "Hostname", "Type", "OS", "Last check-in", "Days silent", "Machine last seen (AD / network)",
+      "Sensor version", "OU", "Host groups"],
+     "Managed hosts whose Falcon sensor isn't reporting: silent longer than its type allows (workstations 30 days, "
+     "servers 7, domain controllers 2), or silent on a machine that's still logging on. Machine still in use: fix "
+     "the sensor first -- that machine is unprotected and unassessed. Otherwise confirm it's been switched off or "
+     "retired, and remove it from Falcon."),
     ("Missing sensors", f"""
         SELECT site_label, {dc.sql_case()}, COALESCE(hostname, '(no hostname)'), os_version,
                array_to_string(ips, ', '), mac_vendor, last_seen::date, description, {dc.sql_case(part=1)}
@@ -311,7 +320,7 @@ def write_sheet(wb: Workbook, title: str, cols: List[str], rows: List[Tuple]) ->
         ws.auto_filter.ref = ws.dimensions
 
 
-def build_workbook(cur, site: Optional[str], as_at: dt.date, stale_days: int, since: dt.date, until: dt.date,
+def build_workbook(cur, site: Optional[str], as_at: dt.date, sensor_days: Dict[str, int], since: dt.date, until: dt.date,
                    bulk_files: int = 100, bulk_mb: int = 1024) -> Tuple[Workbook, Dict[str, int]]:
     wb = Workbook()
     summary = wb.active
@@ -319,7 +328,8 @@ def build_workbook(cur, site: Optional[str], as_at: dt.date, stale_days: int, si
     counts: Dict[str, int] = {}
     region = site is None
     for name, sql, cols, _ in TABS:
-        cur.execute(sql, {"site": site, "stale_days": stale_days, "since": since, "until": until,
+        sql = sql.replace("__NOT_REPORTING__", sensor_health.not_reporting_sql("h", sensor_days))
+        cur.execute(sql, {"site": site, "since": since, "until": until,
                           "bulk_files": bulk_files, "bulk_mb": bulk_mb})
         rows = cur.fetchall()
         # region workbook keeps the Site column; a site's own workbook drops it
@@ -369,7 +379,7 @@ def main() -> None:
     if args.site and args.site not in labels:
         ap.error(f"unknown site {args.site!r}; configured: {', '.join(labels)}")
     as_at = dt.date.today()
-    stale_days = int(cfg.get("reporting", {}).get("stale_sensor_days", 7))
+    sensor_days = sensor_health.days(cfg)
     until = dt.date.fromisoformat(args.until) if args.until else as_at.replace(day=1) - dt.timedelta(days=1)
     since = dt.date.fromisoformat(args.since) if args.since else until.replace(day=1)
     bulk_files = int(cfg.get("reporting", {}).get("usb_bulk_files", 100))
@@ -381,7 +391,7 @@ def main() -> None:
     cur = conn.cursor()
     jobs: List[Optional[str]] = [args.site] if args.site else [None] + labels
     for site in jobs:
-        wb, counts = build_workbook(cur, site, as_at, stale_days, since, until, bulk_files, bulk_mb)
+        wb, counts = build_workbook(cur, site, as_at, sensor_days, since, until, bulk_files, bulk_mb)
         path = os.path.join(out_dir, f"{safe_name(site or 'region')}-actions-{as_at:%Y-%m}.xlsx")
         wb.save(path)
         print(f"[action_pack] wrote {path} " + ", ".join(f"{k}={v}" for k, v in counts.items()))

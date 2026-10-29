@@ -24,7 +24,10 @@ reporting:
   retention_days: 540            # daily_* snapshot tables
   findings_retention_days: 180   # FIXED/EXPIRED rows in vuln_findings
   events_retention_days: 365     # security_alerts, email_events, entra_risk_detections, dmarc_daily, usb_*
-  stale_sensor_days: 7           # a managed host not seen for this long counts as a stale sensor
+  # When a sensor counts as "not reporting" (sensor_health.py): silent longer than its type allows, or
+  # silent on a machine that's still logging on (always counted). Defaults shown; the dashboards use them.
+  # silent_sensor_days: {workstation: 30, server: 7, domain_controller: 2}
+  stale_sensor_days: 7           # legacy single limit, only for the old daily_asset_metrics.stale_sensors column
   usb_bulk_files: 100            # action pack: business files to one USB drive in a month that flag "Bulk copy"
   usb_bulk_mb: 1024              # ... and total volume that flags "Large volume"
   sla_days:

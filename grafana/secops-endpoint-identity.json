@@ -120,7 +120,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "A **stale** sensor hasn't checked in for 7+ days: the host is unprotected and unassessed, or decommissioned but not removed from Falcon."
+        "content": "A sensor is **not reporting** when it's silent past its type's limit (workstations 30 days, servers 7, domain controllers 2, or any machine still logging on after its sensor went quiet). A machine still in use with a silent sensor is unprotected; the rest are usually switched off, or retired but not removed from Falcon."
       }
     },
     {
@@ -178,7 +178,7 @@
     {
       "id": 6,
       "type": "stat",
-      "title": "Stale sensors (7d+)",
+      "title": "Sensors not reporting",
       "gridPos": {
         "x": 4,
         "y": 5,
@@ -230,10 +230,10 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT count(*) FROM assets WHERE source = 'falcon' AND NOT retired AND site_label IN ($site) AND last_seen < now() - interval '7 days'"
+          "rawSql": "SELECT count(*) FROM assets x WHERE x.source = 'falcon' AND NOT x.retired AND x.site_label IN ($site) AND (((x.product_type = 'workstation' AND x.last_seen < now() - interval '30 days') OR (x.product_type = 'server' AND x.last_seen < now() - interval '7 days') OR (x.product_type = 'domain_controller' AND x.last_seen < now() - interval '2 days') OR (COALESCE(x.product_type, '') NOT IN ('workstation', 'server', 'domain_controller') AND x.last_seen < now() - interval '7 days')) OR (x.last_seen < now() - interval '3 days' AND EXISTS (SELECT 1 FROM assets tw WHERE tw.source = 'falcon_unmanaged' AND NOT tw.retired AND tw.discovery_class = 'duplicate_of_managed' AND tw.managed_twin = upper(x.hostname) AND tw.last_seen > x.last_seen + interval '3 days')))"
         }
       ],
-      "description": "Managed hosts whose sensor hasn't checked in for 7+ days."
+      "description": "Managed hosts whose sensor is silent past its type's limit (workstations 30 days, servers 7, domain controllers 2, or any machine still logging on after its sensor went quiet)."
     },
     {
       "id": 7,
@@ -531,7 +531,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Stale sensors"
+              "options": "Sensors not reporting"
             },
             "properties": [
               {
@@ -557,7 +557,7 @@
           "format": "time_series",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT snapshot_date::timestamp AS time, sum(managed_hosts) AS \"Managed\", sum(unmanaged_assets) AS \"Unmanaged\", sum(stale_sensors) AS \"Stale sensors\" FROM daily_asset_metrics WHERE site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1 ORDER BY 1"
+          "rawSql": "SELECT snapshot_date::timestamp AS time, sum(managed_hosts) AS \"Managed\", sum(unmanaged_assets) AS \"Unmanaged\", sum(silent_sensors) AS \"Sensors not reporting\" FROM daily_asset_metrics WHERE site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1 ORDER BY 1"
         }
       ],
       "description": "Managed, unmanaged and stale-sensor counts per day from the nightly snapshot."
@@ -565,7 +565,7 @@
     {
       "id": 12,
       "type": "table",
-      "title": "Stale / degraded sensors",
+      "title": "Not reporting / degraded sensors",
       "gridPos": {
         "x": 12,
         "y": 9,
@@ -613,10 +613,9 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT hostname AS \"Host\", site_label AS \"Site\", product_type AS \"Type\", os_version AS \"OS\", sensor_version AS \"Sensor\", rfm AS \"RFM\", last_seen AS \"Last seen\", round(EXTRACT(EPOCH FROM now() - last_seen) / 86400.0, 1) AS \"Days silent\" FROM assets WHERE source = 'falcon' AND NOT retired AND site_label IN ($site) AND (last_seen < now() - interval '7 days' OR lower(rfm) = 'yes') ORDER BY last_seen LIMIT 200"
+          "rawSql": "SELECT x.hostname AS \"Host\", x.site_label AS \"Site\", x.product_type AS \"Type\", x.os_version AS \"OS\", x.sensor_version AS \"Sensor\", x.rfm AS \"RFM\", x.last_seen AS \"Last seen\", round(EXTRACT(EPOCH FROM now() - x.last_seen) / 86400.0, 1) AS \"Days silent\" FROM assets x WHERE x.source = 'falcon' AND NOT x.retired AND x.site_label IN ($site) AND ((((x.product_type = 'workstation' AND x.last_seen < now() - interval '30 days') OR (x.product_type = 'server' AND x.last_seen < now() - interval '7 days') OR (x.product_type = 'domain_controller' AND x.last_seen < now() - interval '2 days') OR (COALESCE(x.product_type, '') NOT IN ('workstation', 'server', 'domain_controller') AND x.last_seen < now() - interval '7 days')) OR (x.last_seen < now() - interval '3 days' AND EXISTS (SELECT 1 FROM assets tw WHERE tw.source = 'falcon_unmanaged' AND NOT tw.retired AND tw.discovery_class = 'duplicate_of_managed' AND tw.managed_twin = upper(x.hostname) AND tw.last_seen > x.last_seen + interval '3 days'))) OR lower(x.rfm) = 'yes') ORDER BY x.last_seen LIMIT 200"
         }
-      ],
-      "description": "Hosts silent 7+ days or in reduced-functionality mode, longest-silent first."
+      ]
     },
     {
       "id": 13,

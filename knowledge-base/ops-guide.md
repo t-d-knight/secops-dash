@@ -38,7 +38,7 @@ Everything downstream reads from the one database, so the dashboards and reports
 
 | Source | What it brings in |
 | --- | --- |
-| CrowdStrike Falcon: hosts and Discover | Sensor coverage, stale sensors, devices found on the network with no sensor |
+| CrowdStrike Falcon: hosts and Discover | Sensor coverage, sensors not reporting (silent past their type's limit, or broken on a machine still in use), devices found on the network with no sensor |
 | Falcon Exposure Management (Spotlight) | Endpoint vulnerabilities, with severity, fix, and how long each has been open |
 | Falcon patch status and system insights | Last confirmed patch, pending reboots, uptime, disk, CPU and memory for servers |
 | Falcon alerts | Endpoint and identity detections, open and unassigned, time to close |
@@ -77,7 +77,7 @@ The tool produces three kinds of output: live dashboards for the cyber team, sch
 | Weekly security report | Cyber team, cyber management, each site | Mondays | PDF, region plus one per site | Six pages: endpoint vulnerabilities, external attack surface, email, alerts and identity, estate, removable media, with trends against last week |
 | Quarterly security report | Cyber management, executives | 1 Jan, Apr, Jul, Oct | PDF, region plus one per site | The same six pages over the last quarter |
 | Servers report | Infrastructure, applications and database teams | Mondays | PDF plus Excel workbook | Patching and reboots, longest-unpatched servers, domain controllers, top missing fixes, disk, and servers with no sensor |
-| Action pack | Each site's ICT contacts | 1st of the month | Excel, one per site | Named lists to work through: stale and weak-password accounts, no MFA, stale sensors, missing sensors, external risks, USB activity |
+| Action pack | Each site's ICT contacts | 1st of the month | Excel, one per site | Named lists to work through: stale and weak-password accounts, no MFA, sensors not reporting, missing sensors, external risks, USB activity |
 | Programme impact report | Cyber management, leadership | 1st of the month, or on demand | PDF | What has changed since the programme started: Day 0 against now, Patch Tuesday fix rates, the action log |
 
 Reports are published to each site's folder the morning they're made.

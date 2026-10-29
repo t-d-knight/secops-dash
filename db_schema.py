@@ -637,6 +637,12 @@ DDL_STATEMENTS = [
     "ALTER TABLE daily_asset_metrics ADD COLUMN IF NOT EXISTS os_ending_soon INTEGER;",
     "ALTER TABLE daily_asset_metrics ADD COLUMN IF NOT EXISTS external_domains INTEGER;",
     "ALTER TABLE daily_asset_metrics ADD COLUMN IF NOT EXISTS external_ips INTEGER;",
+    # Sensors not reporting under sensor_health's per-type limits (silent_sensors), and
+    # the subset on machines still logging on (silent_in_use: sensor broken or removed).
+    # New columns rather than a redefined stale_sensors, so trends start fresh instead
+    # of reading the change of definition as an improvement.
+    "ALTER TABLE daily_asset_metrics ADD COLUMN IF NOT EXISTS silent_sensors INTEGER;",
+    "ALTER TABLE daily_asset_metrics ADD COLUMN IF NOT EXISTS silent_in_use INTEGER;",
     """
     CREATE TABLE IF NOT EXISTS daily_alert_metrics (
         snapshot_date    DATE NOT NULL,

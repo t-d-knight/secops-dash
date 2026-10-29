@@ -157,6 +157,9 @@ DISCOVER = [   # Discover "unmanaged" records, one per classify_unmanaged() clas
     {"id": "u7", "hostname": None, "entity_type": "unmanaged", "data_providers": PASSIVE, "current_local_ip": "10.1.9.9",
      "mac_addresses": ["00:50:56:AA:BB:01"], "system_manufacturer": "VMware, Inc.",
      "last_seen_timestamp": iso(0)},                                                                  # secondary_ip_of_managed (aid1's MAC)
+    {"id": "u8", "hostname": "RANDOM01$", "entity_type": "unmanaged", "data_providers": AD, "machine_domain": "rvh.local",
+     "os_version": "Windows 11", "ad_user_account_control": 4096, "account_enabled": "Yes",
+     "last_seen_timestamp": iso(1)},      # duplicate_of_managed (aid3): logging on 19 days after its sensor went quiet
 ]
 
 def _mail(rcpt, *, incoming=True, internal=False, scl="1", ap="clean", quarantined=False, restored=False, hours=3):

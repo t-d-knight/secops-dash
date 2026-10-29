@@ -835,7 +835,7 @@
     {
       "id": 18,
       "type": "stat",
-      "title": "Stale sensors",
+      "title": "Sensors not reporting",
       "gridPos": {
         "x": 12,
         "y": 29,
@@ -887,10 +887,10 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT count(*) FROM assets WHERE source = 'falcon' AND NOT retired AND site_label IN ($site) AND last_seen <= now() - interval '7 days'"
+          "rawSql": "SELECT count(*) FROM assets x WHERE x.source = 'falcon' AND NOT x.retired AND x.site_label IN ($site) AND (((x.product_type = 'workstation' AND x.last_seen < now() - interval '30 days') OR (x.product_type = 'server' AND x.last_seen < now() - interval '7 days') OR (x.product_type = 'domain_controller' AND x.last_seen < now() - interval '2 days') OR (COALESCE(x.product_type, '') NOT IN ('workstation', 'server', 'domain_controller') AND x.last_seen < now() - interval '7 days')) OR (x.last_seen < now() - interval '3 days' AND EXISTS (SELECT 1 FROM assets tw WHERE tw.source = 'falcon_unmanaged' AND NOT tw.retired AND tw.discovery_class = 'duplicate_of_managed' AND tw.managed_twin = upper(x.hostname) AND tw.last_seen > x.last_seen + interval '3 days')))"
         }
       ],
-      "description": "Managed hosts silent for 7+ days: unprotected, unassessed, or decommissioned but not removed from Falcon."
+      "description": "Managed hosts whose sensor is silent past its type's limit (workstations 30 days, servers 7, domain controllers 2, or any machine still logging on after its sensor went quiet). The table below puts machines still in use first: those are unprotected."
     },
     {
       "id": 19,
@@ -1083,7 +1083,7 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT s.site_label AS \"Site\", COALESCE(a.active,0) AS \"Active hosts\", COALESCE(a.assessed,0) AS \"Assessed\", round(100.0 * COALESCE(a.assessed,0) / NULLIF(a.active,0), 1) AS \"% assessed\", COALESCE(st.n,0) AS \"Stale sensors\", COALESCE(u.n,0) AS \"Missing a sensor\" FROM dim_site s LEFT JOIN (SELECT site_label, count(*) AS active, count(*) FILTER (WHERE EXISTS (SELECT 1 FROM vuln_findings v WHERE v.source = 'falcon_spotlight' AND v.source_asset_id = a.source_asset_id)) AS assessed FROM (SELECT * FROM assets WHERE source = 'falcon' AND NOT retired AND last_seen > now() - interval '7 days') a GROUP BY 1) a ON a.site_label = s.site_label LEFT JOIN (SELECT site_label, count(*) n FROM assets WHERE source = 'falcon' AND NOT retired AND last_seen <= now() - interval '7 days' GROUP BY 1) st ON st.site_label = s.site_label LEFT JOIN (SELECT site_label, count(*) n FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND discovery_class IN ('domain_controller_no_sensor', 'server_no_sensor', 'workstation_no_sensor', 'cloud_no_sensor') GROUP BY 1) u ON u.site_label = s.site_label WHERE s.site_label IN ($site) ORDER BY \"% assessed\" NULLS LAST, \"Active hosts\" DESC"
+          "rawSql": "SELECT s.site_label AS \"Site\", COALESCE(a.active,0) AS \"Active hosts\", COALESCE(a.assessed,0) AS \"Assessed\", round(100.0 * COALESCE(a.assessed,0) / NULLIF(a.active,0), 1) AS \"% assessed\", COALESCE(st.n,0) AS \"Sensors not reporting\", COALESCE(u.n,0) AS \"Missing a sensor\" FROM dim_site s LEFT JOIN (SELECT site_label, count(*) AS active, count(*) FILTER (WHERE EXISTS (SELECT 1 FROM vuln_findings v WHERE v.source = 'falcon_spotlight' AND v.source_asset_id = a.source_asset_id)) AS assessed FROM (SELECT * FROM assets WHERE source = 'falcon' AND NOT retired AND last_seen > now() - interval '7 days') a GROUP BY 1) a ON a.site_label = s.site_label LEFT JOIN (SELECT x.site_label, count(*) n FROM assets x WHERE x.source = 'falcon' AND NOT x.retired AND (((x.product_type = 'workstation' AND x.last_seen < now() - interval '30 days') OR (x.product_type = 'server' AND x.last_seen < now() - interval '7 days') OR (x.product_type = 'domain_controller' AND x.last_seen < now() - interval '2 days') OR (COALESCE(x.product_type, '') NOT IN ('workstation', 'server', 'domain_controller') AND x.last_seen < now() - interval '7 days')) OR (x.last_seen < now() - interval '3 days' AND EXISTS (SELECT 1 FROM assets tw WHERE tw.source = 'falcon_unmanaged' AND NOT tw.retired AND tw.discovery_class = 'duplicate_of_managed' AND tw.managed_twin = upper(x.hostname) AND tw.last_seen > x.last_seen + interval '3 days'))) GROUP BY 1) st ON st.site_label = s.site_label LEFT JOIN (SELECT site_label, count(*) n FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND discovery_class IN ('domain_controller_no_sensor', 'server_no_sensor', 'workstation_no_sensor', 'cloud_no_sensor') GROUP BY 1) u ON u.site_label = s.site_label WHERE s.site_label IN ($site) ORDER BY \"% assessed\" NULLS LAST, \"Active hosts\" DESC"
         }
       ],
       "description": "Per site: active hosts, how many are assessed, stale sensors and named machines missing a sensor. Worst coverage first."
@@ -1139,7 +1139,7 @@
     {
       "id": 24,
       "type": "table",
-      "title": "Stale sensors (silent 7+ days)",
+      "title": "Sensors not reporting",
       "gridPos": {
         "x": 0,
         "y": 44,
@@ -1187,10 +1187,10 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT hostname AS \"Hostname\", site_label AS \"Site\", product_type AS \"Type\", os_version AS \"OS\", last_seen AS \"Last seen\", (now()::date - last_seen::date) AS \"Days silent\", sensor_version AS \"Sensor\", array_to_string(ous, ' / ') AS \"OU\" FROM assets WHERE source = 'falcon' AND NOT retired AND site_label IN ($site) AND last_seen <= now() - interval '7 days' ORDER BY last_seen"
+          "rawSql": "SELECT CASE WHEN (x.last_seen < now() - interval '3 days' AND EXISTS (SELECT 1 FROM assets tw WHERE tw.source = 'falcon_unmanaged' AND NOT tw.retired AND tw.discovery_class = 'duplicate_of_managed' AND tw.managed_twin = upper(x.hostname) AND tw.last_seen > x.last_seen + interval '3 days')) THEN 'Broken: machine still in use' ELSE 'Probably off or retired' END AS \"Likely\", x.hostname AS \"Hostname\", x.site_label AS \"Site\", x.product_type AS \"Type\", x.os_version AS \"OS\", x.last_seen AS \"Last check-in\", (now()::date - x.last_seen::date) AS \"Days silent\", (SELECT max(tw.last_seen) FROM assets tw WHERE tw.source = 'falcon_unmanaged' AND NOT tw.retired AND tw.discovery_class = 'duplicate_of_managed' AND tw.managed_twin = upper(x.hostname)) AS \"Machine last seen\", x.sensor_version AS \"Sensor\", array_to_string(x.ous, ' / ') AS \"OU\" FROM assets x WHERE x.source = 'falcon' AND NOT x.retired AND x.site_label IN ($site) AND (((x.product_type = 'workstation' AND x.last_seen < now() - interval '30 days') OR (x.product_type = 'server' AND x.last_seen < now() - interval '7 days') OR (x.product_type = 'domain_controller' AND x.last_seen < now() - interval '2 days') OR (COALESCE(x.product_type, '') NOT IN ('workstation', 'server', 'domain_controller') AND x.last_seen < now() - interval '7 days')) OR (x.last_seen < now() - interval '3 days' AND EXISTS (SELECT 1 FROM assets tw WHERE tw.source = 'falcon_unmanaged' AND NOT tw.retired AND tw.discovery_class = 'duplicate_of_managed' AND tw.managed_twin = upper(x.hostname) AND tw.last_seen > x.last_seen + interval '3 days'))) ORDER BY (x.last_seen < now() - interval '3 days' AND EXISTS (SELECT 1 FROM assets tw WHERE tw.source = 'falcon_unmanaged' AND NOT tw.retired AND tw.discovery_class = 'duplicate_of_managed' AND tw.managed_twin = upper(x.hostname) AND tw.last_seen > x.last_seen + interval '3 days')) DESC, x.last_seen"
         }
       ],
-      "description": "Decommissioned: remove from Falcon. Still in use: fix the sensor."
+      "description": "Broken (machine still logging on): fix the sensor first -- it's unprotected. Probably off or retired: confirm, then remove from Falcon."
     },
     {
       "id": 25,

@@ -66,8 +66,9 @@ MEASURES = [
             "Still receiving security updates from the vendor",
             "inverse", ("unsupported_os", "managed_hosts"), "unsupported devices"),
     Measure("sensor", "visibility", "Machines with a working security sensor",
-            "In-use machines with CrowdStrike installed and reporting in within the last 7 days",
-            "sensor", ("managed_hosts", "stale_sensors", "missing_sensors"), "machines without a working sensor"),
+            "In-use machines with CrowdStrike installed and reporting in (workstations within 30 days, servers 7, "
+            "domain controllers 2; a machine still logging on with a silent sensor counts as not working)",
+            "sensor", ("managed_hosts", "silent_sensors", "missing_sensors"), "machines without a working sensor"),
     Measure("mfa", "people", "People with multi-factor sign-in",
             "Staff accounts protected by a second step beyond the password",
             "inverse", ("people_no_mfa", "people_accounts"), "people without it"),

@@ -21,6 +21,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import discovery_classes as dc
+import sensor_health as sh
 import impact_spec
 import usb_categories as uc
 from email_types import BULK_EVENT_TYPES, THREAT_EVENT_TYPES, sql_in
@@ -305,16 +306,16 @@ def overview():
         d AS (SELECT site_label, round(100.0 * sum(dmarc_pass) / NULLIF(sum(messages),0), 1) AS dm
               FROM dmarc_daily WHERE """ + rng_d("report_date") + """ GROUP BY 1),
         h AS (SELECT site_label,
-                     count(*) FILTER (WHERE source = 'falcon' AND last_seen < now() - interval '7 days') AS stale,
+                     count(*) FILTER (WHERE source = 'falcon' AND """ + sh.not_reporting_sql("x") + """) AS stale,
                      count(*) FILTER (WHERE source = 'falcon_unmanaged') AS unm
-              FROM assets WHERE NOT retired GROUP BY 1)
+              FROM assets x WHERE NOT retired GROUP BY 1)
         SELECT s.site_label AS "Site",
                COALESCE(v.ep_ch,0) AS "Endpoint C+H", COALESCE(v.ext_ch,0) AS "External C+H",
                COALESCE(v.kev,0) AS "KEV", COALESCE(v.sla,0) AS "SLA breaches",
                COALESCE(a.al,0) AS "Open C+H alerts", COALESCE(i.hi,0) AS "High-risk IDs",
                COALESCE(r.ru,0) AS "Entra risky users", m.mfa AS "MFA registered %",
                COALESCE(e.em,0) AS "Email threats", d.dm AS "DMARC pass %",
-               COALESCE(h.stale,0) AS "Stale sensors", COALESCE(h.unm,0) AS "Unmanaged"
+               COALESCE(h.stale,0) AS "Sensors not reporting", COALESCE(h.unm,0) AS "Unmanaged"
         FROM sites s
         LEFT JOIN v ON v.site_label = s.site_label LEFT JOIN a ON a.site_label = s.site_label
         LEFT JOIN i ON i.site_label = s.site_label LEFT JOIN r ON r.site_label = s.site_label
@@ -325,7 +326,7 @@ def overview():
     """, h=10, overrides=[
         thresh_bg("KEV", BAD_UP), thresh_bg("Open C+H alerts", BAD_UP), thresh_bg("High-risk IDs", BAD_UP),
         thresh_bg("Entra risky users", BAD_UP), thresh_bg("MFA registered %", GOOD_PCT),
-        thresh_bg("DMARC pass %", GOOD_PCT), thresh_bg("Stale sensors", BAD_UP),
+        thresh_bg("DMARC pass %", GOOD_PCT), thresh_bg("Sensors not reporting", BAD_UP),
         bg("Endpoint C+H"), bg("External C+H"), bg("SLA breaches")])
 
     b.row("Trends", note="From the nightly snapshots. A step change usually means coverage changed (more hosts "
@@ -425,7 +426,7 @@ def overview():
 # =====================================================================
 ENDPOINT_IDENTITY_HELP = {
     "Managed hosts": "Devices with a Falcon sensor (not retired), whatever their last check-in.",
-    "Stale sensors (7d+)": "Managed hosts whose sensor hasn't checked in for 7+ days.",
+    "Sensors not reporting": "Managed hosts whose sensor is silent past its type's limit (" + sh.describe() + ").",
     "Contained hosts": "Hosts currently network-contained from the Falcon console.",
     "Coverage trend": "Managed, unmanaged and stale-sensor counts per day from the nightly snapshot.",
     "Stale / degraded sensors": "Hosts silent 7+ days or in reduced-functionality mode, longest-silent first.",
@@ -484,12 +485,13 @@ def endpoint_identity():
     b = Builder()
     b.text(f"Falcon sensor coverage and detections, removable media, identity risk (Falcon Identity Protection) and Entra ID. {HOVER}",
            h=2)
-    b.row("Endpoint coverage (Falcon)", note="A **stale** sensor hasn't checked in for 7+ days: the host is "
-          "unprotected and unassessed, or decommissioned but not removed from Falcon.")
+    b.row("Endpoint coverage (Falcon)", note="A sensor is **not reporting** when it's silent past its type's limit "
+          "(" + sh.describe() + "). A machine still in use with a silent sensor is unprotected; the rest are "
+          "usually switched off, or retired but not removed from Falcon.")
     b.stat("Managed hosts", "SELECT count(*) FROM assets WHERE source = 'falcon' AND NOT retired AND site_label IN ($site)",
            thresholds=NEUTRAL)
-    b.stat("Stale sensors (7d+)", "SELECT count(*) FROM assets WHERE source = 'falcon' AND NOT retired "
-           "AND site_label IN ($site) AND last_seen < now() - interval '7 days'", thresholds=BAD_UP)
+    b.stat("Sensors not reporting", "SELECT count(*) FROM assets x WHERE x.source = 'falcon' AND NOT x.retired "
+           "AND x.site_label IN ($site) AND " + sh.not_reporting_sql("x"), thresholds=BAD_UP)
     b.stat("Reduced functionality mode", "SELECT count(*) FROM assets WHERE source = 'falcon' AND NOT retired "
            "AND site_label IN ($site) AND lower(rfm) = 'yes'", thresholds=BAD_UP,
            description="Sensors in RFM -- usually an unsupported kernel/OS build. Protection is degraded.")
@@ -503,16 +505,16 @@ def endpoint_identity():
            "AND site_label IN ($site) AND containment ILIKE 'contain%'", thresholds=BAD_UP)
     b.ts("Coverage trend", f"""
         SELECT snapshot_date::timestamp AS time, sum(managed_hosts) AS "Managed", sum(unmanaged_assets) AS "Unmanaged",
-               sum(stale_sensors) AS "Stale sensors"
+               sum(silent_sensors) AS "Sensors not reporting"
         FROM daily_asset_metrics WHERE site_label IN ($site) AND {rng_d('snapshot_date')} GROUP BY 1 ORDER BY 1""",
-         colors={"Managed": "green", "Unmanaged": "orange", "Stale sensors": "red"})
-    b.table("Stale / degraded sensors", """
-        SELECT hostname AS "Host", site_label AS "Site", product_type AS "Type", os_version AS "OS",
-               sensor_version AS "Sensor", rfm AS "RFM", last_seen AS "Last seen",
-               round(EXTRACT(EPOCH FROM now() - last_seen) / 86400.0, 1) AS "Days silent"
-        FROM assets WHERE source = 'falcon' AND NOT retired AND site_label IN ($site)
-          AND (last_seen < now() - interval '7 days' OR lower(rfm) = 'yes')
-        ORDER BY last_seen LIMIT 200""", w=12, h=8, overrides=[bg("Days silent")])
+         colors={"Managed": "green", "Unmanaged": "orange", "Sensors not reporting": "red"})
+    b.table("Not reporting / degraded sensors", """
+        SELECT x.hostname AS "Host", x.site_label AS "Site", x.product_type AS "Type", x.os_version AS "OS",
+               x.sensor_version AS "Sensor", x.rfm AS "RFM", x.last_seen AS "Last seen",
+               round(EXTRACT(EPOCH FROM now() - x.last_seen) / 86400.0, 1) AS "Days silent"
+        FROM assets x WHERE x.source = 'falcon' AND NOT x.retired AND x.site_label IN ($site)
+          AND (""" + sh.not_reporting_sql("x") + """ OR lower(x.rfm) = 'yes')
+        ORDER BY x.last_seen LIMIT 200""", w=12, h=8, overrides=[bg("Days silent")])
     b.table("Unmanaged assets", """
         SELECT coalesce(hostname, array_to_string(ips, ', ')) AS "Asset", site_label AS "Site", platform AS "Platform",
                os_version AS "OS", last_seen AS "Last seen", site_matched_by AS "Site matched by"
@@ -990,11 +992,11 @@ def worklist():
     b.stat("Active hosts not assessed", f"""
         SELECT count(*) FROM ({ACTIVE_HOSTS}) a
         WHERE a.site_label IN ($site) AND NOT {ASSESSED_A}""", thresholds=BAD_UP)
-    b.stat("Stale sensors", """
-        SELECT count(*) FROM assets WHERE source = 'falcon' AND NOT retired AND site_label IN ($site)
-          AND last_seen <= now() - interval '7 days'""", thresholds=BAD_UP,
-           description="Managed hosts silent for 7+ days: unprotected, unassessed, or decommissioned but not "
-                       "removed from Falcon.")
+    b.stat("Sensors not reporting", """
+        SELECT count(*) FROM assets x WHERE x.source = 'falcon' AND NOT x.retired AND x.site_label IN ($site)
+          AND """ + sh.not_reporting_sql("x"), thresholds=BAD_UP,
+           description="Managed hosts whose sensor is silent past its type's limit (" + sh.describe() + "). "
+                       "The table below puts machines still in use first: those are unprotected.")
     b.stat("Named machines missing a sensor", f"""
         SELECT count(*) FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired AND site_label IN ($site)
           AND discovery_class IN {dc.sql_in(dc.NAMED_MACHINES)}""", thresholds=BAD_UP,
@@ -1009,13 +1011,13 @@ def worklist():
         SELECT s.site_label AS "Site", COALESCE(a.active,0) AS "Active hosts",
                COALESCE(a.assessed,0) AS "Assessed",
                round(100.0 * COALESCE(a.assessed,0) / NULLIF(a.active,0), 1) AS "% assessed",
-               COALESCE(st.n,0) AS "Stale sensors", COALESCE(u.n,0) AS "Missing a sensor"
+               COALESCE(st.n,0) AS "Sensors not reporting", COALESCE(u.n,0) AS "Missing a sensor"
         FROM dim_site s
         LEFT JOIN (SELECT site_label, count(*) AS active,
                           count(*) FILTER (WHERE {ASSESSED_A}) AS assessed
                    FROM ({ACTIVE_HOSTS}) a GROUP BY 1) a ON a.site_label = s.site_label
-        LEFT JOIN (SELECT site_label, count(*) n FROM assets WHERE source = 'falcon' AND NOT retired
-                     AND last_seen <= now() - interval '7 days' GROUP BY 1) st ON st.site_label = s.site_label
+        LEFT JOIN (SELECT x.site_label, count(*) n FROM assets x WHERE x.source = 'falcon' AND NOT x.retired
+                     AND {sh.not_reporting_sql("x")} GROUP BY 1) st ON st.site_label = s.site_label
         LEFT JOIN (SELECT site_label, count(*) n FROM assets WHERE source = 'falcon_unmanaged' AND NOT retired
                      AND discovery_class IN {dc.sql_in(dc.NAMED_MACHINES)} GROUP BY 1) u ON u.site_label = s.site_label
         WHERE s.site_label IN ($site)
@@ -1032,14 +1034,19 @@ def worklist():
                         "Exposure Management isn't covering.")
 
     b.row("Missing endpoints")
-    b.table("Stale sensors (silent 7+ days)", """
-        SELECT hostname AS "Hostname", site_label AS "Site", product_type AS "Type", os_version AS "OS",
-               last_seen AS "Last seen", (now()::date - last_seen::date) AS "Days silent",
-               sensor_version AS "Sensor", array_to_string(ous, ' / ') AS "OU"
-        FROM assets WHERE source = 'falcon' AND NOT retired AND site_label IN ($site)
-          AND last_seen <= now() - interval '7 days'
-        ORDER BY last_seen""", w=12, h=10, overrides=[bg("Days silent", "continuous-YlRd")],
-            description="Decommissioned: remove from Falcon. Still in use: fix the sensor.")
+    b.table("Sensors not reporting", """
+        SELECT CASE WHEN """ + sh.in_use_sql("x") + """ THEN 'Broken: machine still in use'
+                    ELSE 'Probably off or retired' END AS "Likely",
+               x.hostname AS "Hostname", x.site_label AS "Site", x.product_type AS "Type", x.os_version AS "OS",
+               x.last_seen AS "Last check-in", (now()::date - x.last_seen::date) AS "Days silent",
+               """ + sh.machine_seen_sql("x") + """ AS "Machine last seen",
+               x.sensor_version AS "Sensor", array_to_string(x.ous, ' / ') AS "OU"
+        FROM assets x WHERE x.source = 'falcon' AND NOT x.retired AND x.site_label IN ($site)
+          AND """ + sh.not_reporting_sql("x") + """
+        ORDER BY """ + sh.in_use_sql("x") + """ DESC, x.last_seen""", w=12, h=10,
+            overrides=[bg("Days silent", "continuous-YlRd")],
+            description="Broken (machine still logging on): fix the sensor first -- it's unprotected. "
+                        "Probably off or retired: confirm, then remove from Falcon.")
     b.table("Unmanaged assets by class", f"""
         SELECT {dc.sql_case()} AS "Class", count(*) AS "Assets",
                CASE WHEN discovery_class IN {dc.sql_in(dc.ACTIONABLE)} THEN 'Yes' ELSE 'No' END AS "Needs a sensor?",

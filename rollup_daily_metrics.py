@@ -40,6 +40,7 @@ import config as config_mod
 import db_schema
 import identity_categories as ic
 import os_lifecycle
+import sensor_health
 from db import pg_connect
 
 SEVERITIES = ("critical", "high", "medium", "low")
@@ -498,19 +499,21 @@ def rollup_source_metrics(cur, snapshot_date: dt.date, days_last_seen: int) -> N
 
 
 def rollup_asset_metrics(cur, cfg: Dict[str, Any], snapshot_date: dt.date) -> None:
-    stale = int(cfg.get("reporting", {}).get("stale_sensor_days", 7))
+    stale = int(cfg.get("reporting", {}).get("stale_sensor_days", 7))   # legacy stale_sensors column only
+    silent_days = sensor_health.days(cfg)
     eos = os_lifecycle.sql_eos("os_version", os_lifecycle.table(cfg.get("reporting", {}).get("os_end_of_support")))
     cur.execute("DELETE FROM daily_asset_metrics WHERE snapshot_date = %s", (snapshot_date,))
     cur.execute(
         f"""
         INSERT INTO daily_asset_metrics
             (snapshot_date, site_label, managed_hosts, stale_sensors, rfm_hosts, unmanaged_assets, external_assets,
-             workstations, servers, domain_controllers, unsupported_os, os_ending_soon, external_domains, external_ips)
+             workstations, servers, domain_controllers, unsupported_os, os_ending_soon, external_domains, external_ips,
+             silent_sensors, silent_in_use)
         SELECT %(snap)s, s.site_label,
             COALESCE(a.managed, 0), COALESCE(a.stale, 0), COALESCE(a.rfm, 0),
             COALESCE(a.unmanaged, 0), COALESCE(x.ext, 0),
             COALESCE(a.ws, 0), COALESCE(a.srv, 0), COALESCE(a.dc, 0), COALESCE(a.unsup, 0), COALESCE(a.soon, 0),
-            COALESCE(x.domains, 0), COALESCE(x.ips, 0)
+            COALESCE(x.domains, 0), COALESCE(x.ips, 0), COALESCE(a.silent, 0), COALESCE(a.in_use, 0)
         FROM sites s
         LEFT JOIN (
             SELECT site_label,
@@ -523,8 +526,10 @@ def rollup_asset_metrics(cur, cfg: Dict[str, Any], snapshot_date: dt.date) -> No
                 count(*) FILTER (WHERE source = 'falcon' AND product_type = 'domain_controller') AS dc,
                 count(*) FILTER (WHERE source = 'falcon' AND {eos} < %(snap)s::date) AS unsup,
                 count(*) FILTER (WHERE source = 'falcon' AND {eos} >= %(snap)s::date
-                                   AND {eos} < %(snap)s::date + {os_lifecycle.ENDING_SOON_DAYS}) AS soon
-            FROM assets WHERE NOT retired GROUP BY site_label
+                                   AND {eos} < %(snap)s::date + {os_lifecycle.ENDING_SOON_DAYS}) AS soon,
+                count(*) FILTER (WHERE source = 'falcon' AND {sensor_health.not_reporting_sql("h", silent_days)}) AS silent,
+                count(*) FILTER (WHERE source = 'falcon' AND {sensor_health.in_use_sql("h")}) AS in_use
+            FROM assets h WHERE NOT retired GROUP BY site_label
         ) a ON a.site_label = s.site_label
         LEFT JOIN (
             SELECT site_label, count(*) AS ext,

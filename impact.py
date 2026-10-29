@@ -72,6 +72,7 @@ def site_metrics(cur, cfg: Dict[str, Any], site: str, p: er.Period, days_last_se
         "high_open": v["open_high_windowed"], "high_past_sla": v["sla_breach_high"],
         "unsupported_os": es["unsupported"], "missing_sensors": es["missing_named"],
         "stale_sensors": v["stale_sensors"], "managed_hosts": v["managed_hosts"],
+        "silent_sensors": v["silent_sensors"], "silent_in_use": v["silent_in_use"],
         "enabled_accounts": idn["totals"]["enabled_accounts"], "stale_accounts": idn["cats"]["stale_accounts"],
         "people_accounts": idn["totals"]["enabled_people"], "people_no_mfa": idn["cats"]["no_mfa"],
         "unused_access_accounts": idn["stale_access"], "compromise_indicators": idn["groups"]["compromise"],
@@ -94,6 +95,8 @@ def rollup_metrics(conn, cfg: Dict[str, Any], snapshot_date: dt.date) -> int:
     rows = []
     for site in er.site_labels(cfg):
         for k, val in site_metrics(cur, cfg, site, p, rep.get("days_last_seen", 30)).items():
+            if val is None and k in ("silent_sensors", "silent_in_use"):
+                continue        # rollup hasn't recorded the per-type count: no row beats a false 0
             rows.append((snapshot_date, site, k, int(val or 0)))
     cur.execute("DELETE FROM daily_impact_metrics WHERE snapshot_date = %s", (snapshot_date,))
     cur.executemany("INSERT INTO daily_impact_metrics (snapshot_date, site_label, metric, value) VALUES (%s, %s, %s, %s)",

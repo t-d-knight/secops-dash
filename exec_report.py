@@ -248,7 +248,8 @@ def fetch_vulns(cur, p: Period, site: Optional[str], days_last_seen: int = 30, f
           AND {SITE.replace("site_label", "vf.site_label")} AND vf.{ENDPOINT}
     """, days=days_last_seen, site=site)
     sensors = q1(cur, f"""
-        SELECT COALESCE(SUM(managed_hosts),0), COALESCE(SUM(stale_sensors),0) FROM daily_asset_metrics
+        SELECT COALESCE(SUM(managed_hosts),0), COALESCE(SUM(stale_sensors),0),
+               SUM(silent_sensors), SUM(silent_in_use) FROM daily_asset_metrics
         WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM daily_asset_metrics WHERE snapshot_date <= %(until)s)
           AND {SITE}
     """, until=p.until + dt.timedelta(days=1), site=site)
@@ -259,6 +260,8 @@ def fetch_vulns(cur, p: Period, site: Optional[str], days_last_seen: int = 30, f
         "open_crit_windowed": exposure[5], "open_high_windowed": exposure[6],
         "sla_days": dict(qall(cur, "SELECT severity, threshold_days FROM sla_policy")),
         "managed_hosts": sensors[0], "stale_sensors": sensors[1],
+        # sensor_health's per-type definition; None until a rollup has recorded it
+        "silent_sensors": sensors[2], "silent_in_use": sensors[3],
         "opened": movement[0], "fixed": movement[1],
         "opened_crit": movement[2], "opened_high": movement[3],
         "fixed_crit": movement[4], "fixed_high": movement[5], "bulk_opened": movement[6],
@@ -730,6 +733,8 @@ def fetch_trends(cur, p: Period, site: Optional[str], hist: Dict[str, Optional[d
             "product_family = '%s' AND %s" % (top_family.replace("'", "''"), after_bulk())),
         "remote_ch": snapshot_trend(cur, "daily_site_metrics", "remote_crit + remote_high", p, site, after_bulk()),
         "stale_sensors": snapshot_trend(cur, "daily_asset_metrics", "stale_sensors", p, site),
+        "silent_sensors": snapshot_trend(cur, "daily_asset_metrics", "silent_sensors", p, site,
+                                         "silent_sensors IS NOT NULL"),
         "devices": snapshot_trend(cur, "daily_asset_metrics", "managed_hosts", p, site),
         "unsupported_os": snapshot_trend(cur, "daily_asset_metrics", "unsupported_os", p, site,
                                          "unsupported_os IS NOT NULL"),
@@ -1002,6 +1007,21 @@ def top_family_tile(products: List[Tuple], open_ch: int, tr: dict, region: bool)
                 f"{pct(n, open_ch)} of all open critical/high{spread}", trend_line(tr.get("top_family")))
 
 
+def sensor_tile(v: dict, tr: dict) -> str:
+    """Sensors not reporting (sensor_health): silent past their type's limit, or silent on a
+    machine that's still logging on. Falls back to the old 7-day count for a period before the
+    first rollup that recorded the new one."""
+    if v.get("silent_sensors") is None:
+        return tile("Stale sensors", v["stale_sensors"], SEVERITY_COLOR["medium"] if v["stale_sensors"] else GOOD,
+                    f"of {v['managed_hosts']:,} managed hosts -- vulns on these go unseen", trend_line(tr["stale_sensors"]))
+    n, in_use = v["silent_sensors"], v.get("silent_in_use") or 0
+    sub = (f"of {v['managed_hosts']:,} managed hosts -- {in_use:,} on machines still in use (sensor broken or "
+           f"removed); the rest likely switched off or retired" if in_use else
+           f"of {v['managed_hosts']:,} managed hosts -- likely switched off or retired")
+    return tile("Sensors not reporting", n, SEVERITY_COLOR["critical"] if in_use else
+                SEVERITY_COLOR["medium"] if n else GOOD, sub, trend_line(tr["silent_sensors"]))
+
+
 def sla_gap_note(v: dict) -> str:
     """The documented remediation policy vs reality, stated once -- on
     record, without a permanently-red headline tile."""
@@ -1125,8 +1145,7 @@ def build_page1(p: Period, scope: str, site: Optional[str], v: dict, products: L
   {top_family_tile(products, crit_open + high_open, tr, site is None)}
   {tile("Remotely exploitable, no auth", v["remote_ch"], SEVERITY_COLOR["critical"] if v["remote_ch"] else GOOD,
         "critical/high reachable over the network without credentials", trend_line(tr["remote_ch"]))}
-  {tile("Stale sensors", v["stale_sensors"], SEVERITY_COLOR["medium"] if v["stale_sensors"] else GOOD,
-        f"of {v['managed_hosts']:,} managed hosts -- vulns on these go unseen", trend_line(tr["stale_sensors"]))}
+  {sensor_tile(v, tr)}
 </div>
 
 <h2>Endpoint vulnerabilities &mdash; opened vs fixed by {by}</h2>

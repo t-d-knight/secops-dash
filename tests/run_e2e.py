@@ -226,7 +226,7 @@ def main() -> int:
     cls = dict(q(cur, "SELECT source_asset_id, discovery_class FROM assets WHERE source = 'falcon_unmanaged'"))
     check(cls == {"u1": "network_device", "u2": "workstation_no_sensor", "u3": "service_account",
                   "u4": "duplicate_of_managed", "u5": "vmware_nic", "u6": "out_of_scope",
-                  "u7": "secondary_ip_of_managed"}, f"Discover classes {cls}")
+                  "u7": "secondary_ip_of_managed", "u8": "duplicate_of_managed"}, f"Discover classes {cls}")
     twin = q(cur, "SELECT managed_twin FROM assets WHERE source_asset_id = 'u4'")[0][0]
     check(twin == "RVH-WS01", f"duplicate linked to its managed host: {twin}")
 
@@ -331,6 +331,13 @@ def main() -> int:
     print("== rollups")
     am = dict(q(cur, "SELECT site_label, stale_sensors FROM daily_asset_metrics WHERE snapshot_date=CURRENT_DATE"))
     check(am.get("Riverside Health") == 1, f"stale sensor counted (aid3): {am}")
+    sil = {r[0]: r[1:] for r in q(cur, "SELECT site_label, silent_sensors, silent_in_use FROM daily_asset_metrics "
+                                       "WHERE snapshot_date = CURRENT_DATE")}
+    # aid3: workstation silent 20 days -- inside the 30-day limit, but still logging on (u8), so not reporting;
+    # aid2 (server, 2 days) and aid4 (DC, 1 day) are inside their limits
+    check(sil.get("Riverside Health") == (1, 1) and sil.get("Lakeside Health") == (0, 0)
+          and sil.get("Ungrouped") == (0, 0),
+          f"sensors not reporting: per-type limits, broken sensor on a machine in use counted: {sil}")
     src = q(cur, "SELECT count(DISTINCT source) FROM daily_source_metrics")[0][0]
     check(src == 2, "daily_source_metrics splits spotlight vs hadrian")
     idm = dict(q(cur, "SELECT metric, value FROM daily_identity_metrics WHERE site_label='Riverside Health'"))
@@ -387,6 +394,11 @@ def main() -> int:
         drives = {r[2]: r for r in wb["USB drives"].iter_rows(min_row=2, values_only=True)}
         check("Shared drive" in (drives.get("SER1") or ("",) * 14)[13], f"SER1 used by two people flagged shared: {drives}")
         check(wb["USB malware"].max_row == 2, "USB malware tab lists the detection")
+        nr = [dict(zip([c.value for c in wb["Sensors not reporting"][1]], [c.value for c in r]))
+              for r in wb["Sensors not reporting"].iter_rows(min_row=2)]
+        check(len(nr) == 1 and nr[0]["Hostname"] == "RANDOM01" and nr[0]["Likely"].startswith("Sensor broken")
+              and nr[0]["Machine last seen (AD / network)"] is not None,
+              f"sensors-not-reporting tab: the broken sensor on a machine in use, with when it was last seen: {nr}")
         acc = [dict(zip([c.value for c in wb["All accounts"][1]], [c.value for c in r]))
                for r in wb["All accounts"].iter_rows(min_row=2)]
         check(acc and acc[0]["Display name"] == "Svc Backup" and acc[0]["Stale"] == "Yes"

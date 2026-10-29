@@ -233,7 +233,7 @@ Generated on the server by cron (`crontab.example`, see Running) into `reports/`
 |---|---|---|
 | `exec_report.py --period week --all-sites` | Mondays 03:30 | `reports/week-YYYY-Www/`: six-page exec report (HTML + A4 PDF) for the region and every site (endpoint vulns, external attack surface, email, alerts & identity, removable media), with trend lines |
 | `exec_report.py --period quarter --all-sites` | 1 Jan/Apr/Jul/Oct 03:30 | `reports/quarter-YYYY-Qn/`: same, for the last calendar quarter |
-| `action_pack.py` | 1st of the month 04:00 | `reports/monthly-YYYY-MM/`: Excel action lists per site (stale accounts, weak/compromised and duplicate passwords, no MFA, stale sensors, external risks) |
+| `action_pack.py` | 1st of the month 04:00 | `reports/monthly-YYYY-MM/`: Excel action lists per site (stale accounts, weak/compromised and duplicate passwords, no MFA, sensors not reporting, external risks) |
 | `scorecard.py` | 1st of the month 04:15 | `reports/monthly-YYYY-MM/`: one-page scorecard per site (region adds a by-site table) -- nine measures, start vs end of last month, direction only (no targets yet) |
 | `publish.py` | Daily 07:30 (after the reports) | Copies new weekly/quarterly/monthly sets to a file share as `<Site>/<Weekly|Quarterly|Monthly>/<period> <Site> <Security Report|Action Pack|Security Scorecard>.<pdf|xlsx>` -- e.g. a NAS that syncs into SharePoint |
 
