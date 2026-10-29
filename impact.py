@@ -77,6 +77,8 @@ def site_metrics(cur, cfg: Dict[str, Any], site: str, p: er.Period, days_last_se
         "unused_access_accounts": idn["stale_access"], "compromise_indicators": idn["groups"]["compromise"],
         "identity_triage": a["open_identity_hm"],
         "ext_confirmed_open": x["confirmed"], "ext_crit_high_open": x["crit_high_any"], "leaked_creds": x["leaked_creds"],
+        # sla rows: (severity, days, open, open within SLA, fixed, fixed within SLA)
+        "ext_crit_high_overdue": sum(r[2] - r[3] for r in x["sla"] if r[0] in ("critical", "high")),
     }
 
 
@@ -84,7 +86,10 @@ def rollup_metrics(conn, cfg: Dict[str, Any], snapshot_date: dt.date) -> int:
     rep = cfg.get("reporting") or {}
     er.OS_EOS.clear()
     er.OS_EOS.update(os_lifecycle.table(rep.get("os_end_of_support")))
-    p = er.week_period(snapshot_date)
+    # A window ending yesterday, so the fetchers' snapshot lookups ("latest on or
+    # before until + 1") land on today's rollup -- with week_period they read last
+    # Monday's, lagging managed hosts, stale sensors and KEV counts by up to a week.
+    p = er.custom_period(snapshot_date - dt.timedelta(days=7), snapshot_date - dt.timedelta(days=1))
     cur = conn.cursor()
     rows = []
     for site in er.site_labels(cfg):

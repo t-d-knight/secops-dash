@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Security Scorecard -- Riverside Health -- October 2026</title>
+<style>
+
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: #0f172a;
+          background: #f8fafc; margin: 0; }
+  .page { max-width: 900px; margin: 0 auto 24px; background: #fff; padding: 36px 40px 48px; }
+  header { display: flex; justify-content: space-between; align-items: baseline;
+            border-bottom: 3px solid #0f172a; padding-bottom: 14px; margin-bottom: 22px; }
+  h1 { font-size: 22px; margin: 0; }
+  .period { font-size: 15px; color: #64748b; }
+  .meta { font-size: 11px; color: #64748b; text-align: right; }
+  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: #64748b;
+        border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin: 26px 0 12px; }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 4px; }
+  .tiles-3 { grid-template-columns: repeat(3, 1fr); }
+  .tile { border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; }
+  .tile-value { font-size: 26px; font-weight: 700; line-height: 1.1; }
+  .tile-label { font-size: 11px; color: #64748b; margin-top: 3px; }
+  .tile-sub { font-size: 10px; color: #64748b; margin-top: 2px; }
+  .tile-trend { font-size: 10px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .row { display: flex; gap: 24px; align-items: flex-start; }
+  .col { flex: 1; min-width: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { text-align: left; font-size: 10px; text-transform: uppercase; color: #64748b;
+        border-bottom: 1px solid #e2e8f0; padding: 4px 6px; }
+  td { padding: 4px 6px; border-bottom: 1px solid #f1f5f9; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .legend-row { font-size: 11px; color: #64748b; margin-top: 4px; }
+  .legend-dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; }
+  .empty { color: #64748b; font-size: 12px; font-style: italic; }
+  footer { margin-top: 32px; padding-top: 10px; border-top: 1px solid #e2e8f0;
+            font-size: 10px; color: #64748b; }
+  @media screen {
+    .page { box-shadow: 0 1px 4px rgba(15,23,42,.08); border-radius: 4px; }
+  }
+  @page { size: A4; margin: 12mm 12mm 14mm; }
+  @media print {
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }   /* keep severity colours */
+    body { background: #fff; }
+    .page { padding: 0; max-width: none; margin: 0; box-shadow: none; break-after: page; }
+    .page:last-child { break-after: auto; }
+    /* Tighter than on screen so each section fits one A4 page: scale the whole
+       page a little and trim the spacing that's generous on a monitor. */
+    html { zoom: 0.84; }
+    header { margin-bottom: 12px; padding-bottom: 8px; }
+    h2 { margin: 14px 0 8px; padding-bottom: 4px; }
+    .tiles { gap: 8px; }
+    .tile { padding: 8px 12px; }
+    .tile-value { font-size: 22px; }
+    table { font-size: 11px; }
+    th { padding: 3px 6px; }
+    td { padding: 2px 6px; }
+    footer { margin-top: 14px; padding-top: 6px; font-size: 9px; }
+    h2 { break-after: avoid; }
+    .row, .tiles, tr, svg { break-inside: avoid; }
+  }
+
+  .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .sum { border: 1px solid #e2e8f0; border-left-width: 5px; border-radius: 8px; padding: 10px 14px; }
+  .sum-value { font-size: 28px; font-weight: 700; line-height: 1.05; }
+  .sum-label { font-size: 12px; color: #64748b; margin-top: 3px; }
+  .lede { font-size: 13px; color: #334155; margin: 14px 0 0; line-height: 1.5; }
+  td { vertical-align: top; }
+  th.num { white-space: nowrap; }
+  td.val { font-size: 15px; font-weight: 700; }
+  td.then { color: #64748b; }
+  tr.group td { background: #f8fafc; font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
+                 color: #64748b; font-weight: 700; }
+  .m-name { font-weight: 600; }
+  .m-what { font-size: 11px; color: #64748b; margin-top: 2px; line-height: 1.35; }
+  .chg { font-size: 11px; color: #334155; }
+  .pill { display: inline-block; font-size: 11px; font-weight: 600; border-radius: 999px; padding: 2px 9px;
+           white-space: nowrap; }
+  .pill.up { color: #16a34a; background: #dcfce7; }
+  .pill.down { color: #dc2626; background: #fee2e2; }
+  .pill.steady { color: #334155; background: #f1f5f9; }
+  .pill.stuck { color: #92400e; background: #fef3c7; }
+  .pill.new { color: #64748b; border: 1px dashed #e2e8f0; }
+  .matrix th { font-size: 9px; vertical-align: bottom; }
+  .matrix tr.total td { border-top: 2px solid #0f172a; font-weight: 700; background: #f8fafc; }
+  .matrix td.hot { color: #dc2626; font-weight: 700; }
+  .ar { font-size: 11px; font-weight: 700; margin-left: 3px; }
+  .ar.up { color: #16a34a; } .ar.down { color: #dc2626; }
+  .note { font-size: 11px; color: #64748b; margin-top: 10px; line-height: 1.45; }
+
+</style></head>
+<body>
+<section class="page">
+<header>
+  <div><h1>Security Scorecard &mdash; Riverside Health</h1>
+       <div class="period">October 2026 &middot; Monthly</div></div>
+  <div class="meta">Generated 2026-10-29 20:19<br>secops-dashboard</div>
+</header>
+<div class="summary"><div class="sum" style="border-left-color:#16a34a"><div class="sum-value" style="color:#16a34a">1</div><div class="sum-label">improving</div></div><div class="sum" style="border-left-color:#94a3b8"><div class="sum-value" style="color:#334155">8</div><div class="sum-label">steady</div></div><div class="sum" style="border-left-color:#dc2626"><div class="sum-value" style="color:#dc2626">0</div><div class="sum-label">worsening</div></div><div class="sum" style="border-left-color:#e2e8f0"><div class="sum-value" style="color:#64748b">0</div><div class="sum-label">too early to call</div></div></div>
+<p class="lede">Nine measures that show whether security is getting better, each a share (so a large service isn't
+  penalised for being large) or a count that should be zero. Direction compares the start of the month with the end;
+  a move of less than 2 percentage points counts as steady.</p>
+<h2>The measures</h2>
+<table>
+  <thead><tr><th>Measure</th><th class="num">01 Oct</th><th class="num">29 Oct</th>
+    <th>Change</th><th>Direction</th></tr></thead>
+  <tbody>
+<tr class="group"><td colspan="5">Patching and platforms</td></tr>
+<tr><td><div class="m-name">Critical flaws fixed on time</div><div class="m-what">Share of critical vulnerabilities fixed within the 2-day policy, this month against last</div></td><td class="num then">77%</td><td class="num val">86%</td><td class="chg">696 fixes this month</td><td><span class="pill up">↗ Improving</span></td></tr>
+<tr><td><div class="m-name">High flaws fixed on time</div><div class="m-what">Share of high vulnerabilities fixed within the 14-day policy, this month against last</div></td><td class="num then">91%</td><td class="num val">90%</td><td class="chg">2,331 fixes this month</td><td><span class="pill steady">→ Steady</span></td></tr>
+<tr><td><div class="m-name">Servers patched in the last 35 days</div><div class="m-what">Active servers with a confirmed patch inside one monthly cycle</div></td><td class="num then">69.0%</td><td class="num val">69.0%</td><td class="chg">no change in servers outside a monthly cycle</td><td><span class="pill steady">→ Steady</span></td></tr>
+<tr><td><div class="m-name">Devices on a supported operating system</div><div class="m-what">Still receiving security updates from the vendor</div></td><td class="num then">87.5%</td><td class="num val">88.7%</td><td class="chg">6 fewer unsupported devices</td><td><span class="pill steady">→ Steady</span></td></tr>
+<tr class="group"><td colspan="5">Visibility</td></tr>
+<tr><td><div class="m-name">Machines with a working security sensor</div><div class="m-what">In-use machines with CrowdStrike installed and reporting in within the last 7 days</div></td><td class="num then">90.7%</td><td class="num val">91.4%</td><td class="chg">4 fewer machines without a working sensor</td><td><span class="pill steady">→ Steady</span></td></tr>
+<tr class="group"><td colspan="5">People and accounts</td></tr>
+<tr><td><div class="m-name">People with multi-factor sign-in</div><div class="m-what">Staff accounts protected by a second step beyond the password</div></td><td class="num then">92.4%</td><td class="num val">93.1%</td><td class="chg">7 fewer people without it</td><td><span class="pill steady">→ Steady</span></td></tr>
+<tr><td><div class="m-name">Enabled accounts actually in use</div><div class="m-what">The rest are switched on but unused: leavers and old accounts an attacker could take over</div></td><td class="num then">82.8%</td><td class="num val">84.5%</td><td class="chg">22 fewer stale accounts</td><td><span class="pill steady">→ Steady</span></td></tr>
+<tr><td><div class="m-name">Leaked passwords on live accounts</div><div class="m-what">Passwords found in criminal data dumps, for accounts that are still enabled. Target: none</div></td><td class="num then">0</td><td class="num val">0</td><td class="chg">no change</td><td><span class="pill steady">→ Steady</span></td></tr>
+<tr class="group"><td colspan="5">Internet-facing</td></tr>
+<tr><td><div class="m-name">Serious internet-facing risks overdue</div><div class="m-what">Critical or high risks on public systems open past their fix-by date. Target: none</div></td><td class="num then">1</td><td class="num val">1</td><td class="chg">no change</td><td><span class="pill stuck">→ No change</span></td></tr>
+  </tbody>
+</table>
+<footer>Measured from the security tools' nightly figures: the columns are the snapshots nearest the start and end of
+  the month. The two fix-on-time measures compare last month's fixes with this month's instead. "Too early" means
+  there isn't a figure at both ends yet. Names, devices and accounts behind each number are in this month's action pack.
+  No targets yet: these show direction only until targets are agreed.</footer>
+</section>
+</body></html>

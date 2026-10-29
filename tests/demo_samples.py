@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-Demo sample reports: the committed reports/sample-* files, rendered from a
+Demo sample reports: the committed reports/sample-* files (weekly exec report,
+region + one site; monthly action pack and scorecard; Servers and programme
+impact reports), rendered from a
 believable (entirely made-up) four-site estate with months of history, so
 the charts and trend arrows have something to show.
 
@@ -178,6 +180,19 @@ def seed_hosts(cur):
                          last_seen=ts(R.uniform(0, 3)), collected_at=NOW, retired=False, managed_twin=None)
                 um.append(u)
     insert(cur, "assets", um)
+    # Falcon patch status for the servers (the Servers report and the scorecard's
+    # "patched in 35 days"): most inside a monthly cycle, a long tail, a few never confirmed
+    patches = []
+    for h in hosts:
+        if h["product_type"] == "workstation":
+            continue
+        age = wpick([(R.uniform(1, 7), 0.12), (R.uniform(8, 35), 0.53), (R.uniform(36, 90), 0.11),
+                     (R.uniform(91, 400), 0.21), (None, 0.03)])
+        patches.append(dict(aid=h["source_asset_id"], hostname=h["hostname"], device_type="Server",
+                            reboot_required=R.random() < 0.03, active_patches=R.randint(80, 200),
+                            pending_patches=R.randint(0, 6), installed_patches=psycopg2.extras.Json([]),
+                            last_patch_confirmed=ts(age) if age is not None else None, collected_at=NOW))
+    insert(cur, "host_patch_status", patches)
     return hosts
 
 
@@ -237,7 +252,7 @@ def seed_vulns(cur, hosts):
                     continue
                 med = speed[h["site_label"]] * improve(found) * (1.8 if h["product_type"] != "workstation" else 1.0)
                 for cve, sev in cl:
-                    m = med * {"critical": 0.18, "high": 0.5, "medium": 0.9, "low": 1.1}[sev]
+                    m = med * {"critical": 0.1, "high": 0.5, "medium": 0.9, "low": 1.1}[sev]
                     fix_after = R.lognormvariate(math.log(m), 0.7)
                     if laggard or stale or (p[0] == "microsoft:windows_10" and R.random() < 0.5):
                         fix_after = 10 ** 6
@@ -475,9 +490,50 @@ def seed_usb(cur, hosts):
 # back-filled flat-ish rather than "was worse".
 NEUTRAL = {"managed_hosts", "workstations", "servers", "domain_controllers", "assets", "external_assets",
            "external_domains", "external_ips", "unmanaged_assets"}
-GOOD_METRICS = ("total:", "mfa_registered", "mfa_users")
+GOOD_METRICS = ("total:", "mfa_registered", "mfa_users",
+                # daily_impact_metrics: denominators and good counts, which mustn't read as worse in the past
+                "servers_active", "servers_patched_35d", "dcs_active", "hosts_active", "managed_hosts",
+                "enabled_accounts", "people_accounts")
 SNAPSHOT_TABLES = ["daily_site_metrics", "daily_sla_metrics", "daily_product_metrics", "daily_kev_metrics",
-                   "daily_epss_metrics", "daily_source_metrics", "daily_asset_metrics", "daily_identity_metrics"]
+                   "daily_epss_metrics", "daily_source_metrics", "daily_asset_metrics", "daily_identity_metrics",
+                   "daily_impact_metrics"]
+
+
+# The programme action log (normally read from a workbook on the share): what the
+# programme surfaced and what happened to it. Made-up, generic items; sources, severities
+# and statuses use the workbook's drop-down values (impact.SOURCES / SEVERITIES / STATUSES).
+ACTIONS = [
+    # days ago found, what, source, site, severity, action, owner team, status, days ago closed
+    (44, "Internet-facing VPN appliance missing a critical patch", "Weekly report", "Northgate Hospital", "Critical",
+     "Patched out of hours; vendor advisory tracked", "Infrastructure", "Done", 41),
+    (40, "Domain takeover risk: DNS record pointing at a released cloud host", "Dashboard", "Riverside Health",
+     "High", "Stale DNS record removed", "Infrastructure", "Done", 39),
+    (37, "Infostealer leak naming an enabled staff account", "Identity digest", "Lakeside Health", "High",
+     "Password reset, sessions revoked, device checked", "Cyber", "Done", 36),
+    (33, "Domain controller with no endpoint sensor", "Action pack", "Hillcrest Community Health", "High",
+     "Sensor installed and verified", "Infrastructure", "Done", 26),
+    (29, "Web server software with an actively exploited flaw on a public site", "Weekly report", "Riverside Health",
+     "Critical", "Hosting provider patched; risk closed after rescan", "Applications", "Done", 24),
+    (24, "Legacy file server on an unsupported OS still sharing data", "Servers report", "Northgate Hospital",
+     "High", "Isolated to one VLAN pending migration; replacement scheduled", "Infrastructure", "Accepted risk", 18),
+    (19, "Dormant admin account used after 200+ days", "Alert", "Lakeside Health", "High",
+     "Confirmed legitimate; account moved to a named owner", "Cyber", "Done", 17),
+    (14, "Shared clinical workstations without multi-factor sign-in", "Action pack", "Hillcrest Community Health",
+     "Medium", "Tap-and-go MFA pilot on one ward", "Applications", "In progress", None),
+    (9, "Browser update service disabled by policy on servers", "Dashboard", "Riverside Health",
+     "Medium", "Policy change through change control", "Infrastructure", "In progress", None),
+    (4, "Publicly reachable directory service on an old host name", "Weekly report", "Northgate Hospital", "High",
+     "Firewall rule raised; awaiting change window", "Infrastructure", "Open", None),
+]
+
+
+def seed_actions(cur):
+    rows = [dict(row_no=i + 2, found=TODAY - dt.timedelta(days=f), what=w, source=src, site_label=site,
+                 severity=sev, action=act, owner_team=team, status=st,
+                 closed=TODAY - dt.timedelta(days=c) if c is not None else None, ticket_ref=None, notes=None)
+            for i, (f, w, src, site, sev, act, team, st, c) in enumerate(ACTIONS)]
+    cur.execute("DELETE FROM impact_actions")
+    insert(cur, "impact_actions", rows)
 
 
 def backfill_snapshots(cur, days=45):
@@ -556,7 +612,9 @@ def main() -> int:
     print("== rollups")
     run(cfgp, "rollup_daily_metrics.py", "--backfill-days", str(HISTORY_DAYS))
     run(cfgp, "reclassify_product_families.py")
+    run(cfgp, "impact.py", "--only", "metrics")
     backfill_snapshots(cur)
+    seed_actions(cur)
     conn.commit()
     conn.close()
 
@@ -571,10 +629,22 @@ def main() -> int:
     run(cfgp, "action_pack.py", "--out-dir", out, "--since", last_month.isoformat(),
         "--until", (first - dt.timedelta(days=1)).isoformat())
     pack = next(f for f in os.listdir(out) if f.startswith("region-") and f.endswith(".xlsx"))
+    # this month so far: the snapshot history covers the whole of it
+    run(cfgp, "scorecard.py", "--out-dir", out, "--month", TODAY.strftime("%Y-%m"), "--no-pdf")
+    cards = {f.split("-scorecard-")[0]: f for f in os.listdir(out) if "-scorecard-" in f}
+    run(cfgp, "server_report.py", "--out-dir", os.path.join(out, "servers"), "--no-pdf")
+    run(cfgp, "impact_report.py", "--out-dir", os.path.join(out, "impact"), "--no-pdf")
     os.makedirs(args.out, exist_ok=True)
     shutil.copy(os.path.join(out, "exec-region.html"), os.path.join(args.out, "sample-exec-report.html"))
     shutil.copy(os.path.join(out, "exec-site.html"), os.path.join(args.out, "sample-exec-report-site.html"))
     shutil.copy(os.path.join(out, pack), os.path.join(args.out, "sample-action-pack.xlsx"))
+    shutil.copy(os.path.join(out, cards["region"]), os.path.join(args.out, "sample-scorecard.html"))
+    shutil.copy(os.path.join(out, cards["Riverside_Health"]), os.path.join(args.out, "sample-scorecard-site.html"))
+    for sub, name in (("servers", "sample-servers-report.html"), ("impact", "sample-impact-report.html")):
+        html_ = next((f for f in os.listdir(os.path.join(out, sub)) if f.endswith(".html")), None) \
+            if os.path.isdir(os.path.join(out, sub)) else None
+        if html_:
+            shutil.copy(os.path.join(out, sub, html_), os.path.join(args.out, name))
     print(f"samples written to {args.out}")
     return 0
 

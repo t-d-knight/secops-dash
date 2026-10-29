@@ -53,9 +53,14 @@ SETS = {
 }
 
 
+# monthly-YYYY-MM/ holds two products per site: <site>-actions-YYYY-MM.xlsx and <site>-scorecard-YYYY-MM.pdf
+MONTHLY_TITLES = {"actions": "Action Pack", "scorecard": "Security Scorecard"}
+MONTHLY_FILE = re.compile(r"-(actions|scorecard)-\d{4}-\d{2}$")
+
+
 def _site_name(stem: str, kind: str) -> str:
     """region.html -> Region; SITE-A.html -> SITE-A; SITE-A-actions-2026-10.xlsx -> SITE-A."""
-    name = re.sub(r"-actions-\d{4}-\d{2}$", "", stem) if kind == "monthly" else stem
+    name = MONTHLY_FILE.sub("", stem) if kind == "monthly" else stem
     return "Region" if name == "region" else name
 
 
@@ -73,7 +78,9 @@ def candidates(reports_dir: str, formats: Optional[List[str]] = None) -> Iterato
             if ext.lower().lstrip(".") not in (formats or ["pdf", "xlsx"]):
                 continue
             site = _site_name(stem, kind)
-            yield os.path.join(full, f), "/".join([site, folder, f"{period} {site} {title}{ext}"])
+            m = MONTHLY_FILE.search(stem) if kind == "monthly" else None
+            name = MONTHLY_TITLES[m.group(1)] if m else title
+            yield os.path.join(full, f), "/".join([site, folder, f"{period} {site} {name}{ext}"])
 
 
 def _sha256(path: str) -> str:

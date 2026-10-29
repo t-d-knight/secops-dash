@@ -31,6 +31,9 @@
 # Monthly per-site action packs (Excel) -> reports/monthly-YYYY-MM/
 0  4 1 * *        cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock venv/bin/python3 action_pack.py --config config.yaml >> logs/report.log 2>&1 || venv/bin/python3 notify.py --config config.yaml send --priority 1 --title "monthly action packs failed" --message "See logs/report.log"
 
+# Monthly per-site security scorecard (PDF, direction only) -> next to the action packs in reports/monthly-YYYY-MM/
+15 4 1 * *        cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock venv/bin/python3 scorecard.py --config config.yaml >> logs/report.log 2>&1 || venv/bin/python3 notify.py --config config.yaml send --priority 1 --title "monthly scorecards failed" --message "See logs/report.log"
+
 # Publish anything new to the file share (no-op unless publish.enabled in config.yaml)
 30 7 * * *        cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock venv/bin/python3 publish.py --config config.yaml >> logs/publish.log 2>&1
 

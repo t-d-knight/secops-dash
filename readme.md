@@ -170,6 +170,7 @@ sed "s#/opt/secops-dashboard#$PWD#g" crontab.example | crontab -
 | 03:45 Mondays | `server_report.py`: Servers report (PDF + Excel, whole region) for the infrastructure, applications and database teams -> `Servers/Weekly/` | `logs/report.log` |
 | 04:30, 1st of the month | `impact_report.py`: programme impact report (PDF) -> `Impact/Monthly/`; also run on demand | `logs/report.log` |
 | 04:00, 1st of the month | Monthly action packs (Excel) | `logs/report.log` |
+| 04:15, 1st of the month | `scorecard.py`: monthly security scorecards (PDF) next to the action packs | `logs/report.log` |
 | 07:30 daily | `publish.py`: anything new to the file share | `logs/publish.log` |
 | 09:00 daily | `backup.sh`: `pg_dump`, last 7 days kept in `backups/`; with `backup.offsite` enabled, also copied to an SMB share (`backup_offsite.py`, `keep_days` there) | `logs/backup.log` |
 | 10:00 daily | `run_collector.sh --catch-up`: finishes any stage the night run didn't (power loss, reboot, Postgres restart); silent no-op otherwise | `logs/collector.log` |
@@ -233,7 +234,8 @@ Generated on the server by cron (`crontab.example`, see Running) into `reports/`
 | `exec_report.py --period week --all-sites` | Mondays 03:30 | `reports/week-YYYY-Www/`: six-page exec report (HTML + A4 PDF) for the region and every site (endpoint vulns, external attack surface, email, alerts & identity, removable media), with trend lines |
 | `exec_report.py --period quarter --all-sites` | 1 Jan/Apr/Jul/Oct 03:30 | `reports/quarter-YYYY-Qn/`: same, for the last calendar quarter |
 | `action_pack.py` | 1st of the month 04:00 | `reports/monthly-YYYY-MM/`: Excel action lists per site (stale accounts, weak/compromised and duplicate passwords, no MFA, stale sensors, external risks) |
-| `publish.py` | Daily 07:30 (after the reports) | Copies new weekly/quarterly/monthly sets to a file share as `<Site>/<Weekly|Quarterly|Monthly>/<period> <Site> <Security Report|Action Pack>.<pdf|xlsx>` -- e.g. a NAS that syncs into SharePoint |
+| `scorecard.py` | 1st of the month 04:15 | `reports/monthly-YYYY-MM/`: one-page scorecard per site (region adds a by-site table) -- nine measures, start vs end of last month, direction only (no targets yet) |
+| `publish.py` | Daily 07:30 (after the reports) | Copies new weekly/quarterly/monthly sets to a file share as `<Site>/<Weekly|Quarterly|Monthly>/<period> <Site> <Security Report|Action Pack|Security Scorecard>.<pdf|xlsx>` -- e.g. a NAS that syncs into SharePoint |
 
 **PDF:** each exec report is also printed to an A4 PDF with headless Chromium (`dnf install chromium`; `reporting.pdf`, `reporting.chromium_path`). The preflight check renders a test page to confirm it works.
 
@@ -260,7 +262,7 @@ All `daily_*` history is kept, so trend lines show an honest step at cutover. Di
 
 ## 9. Per-site access for site contacts
 
-Sites get **reports, not Grafana**: the weekly/quarterly reports and monthly action packs, published to each site's folder. Grafana stays with the cyber team, because Grafana OSS can't filter rows per user -- any viewer can send arbitrary SQL to the data source, and a locked dashboard variable can be edited out of the URL.
+Sites get **reports, not Grafana**: the weekly/quarterly reports and monthly action packs and scorecards, published to each site's folder. Grafana stays with the cyber team, because Grafana OSS can't filter rows per user -- any viewer can send arbitrary SQL to the data source, and a locked dashboard variable can be edited out of the URL.
 
 If per-site dashboards are ever needed, the data is shaped for it (every table has `site_label`, `sites.contacts` holds each site's contacts) and the design would be **Postgres row-level security**:
 

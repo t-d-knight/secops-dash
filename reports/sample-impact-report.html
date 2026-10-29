@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Security programme impact -- 2026-10-29</title>
+<style>
+
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: #0f172a;
+          background: #f8fafc; margin: 0; }
+  .page { max-width: 900px; margin: 0 auto 24px; background: #fff; padding: 36px 40px 48px; }
+  header { display: flex; justify-content: space-between; align-items: baseline;
+            border-bottom: 3px solid #0f172a; padding-bottom: 14px; margin-bottom: 22px; }
+  h1 { font-size: 22px; margin: 0; }
+  .period { font-size: 15px; color: #64748b; }
+  .meta { font-size: 11px; color: #64748b; text-align: right; }
+  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: #64748b;
+        border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin: 26px 0 12px; }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 4px; }
+  .tiles-3 { grid-template-columns: repeat(3, 1fr); }
+  .tile { border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; }
+  .tile-value { font-size: 26px; font-weight: 700; line-height: 1.1; }
+  .tile-label { font-size: 11px; color: #64748b; margin-top: 3px; }
+  .tile-sub { font-size: 10px; color: #64748b; margin-top: 2px; }
+  .tile-trend { font-size: 10px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .row { display: flex; gap: 24px; align-items: flex-start; }
+  .col { flex: 1; min-width: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { text-align: left; font-size: 10px; text-transform: uppercase; color: #64748b;
+        border-bottom: 1px solid #e2e8f0; padding: 4px 6px; }
+  td { padding: 4px 6px; border-bottom: 1px solid #f1f5f9; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .legend-row { font-size: 11px; color: #64748b; margin-top: 4px; }
+  .legend-dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; }
+  .empty { color: #64748b; font-size: 12px; font-style: italic; }
+  footer { margin-top: 32px; padding-top: 10px; border-top: 1px solid #e2e8f0;
+            font-size: 10px; color: #64748b; }
+  @media screen {
+    .page { box-shadow: 0 1px 4px rgba(15,23,42,.08); border-radius: 4px; }
+  }
+  @page { size: A4; margin: 12mm 12mm 14mm; }
+  @media print {
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }   /* keep severity colours */
+    body { background: #fff; }
+    .page { padding: 0; max-width: none; margin: 0; box-shadow: none; break-after: page; }
+    .page:last-child { break-after: auto; }
+    /* Tighter than on screen so each section fits one A4 page: scale the whole
+       page a little and trim the spacing that's generous on a monitor. */
+    html { zoom: 0.84; }
+    header { margin-bottom: 12px; padding-bottom: 8px; }
+    h2 { margin: 14px 0 8px; padding-bottom: 4px; }
+    .tiles { gap: 8px; }
+    .tile { padding: 8px 12px; }
+    .tile-value { font-size: 22px; }
+    table { font-size: 11px; }
+    th { padding: 3px 6px; }
+    td { padding: 2px 6px; }
+    footer { margin-top: 14px; padding-top: 6px; font-size: 9px; }
+    h2 { break-after: avoid; }
+    .row, .tiles, tr, svg { break-inside: avoid; }
+  }
+
+</style></head><body>
+<div class="page">
+<header>
+  <div><h1>Security programme &mdash; impact</h1>
+       <div class="period">As at 29 Oct 2026 &middot; Page 1 of 2 &mdash; Headline</div></div>
+  <div class="meta">Generated 2026-10-29 20:19<br>secops-dashboard</div>
+</header>
+<h2>What it has found</h2>
+<div class="tiles tiles-3"><div class="tile"><div class="tile-value" style="color:#0f172a">10</div><div class="tile-label">Issues found and logged</div><div class="tile-sub">things this programme surfaced that need action</div></div><div class="tile"><div class="tile-value" style="color:#16a34a">7</div><div class="tile-label">Resolved</div><div class="tile-sub">done, or risk formally accepted</div></div><div class="tile"><div class="tile-value" style="color:#ea580c">3</div><div class="tile-label">Still open</div><div class="tile-sub">1 of them critical or high</div></div></div>
+<h2>Day 0 (14 Sep 2026) vs now &mdash; 45 days</h2>
+<table><tr><th>Measure</th><th class="num">Day 0</th><th class="num">Now</th><th class="num">Change</th></tr>
+<tr><td>Servers patched within 35 days</td><td class="num">63.2%</td><td class="num">62.9%</td><td class="num" style="color:#dc2626">&minus;0.3 pts</td></tr><tr><td>Servers not patched in 90+ days</td><td class="num">41</td><td class="num">37</td><td class="num" style="color:#16a34a">&minus;4</td></tr><tr><td>Servers not restarted in 35+ days</td><td class="num">0</td><td class="num">0</td><td class="num" style="color:#64748b">no change</td></tr><tr><td>Domain controllers needing attention</td><td class="num">4</td><td class="num">4</td><td class="num" style="color:#64748b">no change</td></tr><tr><td>Devices with a known-exploited vulnerability</td><td class="num">48.2%</td><td class="num">43.6%</td><td class="num" style="color:#16a34a">&minus;4.6 pts</td></tr><tr><td>Open critical past SLA</td><td class="num">82.7%</td><td class="num">82.8%</td><td class="num" style="color:#dc2626">+0.1 pts</td></tr><tr><td>Open high past SLA</td><td class="num">43.6%</td><td class="num">43.3%</td><td class="num" style="color:#16a34a">&minus;0.3 pts</td></tr><tr><td>Devices on an unsupported OS</td><td class="num">173</td><td class="num">157</td><td class="num" style="color:#16a34a">&minus;16</td></tr><tr><td>Machines missing a sensor</td><td class="num">61</td><td class="num">57</td><td class="num" style="color:#16a34a">&minus;4</td></tr><tr><td>Sensors silent 7+ days</td><td class="num">3.5%</td><td class="num">3.2%</td><td class="num" style="color:#16a34a">&minus;0.3 pts</td></tr><tr><td>Enabled accounts that are stale</td><td class="num">17.0%</td><td class="num">15.6%</td><td class="num" style="color:#16a34a">&minus;1.4 pts</td></tr><tr><td>People without MFA</td><td class="num">210</td><td class="num">192</td><td class="num" style="color:#16a34a">&minus;18</td></tr><tr><td>Unused VPN / remote-app accounts</td><td class="num">66</td><td class="num">61</td><td class="num" style="color:#16a34a">&minus;5</td></tr><tr><td>Identity detections awaiting triage</td><td class="num">0</td><td class="num">0</td><td class="num" style="color:#64748b">no change</td></tr><tr><td>Confirmed external risks open</td><td class="num">4</td><td class="num">4</td><td class="num" style="color:#64748b">no change</td></tr><tr><td>Leaked credentials (enabled accounts)</td><td class="num">0</td><td class="num">0</td><td class="num" style="color:#64748b">no change</td></tr></table>
+<p class="legend-row">Green = moved the right way, red = the wrong way. Percentages are of the relevant total (active
+servers, active devices, open findings, enabled accounts); "pts" = percentage points.</p>
+<h2>Time to patch &mdash; Patch Tuesday cohorts</h2>
+<table><tr><th>Patch Tuesday</th><th class="num">Findings</th><th class="num">Devices</th>
+<th class="num">Fixed in 7 days</th><th class="num">14 days</th><th class="num">30 days</th><th class="num">60 days</th>
+<th class="num">Fixed so far</th><th class="num">Days since</th></tr>
+<tr><td colspan="9" class="empty">No cohort yet.</td></tr></table>
+<p class="legend-row">Each month's Microsoft findings that appeared in the week after Patch Tuesday, on devices already
+being assessed, and the share fixed within each window ("&ndash;" until that many days have passed). Each month is
+measured the same way, so improvement shows month on month.</p>
+<footer>Page 1 of 2 &mdash; secops-dashboard. Whole region, excluding TEST. Day 0 = 14 Sep 2026, the first day these measures were recorded. Live on the Programme impact dashboard; the action log is the Impact action log workbook (Metrics &gt; Impact).</footer>
+</div>
+<div class="page">
+<header>
+  <div><h1>Security programme &mdash; impact</h1>
+       <div class="period">As at 29 Oct 2026 &middot; Page 2 of 2 &mdash; Action log</div></div>
+  <div class="meta">Generated 2026-10-29 20:19<br>secops-dashboard</div>
+</header>
+<h2>Found and actioned &mdash; open first</h2>
+<table><tr><th>Found</th><th>What was found / action</th><th>Site</th><th>Severity</th><th>Owner</th><th>Status</th></tr>
+<tr><td>25 Oct </td><td>Publicly reachable directory service on an old host name<div class="tile-sub">Firewall rule raised; awaiting change window</div></td><td>Northgate Hospital</td><td style="color:#ea580c">High</td><td>Infrastructure</td><td style="color:#dc2626">Open</td></tr><tr><td>20 Oct </td><td>Browser update service disabled by policy on servers<div class="tile-sub">Policy change through change control</div></td><td>Riverside Health</td><td style="color:#d97706">Medium</td><td>Infrastructure</td><td style="color:#ea580c">In progress</td></tr><tr><td>15 Oct </td><td>Shared clinical workstations without multi-factor sign-in<div class="tile-sub">Tap-and-go MFA pilot on one ward</div></td><td>Hillcrest Community Health</td><td style="color:#d97706">Medium</td><td>Applications</td><td style="color:#ea580c">In progress</td></tr><tr><td>30 Sep </td><td>Web server software with an actively exploited flaw on a public site<div class="tile-sub">Hosting provider patched; risk closed after rescan</div></td><td>Riverside Health</td><td style="color:#dc2626">Critical</td><td>Applications</td><td style="color:#16a34a">Done 05 Oct</td></tr><tr><td>15 Sep </td><td>Internet-facing VPN appliance missing a critical patch<div class="tile-sub">Patched out of hours; vendor advisory tracked</div></td><td>Northgate Hospital</td><td style="color:#dc2626">Critical</td><td>Infrastructure</td><td style="color:#16a34a">Done 18 Sep</td></tr><tr><td>10 Oct </td><td>Dormant admin account used after 200+ days<div class="tile-sub">Confirmed legitimate; account moved to a named owner</div></td><td>Lakeside Health</td><td style="color:#ea580c">High</td><td>Cyber</td><td style="color:#16a34a">Done 12 Oct</td></tr><tr><td>05 Oct </td><td>Legacy file server on an unsupported OS still sharing data<div class="tile-sub">Isolated to one VLAN pending migration; replacement scheduled</div></td><td>Northgate Hospital</td><td style="color:#ea580c">High</td><td>Infrastructure</td><td style="color:#16a34a">Accepted risk 11 Oct</td></tr><tr><td>26 Sep </td><td>Domain controller with no endpoint sensor<div class="tile-sub">Sensor installed and verified</div></td><td>Hillcrest Community Health</td><td style="color:#ea580c">High</td><td>Infrastructure</td><td style="color:#16a34a">Done 03 Oct</td></tr><tr><td>22 Sep </td><td>Infostealer leak naming an enabled staff account<div class="tile-sub">Password reset, sessions revoked, device checked</div></td><td>Lakeside Health</td><td style="color:#ea580c">High</td><td>Cyber</td><td style="color:#16a34a">Done 23 Sep</td></tr><tr><td>19 Sep </td><td>Domain takeover risk: DNS record pointing at a released cloud host<div class="tile-sub">Stale DNS record removed</div></td><td>Riverside Health</td><td style="color:#ea580c">High</td><td>Infrastructure</td><td style="color:#16a34a">Done 20 Sep</td></tr></table>
+<footer>Page 2 of 2 &mdash; secops-dashboard. Whole region, excluding TEST. Day 0 = 14 Sep 2026, the first day these measures were recorded. Live on the Programme impact dashboard; the action log is the Impact action log workbook (Metrics &gt; Impact).</footer>
+</div>
+</body></html>

@@ -395,6 +395,35 @@ def main() -> int:
               and all(a["Enabled"] != "No" for a in acc),
               f"All accounts tab: enabled accounts only, stale first, with title/department: {acc[:2]}")
 
+    print("== scorecard")
+    conn.commit()   # end this script's read transaction: impact.py's ensure_schema needs table locks
+    check(run("impact.py", "--only", "metrics") == 0, "impact.py metrics exited 0")
+    sc_out = os.path.join(tmp, "scorecard")
+    check(run("scorecard.py", "--out-dir", sc_out, "--month", dt.date.today().strftime("%Y-%m"), "--no-pdf") == 0,
+          "scorecard.py exited 0")
+    cards = sorted(os.listdir(sc_out)) if os.path.isdir(sc_out) else []
+    check(len(cards) == 4 and all("-scorecard-" in f and f.endswith(".html") for f in cards),
+          f"scorecard per site + region: {cards}")
+    reg = next((os.path.join(sc_out, f) for f in cards if f.startswith("region-")), None)
+    reg_html = open(reg).read() if reg else ""
+    check(reg_html.count('class="page"') == 2 and "By health service" in reg_html
+          and "Servers patched in the last 35 days" in reg_html and "Riverside Health" in reg_html,
+          "region scorecard: measures page + by-service table")
+    one = next((os.path.join(sc_out, f) for f in cards if f.startswith("Riverside")), None)
+    one_html = open(one).read() if one else ""
+    check(one_html.count('class="page"') == 1 and "Lakeside Health" not in one_html,
+          "a site's scorecard shows only that site")
+    check("Too early" in one_html, "one day of snapshots: directions are 'too early', not invented")
+    import publish
+    os.makedirs(os.path.join(tmp, "monthly-2026-11"), exist_ok=True)
+    for f in ("Riverside_Health-scorecard-2026-11.pdf", "Riverside_Health-scorecard-2026-11.html",
+              "Riverside_Health-actions-2026-11.xlsx"):
+        open(os.path.join(tmp, "monthly-2026-11", f), "w").close()
+    dest = sorted(d for _, d in publish.candidates(tmp))
+    check(dest == ["Riverside_Health/Monthly/2026-11 Riverside_Health Action Pack.xlsx",
+                   "Riverside_Health/Monthly/2026-11 Riverside_Health Security Scorecard.pdf"],
+          f"publish files the scorecard PDF (not the HTML) next to the action pack: {dest}")
+
     print("== dashboard SQL")
     n = 0
     for path in sorted(glob.glob(os.path.join(ROOT, "grafana", "*.json"))):

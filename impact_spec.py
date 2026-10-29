@@ -36,6 +36,7 @@ METRICS: Dict[str, str] = {
     "identity_triage": "Identity detections (high/medium) awaiting triage",
     "ext_confirmed_open": "Confirmed external risks open",
     "ext_crit_high_open": "Critical/high external risks open",
+    "ext_crit_high_overdue": "...open past their SLA",
     "leaked_creds": "Infostealer leaks naming an enabled account",
 }
 

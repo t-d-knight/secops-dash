@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Servers -- patching and health -- 2026-10-29</title>
+<style>
+
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: #0f172a;
+          background: #f8fafc; margin: 0; }
+  .page { max-width: 900px; margin: 0 auto 24px; background: #fff; padding: 36px 40px 48px; }
+  header { display: flex; justify-content: space-between; align-items: baseline;
+            border-bottom: 3px solid #0f172a; padding-bottom: 14px; margin-bottom: 22px; }
+  h1 { font-size: 22px; margin: 0; }
+  .period { font-size: 15px; color: #64748b; }
+  .meta { font-size: 11px; color: #64748b; text-align: right; }
+  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: #64748b;
+        border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin: 26px 0 12px; }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 4px; }
+  .tiles-3 { grid-template-columns: repeat(3, 1fr); }
+  .tile { border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; }
+  .tile-value { font-size: 26px; font-weight: 700; line-height: 1.1; }
+  .tile-label { font-size: 11px; color: #64748b; margin-top: 3px; }
+  .tile-sub { font-size: 10px; color: #64748b; margin-top: 2px; }
+  .tile-trend { font-size: 10px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .row { display: flex; gap: 24px; align-items: flex-start; }
+  .col { flex: 1; min-width: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { text-align: left; font-size: 10px; text-transform: uppercase; color: #64748b;
+        border-bottom: 1px solid #e2e8f0; padding: 4px 6px; }
+  td { padding: 4px 6px; border-bottom: 1px solid #f1f5f9; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .legend-row { font-size: 11px; color: #64748b; margin-top: 4px; }
+  .legend-dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; }
+  .empty { color: #64748b; font-size: 12px; font-style: italic; }
+  footer { margin-top: 32px; padding-top: 10px; border-top: 1px solid #e2e8f0;
+            font-size: 10px; color: #64748b; }
+  @media screen {
+    .page { box-shadow: 0 1px 4px rgba(15,23,42,.08); border-radius: 4px; }
+  }
+  @page { size: A4; margin: 12mm 12mm 14mm; }
+  @media print {
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }   /* keep severity colours */
+    body { background: #fff; }
+    .page { padding: 0; max-width: none; margin: 0; box-shadow: none; break-after: page; }
+    .page:last-child { break-after: auto; }
+    /* Tighter than on screen so each section fits one A4 page: scale the whole
+       page a little and trim the spacing that's generous on a monitor. */
+    html { zoom: 0.84; }
+    header { margin-bottom: 12px; padding-bottom: 8px; }
+    h2 { margin: 14px 0 8px; padding-bottom: 4px; }
+    .tiles { gap: 8px; }
+    .tile { padding: 8px 12px; }
+    .tile-value { font-size: 22px; }
+    table { font-size: 11px; }
+    th { padding: 3px 6px; }
+    td { padding: 2px 6px; }
+    footer { margin-top: 14px; padding-top: 6px; font-size: 9px; }
+    h2 { break-after: avoid; }
+    .row, .tiles, tr, svg { break-inside: avoid; }
+  }
+
+</style></head><body>
+<div class="page">
+<header>
+  <div><h1>Servers &mdash; patching and health</h1>
+       <div class="period">As at 29 Oct 2026 &middot; Page 1 of 4 &mdash; Patching</div></div>
+  <div class="meta">Generated 2026-10-29 20:19<br>secops-dashboard</div>
+</header>
+<h2>Headline</h2>
+<div class="tiles tiles-3"><div class="tile"><div class="tile-value" style="color:#0f172a">175</div><div class="tile-label">Active servers</div><div class="tile-sub">servers and domain controllers seen in the last 7 days</div></div><div class="tile"><div class="tile-value" style="color:#ea580c">61</div><div class="tile-label">Not patched in 35+ days</div><div class="tile-sub">35% of servers -- missed at least one monthly cycle</div></div><div class="tile"><div class="tile-value" style="color:#dc2626">37</div><div class="tile-label">Not patched in 90+ days</div><div class="tile-sub">21% of servers -- three or more cycles</div></div><div class="tile"><div class="tile-value" style="color:#ea580c">5</div><div class="tile-label">Reboot pending</div><div class="tile-sub">patched, but the update isn&#x27;t applied until a restart</div></div><div class="tile"><div class="tile-value" style="color:#16a34a">0</div><div class="tile-label">Up 35+ days</div><div class="tile-sub">not restarted for a month: cumulative updates can&#x27;t have applied</div></div><div class="tile"><div class="tile-value" style="color:#dc2626">8</div><div class="tile-label">With known-exploited (KEV) vulns</div><div class="tile-sub">0 on an unsupported OS</div></div></div>
+<h2>By site</h2>
+<table><tr><th>Site</th><th class="num">Servers</th><th class="num">Not patched 35+ d</th><th class="num">90+ d</th>
+<th class="num">Reboot pending</th><th class="num">Up 35+ d</th><th class="num">Unsupported OS</th>
+<th class="num">With KEV</th></tr><tr><td>Riverside Health</td><td class="num">71</td><td class="num" style="color:#dc2626">22</td><td class="num" style="color:#dc2626">12</td><td class="num">1</td><td class="num">0</td><td class="num">0</td><td class="num" style="color:#dc2626">4</td></tr><tr><td>Northgate Hospital</td><td class="num">43</td><td class="num" style="color:#dc2626">17</td><td class="num" style="color:#dc2626">9</td><td class="num">2</td><td class="num">0</td><td class="num">0</td><td class="num" style="color:#dc2626">2</td></tr><tr><td>Lakeside Health</td><td class="num">36</td><td class="num" style="color:#dc2626">14</td><td class="num" style="color:#dc2626">9</td><td class="num">1</td><td class="num">0</td><td class="num">0</td><td class="num">0</td></tr><tr><td>Hillcrest Community Health</td><td class="num">21</td><td class="num" style="color:#dc2626">7</td><td class="num" style="color:#dc2626">6</td><td class="num">1</td><td class="num">0</td><td class="num">0</td><td class="num" style="color:#dc2626">1</td></tr><tr><td>Ungrouped</td><td class="num">4</td><td class="num" style="color:#dc2626">1</td><td class="num" style="color:#dc2626">1</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num" style="color:#dc2626">1</td></tr></table>
+<div class="row"><div class="col">
+<h2>How long since servers were patched</h2>
+<table><tr><th>Last confirmed patch</th><th class="num">Servers</th><th class="num">Share</th></tr><tr><td>Within 7 days</td><td class="num">18</td><td class="num">10%</td></tr><tr><td>8-35 days</td><td class="num">92</td><td class="num">53%</td></tr><tr><td>36-90 days</td><td class="num">24</td><td class="num">14%</td></tr><tr><td>91-180 days</td><td class="num">13</td><td class="num">7%</td></tr><tr><td>Over 180 days</td><td class="num">24</td><td class="num">14%</td></tr><tr><td>Never / unknown</td><td class="num">4</td><td class="num">2%</td></tr></table>
+<p class="legend-row">Falcon's patch tracking starts 12 Oct 2025: a server with nothing confirmed since then shows the days since that date with a <b>+</b> -- it may be longer.</p>
+</div><div class="col">
+<h2>By OS version</h2>
+<table><tr><th>OS</th><th class="num">Servers</th><th class="num">Median days since patched</th>
+<th class="num">35+ d</th><th class="num">90+ d</th></tr><tr><td>Windows Server 2022</td><td class="num">79</td><td class="num" style="color:#0f172a">25</td><td class="num" style="color:#dc2626">26</td><td class="num" style="color:#dc2626">14</td></tr><tr><td>Windows Server 2019</td><td class="num">71</td><td class="num" style="color:#0f172a">26</td><td class="num" style="color:#dc2626">28</td><td class="num" style="color:#dc2626">19</td></tr><tr><td>Windows Server 2016</td><td class="num">19</td><td class="num" style="color:#0f172a">29</td><td class="num" style="color:#dc2626">7</td><td class="num" style="color:#dc2626">4</td></tr><tr><td>Windows Server 2012 R2</td><td class="num">4</td><td class="num" style="color:#0f172a">11</td><td class="num">0</td><td class="num">0</td></tr><tr><td>unknown</td><td class="num">2</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr></table>
+</div></div>
+<footer>Page 1 of 4 &mdash; secops-dashboard. Whole region, servers and domain controllers with a sensor seen in the last 7 days. Last patch = Falcon's last patch confirmed (Exposure Management &gt; Patches); uptime from the sensor's last reboot; vulnerabilities from the last nightly rollup. Full lists in the Excel workbook with this report, and live on the Servers dashboard.</footer>
+</div>
+
+<div class="page">
+<header>
+  <div><h1>Servers &mdash; patching and health</h1>
+       <div class="period">As at 29 Oct 2026 &middot; Page 2 of 4 &mdash; Servers</div></div>
+  <div class="meta">Generated 2026-10-29 20:19<br>secops-dashboard</div>
+</header>
+<h2>Longest without a patch &mdash; top 40</h2>
+<table><tr><th>Server</th><th>Site</th><th>OS</th><th class="num">Days since patched</th>
+<th class="num">Days up</th><th class="num">Crit</th><th class="num">KEV</th></tr>
+<tr><td>LKH-SRV0016</td><td>Lakeside Health</td><td>Windows Server 2019</td><td class="num" style="color:#dc2626">382+</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>NGH-SRV0013</td><td>Northgate Hospital</td><td>Windows Server 2022</td><td class="num" style="color:#dc2626">380+</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">3</td><td class="num" style="color:#dc2626">1</td></tr><tr><td>LKH-SRV0009</td><td>Lakeside Health</td><td>Windows Server 2019</td><td class="num" style="color:#dc2626">375+</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>RVH-SRV0026</td><td>Riverside Health</td><td>Windows Server 2019</td><td class="num" style="color:#dc2626">349</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>LKH-SRV0032</td><td>Lakeside Health</td><td>Windows Server 2019</td><td class="num" style="color:#dc2626">347</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>HCH-DC0000</td><td>Hillcrest Community Health</td><td>Windows Server 2019</td><td class="num" style="color:#dc2626">346</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>NGH-SRV0034</td><td>Northgate Hospital</td><td>Windows Server 2019</td><td class="num" style="color:#dc2626">332</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>NGH-SRV0008</td><td>Northgate Hospital</td><td>Windows Server 2022</td><td class="num" style="color:#dc2626">332</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>HCH-SRV0008</td><td>Hillcrest Community Health</td><td>Windows Server 2019</td><td class="num" style="color:#dc2626">297</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>RVH-SRV0013</td><td>Riverside Health</td><td>Windows Server 2019</td><td class="num" style="color:#dc2626">293</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>NGH-SRV0032</td><td>Northgate Hospital</td><td>Windows Server 2019</td><td class="num" style="color:#dc2626">288</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>NGH-SRV0027</td><td>Northgate Hospital</td><td>Windows Server 2019</td><td class="num" style="color:#dc2626">278</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>LKH-SRV0018</td><td>Lakeside Health</td><td>Windows Server 2022</td><td class="num" style="color:#dc2626">278</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>HCH-SRV0006</td><td>Hillcrest Community Health</td><td>Windows Server 2016</td><td class="num" style="color:#dc2626">258</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>RVH-SRV0005</td><td>Riverside Health</td><td>Windows Server 2019</td><td class="num" style="color:#dc2626">251</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>LKH-SRV0021</td><td>Lakeside Health</td><td>Windows Server 2022</td><td class="num" style="color:#dc2626">229</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>LKH-SRV0024</td><td>Lakeside Health</td><td>Windows Server 2019</td><td class="num" style="color:#dc2626">223</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>HCH-SRV0012</td><td>Hillcrest Community Health</td><td>Windows Server 2016</td><td class="num" style="color:#dc2626">223</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>RVH-SRV0014</td><td>Riverside Health</td><td>Windows Server 2019</td><td class="num" style="color:#dc2626">220</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>LKH-SRV0013</td><td>Lakeside Health</td><td>Windows Server 2019</td><td class="num" style="color:#dc2626">218</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>LKH-SRV0022</td><td>Lakeside Health</td><td>Windows Server 2022</td><td class="num" style="color:#dc2626">214</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>NGH-SRV0035</td><td>Northgate Hospital</td><td>Windows Server 2022</td><td class="num" style="color:#dc2626">183</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>RVH-SRV0038</td><td>Riverside Health</td><td>Windows Server 2022</td><td class="num" style="color:#dc2626">183</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">&ndash;</td><td class="num">&ndash;</td></tr><tr><td>NGH-SRV0014</td><td>Northgate Hospital</td><td>Windows Server 2022</td><td class="num" style="color:#dc2626">181</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">1</td><td class="num">0</td></tr><tr><td>RVH-SRV0009</td><td>Riverside Health</td><td>Windows Server 2022</td><td class="num" style="color:#dc2626">161</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>RVH-SRV0036</td><td>Riverside Health</td><td>Windows Server 2019</td><td class="num" style="color:#dc2626">158</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>UNGROUPED-DC0000</td><td>Ungrouped</td><td>Windows Server 2019</td><td class="num" style="color:#dc2626">151</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num" style="color:#dc2626">1</td></tr><tr><td>RVH-SRV0057</td><td>Riverside Health</td><td>Windows Server 2022</td><td class="num" style="color:#dc2626">149</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>HCH-SRV0019</td><td>Hillcrest Community Health</td><td>Windows Server 2022</td><td class="num" style="color:#dc2626">148</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>NGH-SRV0040</td><td>Northgate Hospital</td><td>Windows Server 2022</td><td class="num" style="color:#dc2626">142</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>RVH-SRV0050</td><td>Riverside Health</td><td>Windows Server 2019</td><td class="num" style="color:#dc2626">139</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">&ndash;</td><td class="num">&ndash;</td></tr><tr><td>HCH-SRV0016</td><td>Hillcrest Community Health</td><td>Windows Server 2019</td><td class="num" style="color:#dc2626">137</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>RVH-SRV0022</td><td>Riverside Health</td><td>Windows Server 2022</td><td class="num" style="color:#dc2626">125</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>RVH-SRV0063</td><td>Riverside Health</td><td>Windows Server 2019</td><td class="num" style="color:#dc2626">114</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>LKH-SRV0028</td><td>Lakeside Health</td><td>Windows Server 2022</td><td class="num" style="color:#dc2626">108</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>NGH-SRV0015</td><td>Northgate Hospital</td><td>Windows Server 2016</td><td class="num" style="color:#dc2626">107</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>RVH-SRV0034</td><td>Riverside Health</td><td>Windows Server 2016</td><td class="num" style="color:#dc2626">94</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>NGH-SRV0009</td><td>Northgate Hospital</td><td>Windows Server 2019</td><td class="num" style="color:#ea580c">89</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>RVH-SRV0069</td><td>Riverside Health</td><td>Windows Server 2019</td><td class="num" style="color:#ea580c">85</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>NGH-SRV0022</td><td>Northgate Hospital</td><td>Windows Server 2022</td><td class="num" style="color:#ea580c">84</td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">&ndash;</td><td class="num">&ndash;</td></tr></table>
+<p class="legend-row">4 servers have no patch data from Falcon (Windows Server 2016, Windows Server 2022, unknown OS) -- Falcon's patch status covers Windows; listed in the workbook.</p>
+<h2>Domain controllers needing attention &mdash; 4 of 11</h2>
+<table><tr><th>DC</th><th>Site</th><th>OS</th><th>Build</th><th class="num">Days since patched</th>
+<th>Reboot pending</th><th class="num">Days up</th><th class="num">Crit</th><th class="num">KEV</th></tr>
+<tr><td>MYSTERY</td><td>Ungrouped</td><td></td><td></td><td class="num" style="color:#0f172a">&ndash;</td><td></td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">1</td><td class="num">0</td></tr><tr><td>HCH-DC0000</td><td>Hillcrest Community Health</td><td>Windows Server 2019</td><td></td><td class="num" style="color:#dc2626">346</td><td></td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num">0</td></tr><tr><td>UNGROUPED-DC0000</td><td>Ungrouped</td><td>Windows Server 2019</td><td></td><td class="num" style="color:#dc2626">151</td><td></td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">0</td><td class="num" style="color:#dc2626">1</td></tr><tr><td>NGH-DC0001</td><td>Northgate Hospital</td><td>Windows Server 2022</td><td></td><td class="num" style="color:#ea580c">36</td><td></td><td class="num" style="color:#0f172a">&ndash;</td><td class="num">&ndash;</td><td class="num">&ndash;</td></tr></table>
+<p class="legend-row">Not patched in 35+ days or on an unsupported OS; every DC is in the workbook. Falcon's patch tracking starts 12 Oct 2025: a server with nothing confirmed since then shows the days since that date with a <b>+</b> -- it may be longer.</p>
+<footer>Page 2 of 4 &mdash; secops-dashboard. Whole region, servers and domain controllers with a sensor seen in the last 7 days. Last patch = Falcon's last patch confirmed (Exposure Management &gt; Patches); uptime from the sensor's last reboot; vulnerabilities from the last nightly rollup. Full lists in the Excel workbook with this report, and live on the Servers dashboard.</footer>
+</div>
+
+<div class="page">
+<header>
+  <div><h1>Servers &mdash; patching and health</h1>
+       <div class="period">As at 29 Oct 2026 &middot; Page 3 of 4 &mdash; What to fix</div></div>
+  <div class="meta">Generated 2026-10-29 20:19<br>secops-dashboard</div>
+</header>
+<h2>Top missing fixes on servers</h2>
+<table><tr><th>Fix</th><th>Product</th><th class="num">Servers</th><th class="num">Crit/high findings</th>
+<th class="num">Critical</th></tr><tr><td>Install the monthly cumulative update</td><td>Microsoft Windows OS - Server</td><td class="num">77</td><td class="num">160</td><td class="num">0</td></tr><tr><td>Update OpenSSL</td><td>SSL/TLS &amp; Certificate Hygiene</td><td class="num">38</td><td class="num">44</td><td class="num">3</td></tr><tr><td>Update .NET runtime</td><td>Microsoft .NET Framework</td><td class="num">36</td><td class="num">70</td><td class="num">8</td></tr><tr><td>Update or remove Java SE</td><td>Java Runtime (JRE/JDK)</td><td class="num">26</td><td class="num">74</td><td class="num">4</td></tr><tr><td>Update VMware Tools</td><td>VMware ESXi / Tools</td><td class="num">7</td><td class="num">12</td><td class="num">5</td></tr><tr><td>Update Apache Log4j</td><td>Java / Middleware - Log4j</td><td class="num">1</td><td class="num">1</td><td class="num">1</td></tr></table>
+<div class="row"><div class="col">
+<h2>Applications on servers (not the OS)</h2>
+<table><tr><th>Product family</th><th class="num">Servers</th><th class="num">Crit</th><th class="num">High</th></tr><tr><td>SSL/TLS &amp; Certificate Hygiene</td><td class="num">38</td><td class="num">3</td><td class="num">41</td></tr><tr><td>Microsoft .NET Framework</td><td class="num">36</td><td class="num">8</td><td class="num">62</td></tr><tr><td>Java Runtime (JRE/JDK)</td><td class="num">26</td><td class="num">4</td><td class="num">70</td></tr><tr><td>VMware ESXi / Tools</td><td class="num">7</td><td class="num">5</td><td class="num">7</td></tr><tr><td>Java / Middleware - Log4j</td><td class="num">1</td><td class="num">1</td><td class="num">0</td></tr></table>
+</div><div class="col">
+<h2>Disk 85%+ full</h2>
+<table><tr><th>Server</th><th>Site</th><th class="num">Disk %</th><th class="num">Free GB</th></tr>
+<tr><td colspan="4" class="empty">No server disk over 85%.</td></tr></table>
+</div></div>
+<h2>Database and middleware servers &mdash; most critical first</h2>
+<table><tr><th>Server</th><th>Site</th><th>Products with crit/high</th><th class="num">Crit</th><th class="num">High</th>
+<th class="num">Days since patched</th></tr><tr><td>RVH-SRV0065</td><td>Riverside Health</td><td>Java Runtime (JRE/JDK)</td><td class="num">1</td><td class="num">6</td><td class="num" style="color:#0f172a">21</td></tr><tr><td>RVH-SRV0054</td><td>Riverside Health</td><td>Java Runtime (JRE/JDK)</td><td class="num">1</td><td class="num">6</td><td class="num" style="color:#0f172a">10</td></tr><tr><td>NGH-SRV0014</td><td>Northgate Hospital</td><td>Java Runtime (JRE/JDK)</td><td class="num">1</td><td class="num">6</td><td class="num" style="color:#dc2626">181</td></tr><tr><td>RVH-SRV0068</td><td>Riverside Health</td><td>Java Runtime (JRE/JDK)</td><td class="num">1</td><td class="num">4</td><td class="num" style="color:#0f172a">13</td></tr><tr><td>MYSTERY</td><td>Ungrouped</td><td>Java / Middleware - Log4j</td><td class="num">1</td><td class="num">0</td><td class="num" style="color:#0f172a">&ndash;</td></tr><tr><td>HCH-DC0001</td><td>Hillcrest Community Health</td><td>Java Runtime (JRE/JDK)</td><td class="num">0</td><td class="num">4</td><td class="num" style="color:#0f172a">6</td></tr><tr><td>LKH-SRV0017</td><td>Lakeside Health</td><td>Java Runtime (JRE/JDK)</td><td class="num">0</td><td class="num">3</td><td class="num" style="color:#0f172a">22</td></tr><tr><td>LKH-SRV0015</td><td>Lakeside Health</td><td>Java Runtime (JRE/JDK)</td><td class="num">0</td><td class="num">3</td><td class="num" style="color:#0f172a">10</td></tr><tr><td>LKH-DC0000</td><td>Lakeside Health</td><td>Java Runtime (JRE/JDK)</td><td class="num">0</td><td class="num">2</td><td class="num" style="color:#0f172a">18</td></tr><tr><td>LKH-SRV0004</td><td>Lakeside Health</td><td>Java Runtime (JRE/JDK)</td><td class="num">0</td><td class="num">2</td><td class="num" style="color:#0f172a">5</td></tr><tr><td>RVH-DC0000</td><td>Riverside Health</td><td>Java Runtime (JRE/JDK)</td><td class="num">0</td><td class="num">2</td><td class="num" style="color:#0f172a">22</td></tr><tr><td>LKH-SRV0030</td><td>Lakeside Health</td><td>Java Runtime (JRE/JDK)</td><td class="num">0</td><td class="num">2</td><td class="num" style="color:#ea580c">55</td></tr><tr><td>LKH-SRV0033</td><td>Lakeside Health</td><td>Java Runtime (JRE/JDK)</td><td class="num">0</td><td class="num">2</td><td class="num" style="color:#ea580c">52</td></tr><tr><td>NGH-SRV0008</td><td>Northgate Hospital</td><td>Java Runtime (JRE/JDK)</td><td class="num">0</td><td class="num">2</td><td class="num" style="color:#dc2626">332</td></tr><tr><td>NGH-SRV0016</td><td>Northgate Hospital</td><td>Java Runtime (JRE/JDK)</td><td class="num">0</td><td class="num">2</td><td class="num" style="color:#0f172a">2</td></tr></table>
+<footer>Page 3 of 4 &mdash; secops-dashboard. Whole region, servers and domain controllers with a sensor seen in the last 7 days. Last patch = Falcon's last patch confirmed (Exposure Management &gt; Patches); uptime from the sensor's last reboot; vulnerabilities from the last nightly rollup. Full lists in the Excel workbook with this report, and live on the Servers dashboard.</footer>
+</div>
+
+<div class="page">
+<header>
+  <div><h1>Servers &mdash; patching and health</h1>
+       <div class="period">As at 29 Oct 2026 &middot; Page 4 of 4 &mdash; No sensor</div></div>
+  <div class="meta">Generated 2026-10-29 20:19<br>secops-dashboard</div>
+</header>
+<h2>Servers with no Falcon sensor</h2>
+<div class="tiles tiles-3"><div class="tile"><div class="tile-value" style="color:#16a34a">0</div><div class="tile-label">Domain controllers, no sensor</div><div class="tile-sub">a DC without a sensor is a blind spot over every account</div></div><div class="tile"><div class="tile-value" style="color:#ea580c">10</div><div class="tile-label">Windows servers, no sensor</div><div class="tile-sub">enabled AD account, logged on in the last 60 days</div></div><div class="tile"><div class="tile-value" style="color:#16a34a">0</div><div class="tile-label">Cloud instances, no sensor</div><div class="tile-sub">reported by the cloud provider</div></div></div>
+<p class="legend-row">Found by Falcon Discover and confirmed as real, in-use machines: not patch-tracked, not
+vulnerability-scanned and not protected, so they appear nowhere else in this report. Install a sensor, or record
+why it can't have one (vendor-supported system, being decommissioned).</p>
+<h2>By site</h2>
+<table><tr><th>Site</th><th class="num">DCs</th><th class="num">Servers</th><th class="num">Cloud</th>
+<th class="num">Total</th></tr>
+<tr><td>Riverside Health</td><td class="num">0</td><td class="num">4</td><td class="num">0</td><td class="num">4</td></tr><tr><td>Lakeside Health</td><td class="num">0</td><td class="num">2</td><td class="num">0</td><td class="num">2</td></tr><tr><td>Northgate Hospital</td><td class="num">0</td><td class="num">2</td><td class="num">0</td><td class="num">2</td></tr><tr><td>Hillcrest Community Health</td><td class="num">0</td><td class="num">1</td><td class="num">0</td><td class="num">1</td></tr><tr><td>Ungrouped</td><td class="num">0</td><td class="num">1</td><td class="num">0</td><td class="num">1</td></tr></table>
+<h2>Machines &mdash; domain controllers first</h2>
+<table><tr><th>Name</th><th>Site</th><th>Class</th><th>OS</th><th>Last AD logon</th><th>AD description</th></tr>
+<tr><td>HCH-SRV9000$</td><td>Hillcrest Community Health</td><td>Windows server, no sensor</td><td>Windows 11</td><td>2026-10-28</td><td>Dell Latitude</td></tr><tr><td>LKH-SRV9000$</td><td>Lakeside Health</td><td>Windows server, no sensor</td><td>Windows 11</td><td>2026-10-26</td><td>Dell Latitude</td></tr><tr><td>LKH-SRV9001$</td><td>Lakeside Health</td><td>Windows server, no sensor</td><td>Windows 11</td><td>2026-10-28</td><td>Dell Latitude</td></tr><tr><td>NGH-SRV9000$</td><td>Northgate Hospital</td><td>Windows server, no sensor</td><td>Windows 11</td><td>2026-10-29</td><td>Dell Latitude</td></tr><tr><td>NGH-SRV9001$</td><td>Northgate Hospital</td><td>Windows server, no sensor</td><td>Windows 11</td><td>2026-10-29</td><td>Dell Latitude</td></tr><tr><td>RVH-SRV9000$</td><td>Riverside Health</td><td>Windows server, no sensor</td><td>Windows 11</td><td>2026-10-27</td><td>Dell Latitude</td></tr><tr><td>RVH-SRV9001$</td><td>Riverside Health</td><td>Windows server, no sensor</td><td>Windows 11</td><td>2026-10-29</td><td>Dell Latitude</td></tr><tr><td>RVH-SRV9002$</td><td>Riverside Health</td><td>Windows server, no sensor</td><td>Windows 11</td><td>2026-10-27</td><td>Dell Latitude</td></tr><tr><td>RVH-SRV9003$</td><td>Riverside Health</td><td>Windows server, no sensor</td><td>Windows 11</td><td>2026-10-28</td><td>Dell Latitude</td></tr><tr><td>UNGROUPED-SRV9000$</td><td>Ungrouped</td><td>Windows server, no sensor</td><td>Windows 11</td><td>2026-10-27</td><td>Dell Latitude</td></tr></table>
+<p class="legend-row">Not listed: 24 VMware network interfaces and 69 other devices seen only on the network -- possibly VMs without a sensor, possibly appliances; on the Endpoint &amp; Identity dashboard until identified.</p>
+<footer>Page 4 of 4 &mdash; secops-dashboard. Falcon Discover's unmanaged assets, classified nightly
+(DCs and servers: enabled AD computer accounts with a server OS and a logon in the last 60 days; a name already
+on a managed host is excluded). Full list in the Excel workbook.</footer>
+</div>
+</body></html>

@@ -22,6 +22,10 @@ bld.txt
 !/reports/sample-exec-report.html
 !/reports/sample-exec-report-site.html
 !/reports/sample-action-pack.xlsx
+!/reports/sample-scorecard.html
+!/reports/sample-scorecard-site.html
+!/reports/sample-servers-report.html
+!/reports/sample-impact-report.html
 
 # Python
 venv/
