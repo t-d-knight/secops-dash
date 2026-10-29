@@ -1101,11 +1101,11 @@
     {
       "id": 24,
       "type": "timeseries",
-      "title": "DMARC pass rate by domain",
+      "title": "Failed DMARC per day (top 5 domains)",
       "gridPos": {
         "x": 0,
         "y": 41,
-        "w": 12,
+        "w": 24,
         "h": 8
       },
       "datasource": {
@@ -1114,9 +1114,13 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "percent",
+          "unit": "short",
           "custom": {
-            "fillOpacity": 15
+            "fillOpacity": 80,
+            "stacking": {
+              "mode": "normal"
+            },
+            "drawStyle": "bars"
           }
         },
         "overrides": []
@@ -1133,19 +1137,19 @@
           "format": "time_series",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT report_date::timestamp AS time, header_from AS metric, round(100.0 * sum(dmarc_pass) / NULLIF(sum(messages),0), 1) AS value FROM dmarc_daily WHERE site_label IN ($site) AND report_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1, 2 ORDER BY 1"
+          "rawSql": "WITH top AS (SELECT header_from FROM dmarc_daily WHERE site_label IN ($site) AND report_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1 ORDER BY sum(messages - dmarc_pass) DESC LIMIT 5) SELECT report_date::timestamp AS time, CASE WHEN header_from IN (SELECT header_from FROM top) THEN header_from ELSE 'Other' END AS metric, sum(messages - dmarc_pass) AS value FROM dmarc_daily WHERE site_label IN ($site) AND report_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1, 2 ORDER BY 1"
         }
       ],
-      "description": "DMARC pass rate per day, per From domain."
+      "description": "Messages that failed DMARC per day, for the five From domains with the most failures in the range; every other domain is summed as Other."
     },
     {
       "id": 25,
       "type": "table",
       "title": "Domains",
       "gridPos": {
-        "x": 12,
-        "y": 41,
-        "w": 12,
+        "x": 0,
+        "y": 49,
+        "w": 24,
         "h": 8
       },
       "datasource": {
@@ -1300,8 +1304,8 @@
       "title": "Top failing sources",
       "gridPos": {
         "x": 0,
-        "y": 49,
-        "w": 12,
+        "y": 57,
+        "w": 24,
         "h": 8
       },
       "datasource": {
@@ -1336,7 +1340,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 57,
+        "y": 65,
         "w": 24,
         "h": 1
       },
@@ -1348,7 +1352,7 @@
       "title": "",
       "gridPos": {
         "x": 0,
-        "y": 58,
+        "y": 66,
         "w": 24,
         "h": 2
       },
@@ -1363,7 +1367,7 @@
       "title": "External assets",
       "gridPos": {
         "x": 0,
-        "y": 60,
+        "y": 68,
         "w": 4,
         "h": 4
       },
@@ -1415,7 +1419,7 @@
       "title": "Open external risks",
       "gridPos": {
         "x": 4,
-        "y": 60,
+        "y": 68,
         "w": 4,
         "h": 4
       },
@@ -1467,7 +1471,7 @@
       "title": "Critical + High",
       "gridPos": {
         "x": 8,
-        "y": 60,
+        "y": 68,
         "w": 4,
         "h": 4
       },
@@ -1527,7 +1531,7 @@
       "title": "KEV on the internet",
       "gridPos": {
         "x": 12,
-        "y": 60,
+        "y": 68,
         "w": 4,
         "h": 4
       },
@@ -1583,7 +1587,7 @@
       "title": "SLA breaches",
       "gridPos": {
         "x": 16,
-        "y": 60,
+        "y": 68,
         "w": 4,
         "h": 4
       },
@@ -1643,7 +1647,7 @@
       "title": "Fixed (range)",
       "gridPos": {
         "x": 20,
-        "y": 60,
+        "y": 68,
         "w": 4,
         "h": 4
       },
@@ -1695,7 +1699,7 @@
       "title": "External risks trend",
       "gridPos": {
         "x": 0,
-        "y": 64,
+        "y": 72,
         "w": 12,
         "h": 8
       },
@@ -1874,7 +1878,7 @@
       "title": "Open external risks",
       "gridPos": {
         "x": 12,
-        "y": 64,
+        "y": 72,
         "w": 12,
         "h": 8
       },
@@ -1990,7 +1994,7 @@
       "title": "External asset inventory",
       "gridPos": {
         "x": 0,
-        "y": 72,
+        "y": 80,
         "w": 24,
         "h": 9
       },

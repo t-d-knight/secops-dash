@@ -738,7 +738,8 @@ EMAIL_EXTERNAL_HELP = {
     "SPF aligned": "Share of reported messages whose SPF result aligned with the From domain.",
     "DKIM aligned": "Share of reported messages with an aligned DKIM signature.",
     "Rejected / quarantined": "Messages receivers rejected or quarantined because of our DMARC policy.",
-    "DMARC pass rate by domain": "DMARC pass rate per day, per From domain.",
+    "Failed DMARC per day (top 5 domains)": "Messages that failed DMARC per day, for the five From domains with "
+                                            "the most failures in the range; every other domain is summed as Other.",
     "Domains": "Per From domain: volume, pass rates and what receivers did with failures.",
     "External assets": "Internet-facing assets Hadrian monitors (domains, IPs, services), excluding archived ones.",
     "Open external risks": "Risks Hadrian currently has open against our assets.",
@@ -813,11 +814,17 @@ def email_external():
            description="Spoofing attempts AND your own misconfigured senders -- the source table below separates them.")
     b.stat("Rejected / quarantined", f"SELECT sum(rejected + quarantined) FROM dmarc_daily WHERE site_label IN ($site) "
            f"AND {rng_d('report_date')}", thresholds=NEUTRAL)
-    b.ts("DMARC pass rate by domain", f"""
-        SELECT report_date::timestamp AS time, header_from AS metric,
-               round(100.0 * sum(dmarc_pass) / NULLIF(sum(messages),0), 1) AS value
+    # Failed volume, not pass rate: a per-domain rate line for every subdomain
+    # was unreadable, and low-volume ones swing 0-100% on a handful of messages.
+    # Full width throughout -- at half width the tables cut off domains and senders.
+    b.ts("Failed DMARC per day (top 5 domains)", f"""
+        WITH top AS (SELECT header_from FROM dmarc_daily WHERE site_label IN ($site) AND {rng_d('report_date')}
+                     GROUP BY 1 ORDER BY sum(messages - dmarc_pass) DESC LIMIT 5)
+        SELECT report_date::timestamp AS time,
+               CASE WHEN header_from IN (SELECT header_from FROM top) THEN header_from ELSE 'Other' END AS metric,
+               sum(messages - dmarc_pass) AS value
         FROM dmarc_daily WHERE site_label IN ($site) AND {rng_d('report_date')}
-        GROUP BY 1, 2 ORDER BY 1""", unit="percent")
+        GROUP BY 1, 2 ORDER BY 1""", w=24, stack=True, bars=True)
     b.table("Domains", f"""
         SELECT header_from AS "Domain", site_label AS "Site", sum(messages) AS "Messages",
                round(100.0 * sum(dmarc_pass) / NULLIF(sum(messages),0), 1) AS "DMARC %",
@@ -825,7 +832,7 @@ def email_external():
                round(100.0 * sum(dkim_aligned) / NULLIF(sum(messages),0), 1) AS "DKIM %",
                sum(rejected) AS "Rejected", sum(quarantined) AS "Quarantined", count(DISTINCT source_ip) AS "Sources"
         FROM dmarc_daily WHERE site_label IN ($site) AND {rng_d('report_date')}
-        GROUP BY 1, 2 ORDER BY 3 DESC""", w=12, h=8,
+        GROUP BY 1, 2 ORDER BY 3 DESC""", h=8,
             overrides=[thresh_bg("DMARC %", GOOD_PCT), thresh_bg("SPF %", GOOD_PCT), thresh_bg("DKIM %", GOOD_PCT)])
     b.table("Top failing sources", f"""
         SELECT source_ip AS "Source IP", coalesce(source_name, source_base_domain) AS "Sender",
@@ -833,7 +840,7 @@ def email_external():
                sum(messages - dmarc_pass) AS "Failed msgs", sum(messages) AS "Total msgs",
                bool_or(spf_aligned > 0 OR dkim_aligned > 0) AS "Partly aligned"
         FROM dmarc_daily WHERE site_label IN ($site) AND {rng_d('report_date')} AND messages > dmarc_pass
-        GROUP BY 1, 2, 3 ORDER BY 5 DESC LIMIT 50""", w=12, h=8,
+        GROUP BY 1, 2, 3 ORDER BY 5 DESC LIMIT 50""", h=8,
             description="'Partly aligned' sources are usually legitimate senders missing SPF/DKIM setup, not spoofers.")
 
     b.row("External attack surface (Hadrian)", note="What Hadrian sees from the internet. **Confirmed** = "
