@@ -140,6 +140,12 @@ def run_problems(cfg: Dict[str, Any], rc: int, started: dt.datetime) -> List[tup
             if status == "running":   # still 'running' after the run ended: the process was killed
                 status, err = "never finished", err or "killed? (power loss, OOM, reboot)"
             out.append((HIGH, f"{name}: {status}" + (f" -- {err}" if err else "")))
+        # partial: the collector ran but some feeds failed (stats keys ending '.error')
+        cur.execute("""SELECT collector, stats FROM collector_runs
+                       WHERE started_at >= %s AND status = 'partial' ORDER BY started_at""", (started,))
+        for name, stats in cur.fetchall():
+            failed = [f"{k[:-6]} ({str(v)[:80]})" for k, v in sorted((stats or {}).items()) if k.endswith(".error")]
+            out.append((NORMAL, f"{name}: partial -- failed: {'; '.join(failed) or 'see stats'}"[:400]))
         stale_h = float(n.get("stale_hours", 36))
         cur.execute("SELECT collector, last_success FROM collector_freshness")
         last_ok = dict(cur.fetchall())

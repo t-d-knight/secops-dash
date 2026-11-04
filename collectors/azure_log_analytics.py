@@ -64,6 +64,10 @@ def run(ctx: RunContext) -> Dict[str, Any]:
     window_start = (ctx.run_started - dt.timedelta(days=days)).date()
 
     for ws in workspaces:
+        if not str(ws.get("workspace_id") or "").strip("0-"):
+            raise RuntimeError(f"workspace '{ws.get('name')}': workspace_id is empty or the example placeholder "
+                               "-- set the real Workspace ID (portal: Log Analytics workspace > Overview), "
+                               "or disable this collector")
         tname = ws.get("tenant") or next(iter(tenants), None)
         if tname not in tenants:
             raise RuntimeError(f"workspace {ws.get('workspace_id')}: unknown tenant '{tname}'")
