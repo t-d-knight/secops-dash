@@ -708,7 +708,7 @@ def endpoint_identity():
         FROM entra_risk_detections WHERE site_label IN ($site) AND {rng_ts('detected_at')}
         ORDER BY detected_at DESC LIMIT 200""", h=8, overrides=[sev_cell("Risk")])
 
-    b.row("Sign-in activity (Log Analytics)", collapsed=True)
+    b.row("Sign-in activity", collapsed=True)
     for q, title, dims in (("signins", "Sign-ins: success vs failure", None),
                            ("mfa_failures", "MFA denied", None),
                            ("legacy_auth", "Legacy authentication by client", None),

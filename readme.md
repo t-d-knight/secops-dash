@@ -135,8 +135,11 @@ App registration per tenant, **application** permissions, admin-consented:
 | `risky_users` | `IdentityRiskyUser.Read.All` | Entra ID P2 |
 | `risk_detections` | `IdentityRiskEvent.Read.All` | Entra ID P2 |
 | `mfa_registration` | `AuditLog.Read.All` | Entra ID P1+ |
+| `signins` (opt-in) | `AuditLog.Read.All` | Entra ID P1+ |
 
-Feeds are independent: a 403 on one (e.g. no P2) is recorded and the rest still run; the run is marked `partial`. Drop unlicensed feeds from `feeds:` to stop the noise.
+Feeds are independent: a 403 on one (e.g. no P2) is recorded and the rest still run; the run is marked `partial` and the morning notice names the failed feed. Drop unlicensed feeds from `feeds:` to stop the noise. `python3 tools/entra_probe.py --config config.yaml` shows which permissions the token actually carries and what each feed's query returns, without writing anything.
+
+`signins` is the no-cost alternative to Log Analytics: it reads interactive sign-ins from Graph and stores only daily counts per site (success/failure, legacy auth, MFA denials, risky sign-ins, CA blocks) in `azure_log_metrics`, so the same sign-in panels fill. Use it *or* `azure_log_analytics`, not both. Each night recomputes the last `signins_days` (2); the first run (or `--full`) backfills `signins_backfill_days` (7, at most 30, which is all Graph keeps). Without P2, risky sign-ins stay empty.
 
 ### Azure Log Analytics / Sentinel (optional)
 Grant the same app **Log Analytics Reader** on each workspace. Each query in `collectors.azure_log_analytics.queries` aggregates *server-side* in KQL and must return `day`, `key`, `dimension`, `value`. `key_type` tells the resolver what `key` is (`upn`, `email_domain`, `ip`, `hostname`, `ad_domain`). The shipped queries cover sign-in success/failure, legacy auth, MFA denials, risky sign-ins and CA blocks. Add more by adding YAML; no code needed. The whole lookback window is recomputed each run, so late-arriving logs are counted.

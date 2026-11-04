@@ -3550,7 +3550,7 @@
     {
       "id": 63,
       "type": "row",
-      "title": "Sign-in activity (Log Analytics)",
+      "title": "Sign-in activity",
       "collapsed": true,
       "gridPos": {
         "x": 0,

@@ -234,9 +234,11 @@ collectors:
   # Entra ID via Microsoft Graph. One app registration per tenant.
   entra:
     enabled: true
-    feeds: [risky_users, risk_detections, mfa_registration]
+    feeds: [risky_users, risk_detections, mfa_registration]   # + signins: Graph sign-in counts (P1), instead of azure_log_analytics
     lookback_days: 30
     members_only: true
+    # signins_days: 2            # whole days recomputed each run
+    # signins_backfill_days: 7   # first run / --full (Graph keeps 30)
     tenants:
       - name: "main"
         tenant_id: "00000000-0000-0000-0000-000000000000"

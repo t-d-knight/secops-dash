@@ -8,7 +8,15 @@ licences/permissions (application permissions, admin-consented):
   risky_users      IdentityRiskyUser.Read.All     (Entra ID P2)
   risk_detections  IdentityRiskEvent.Read.All     (Entra ID P2)
   mfa_registration AuditLog.Read.All              (Entra ID P1+)
+  signins          AuditLog.Read.All              (Entra ID P1+)   opt-in
 A feed that 403s is recorded and skipped; the others still run.
+
+signins reads interactive sign-ins straight from Graph (no Log Analytics
+workspace needed) and keeps only daily counts per site in azure_log_metrics,
+under the same query names the Log Analytics collector uses (signins,
+legacy_auth, mfa_failures, risky_signins, ca_failures), so the sign-in
+panels fill from either source. Use one source, not both. Graph keeps 30
+days of sign-ins, so history only builds from the nightly runs.
 
 Supports several tenants (`tenants:` list) since the estate spans multiple
 organisations. Site = the UPN's domain.
@@ -30,12 +38,22 @@ FEED_QUERIES = {
     "risk_detections": ("/identityProtection/riskDetections",
                         lambda since: {"$filter": f"detectedDateTime ge {since}"}),
     "mfa_registration": ("/reports/authenticationMethods/userRegistrationDetails", None),
+    "signins": ("/auditLogs/signIns",
+                lambda since: {"$filter": f"createdDateTime ge {since}", "$top": 999}),
 }
 FEED_ROLES = {
     "risky_users": "IdentityRiskyUser.Read.All",
     "risk_detections": "IdentityRiskEvent.Read.All",
     "mfa_registration": "AuditLog.Read.All",
+    "signins": "AuditLog.Read.All",
 }
+DEFAULT_FEEDS = ["risky_users", "risk_detections", "mfa_registration"]
+
+# Same list as the legacy_auth KQL example (Graph's clientAppUsed values).
+LEGACY_CLIENTS = {"Exchange ActiveSync", "IMAP4", "POP3", "Authenticated SMTP", "Other clients",
+                  "Exchange Web Services", "MAPI Over HTTP", "Offline Address Book",
+                  "Outlook Anywhere (RPC over HTTP)", "AutoDiscover", "Exchange Online PowerShell"}
+SIGNIN_QUERIES = ["signins", "legacy_auth", "mfa_failures", "risky_signins", "ca_failures"]
 
 
 def _iso(t: dt.datetime) -> str:
@@ -120,14 +138,85 @@ def _mfa_registration(ctx, app, tname) -> int:
     return n
 
 
-FEEDS = {"risky_users": _risky_users, "risk_detections": _risk_detections, "mfa_registration": _mfa_registration}
+def _signin_dims(si: Dict[str, Any]):
+    """(query_name, dimension) pairs one sign-in counts towards."""
+    code = (si.get("status") or {}).get("errorCode")
+    yield "signins", "success" if code == 0 else "failure"
+    app = si.get("clientAppUsed") or ""
+    if app in LEGACY_CLIENTS:
+        yield "legacy_auth", app
+    if code == 500121:   # strong auth (MFA) failed or denied
+        yield "mfa_failures", "mfa_denied"
+    risk = (si.get("riskLevelDuringSignIn") or "").lower()
+    if risk in ("medium", "high"):   # 'hidden' without Entra ID P2
+        yield "risky_signins", risk
+    if si.get("conditionalAccessStatus") == "failure":
+        yield "ca_failures", "blocked"
+
+
+def _signins(ctx, app, tname) -> int:
+    """Daily counts per site, in the box's local days. Recomputes whole days
+    from `signins_days` back (late sign-ins land), `signins_backfill_days` on
+    the first run or with --full (Graph keeps 30). Nothing per-user is stored."""
+    cur = ctx.conn.cursor()
+    st = getattr(ctx, "_signins", None)
+    if st is None:   # one window for the whole run, whichever tenant comes first
+        cur.execute("SELECT max(snapshot_date) FROM azure_log_metrics WHERE query_name = 'signins'")
+        have = cur.fetchone()[0]
+        days = int(ctx.ccfg.get("signins_days", 2))
+        if ctx.full or not have:
+            days = max(days, min(int(ctx.ccfg.get("signins_backfill_days", 7)), 30))
+        st = ctx._signins = {"start_day": ctx.run_started.astimezone().date() - dt.timedelta(days=days),
+                             "cleared": False}
+    start_day = st["start_day"]
+    start = dt.datetime.combine(start_day, dt.time()).astimezone()   # local midnight
+
+    agg: Dict[tuple, float] = {}
+    n = 0
+    path, params = FEED_QUERIES["signins"]
+    for si in graph_iter(app, path, params(_iso(start))):
+        t = parse_ts(si.get("createdDateTime"))
+        if not t:
+            continue
+        day = t.astimezone().date()
+        if day < start_day:
+            continue
+        m = _site(ctx, si.get("userPrincipalName") or "")
+        for qn, dim in _signin_dims(si):
+            k = (day, qn, m.label, m.key, dim)
+            agg[k] = agg.get(k, 0) + 1
+        n += 1
+
+    # One tenant's run replaces only what it can see: with several tenants the
+    # per-site counts are summed, so clear the window once (first tenant) and add.
+    if not st["cleared"]:
+        cur.execute("DELETE FROM azure_log_metrics WHERE snapshot_date >= %s AND query_name = ANY(%s)",
+                    (start_day, SIGNIN_QUERIES))
+    for (day, qn, label, key, dim), v in agg.items():
+        cur.execute(
+            "INSERT INTO azure_log_metrics (snapshot_date, query_name, site_label, site_tag, dimension, value) "
+            "VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (snapshot_date, query_name, site_label, dimension) "
+            "DO UPDATE SET value = azure_log_metrics.value + EXCLUDED.value",
+            (day, qn, label, key, dim, v),
+        )
+    ctx.conn.commit()
+    st["cleared"] = True   # only once committed: a rolled-back tenant leaves it to the next
+    ctx.log(f"{tname}/signins: {n} sign-ins since {start_day} -> {len(agg)} daily rows")
+    return n
+
+
+FEEDS = {"risky_users": _risky_users, "risk_detections": _risk_detections,
+         "mfa_registration": _mfa_registration, "signins": _signins}
 
 
 def run(ctx: RunContext) -> Dict[str, Any]:
     tenants: List[Dict[str, Any]] = ctx.ccfg.get("tenants") or []
     if not tenants:
         raise RuntimeError("collectors.entra.tenants is empty")
-    feeds = ctx.ccfg.get("feeds") or list(FEEDS)
+    feeds = ctx.ccfg.get("feeds") or DEFAULT_FEEDS
+    unknown = [f for f in feeds if f not in FEEDS]
+    if unknown:
+        raise RuntimeError(f"collectors.entra.feeds: unknown {unknown} (have {list(FEEDS)})")
     stats: Dict[str, Any] = {}
     errors = 0
     for t in tenants:

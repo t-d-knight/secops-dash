@@ -390,6 +390,19 @@ class H(BaseHTTPRequestHandler):
                                           "riskState": "atRisk", "detectedDateTime": iso(1),
                                           "ipAddress": "1.2.3.4",
                                           "location": {"city": "Lagos", "countryOrRegion": "NG"}}]})
+        if p == "/graph/auditLogs/signIns":
+            def si(i, upn, code=0, app="Browser", risk="none", ca="notApplied", hours=2):
+                return {"id": f"s{i}", "createdDateTime": iso(0, hours), "userPrincipalName": upn,
+                        "status": {"errorCode": code}, "clientAppUsed": app,
+                        "riskLevelDuringSignIn": risk, "conditionalAccessStatus": ca}
+            if q.get("skip"):
+                return self._send({"value": [si(4, "b@lakesidehealth.test"),
+                                             si(5, "a@riversidehealth.test", code=53003, ca="failure")]})
+            host = f"http://{self.headers['Host']}"
+            return self._send({"value": [si(1, "a@riversidehealth.test"),
+                                         si(2, "a@riversidehealth.test", code=500121, risk="hidden"),
+                                         si(3, "c@riversidehealth.test", app="IMAP4", risk="high")],
+                               "@odata.nextLink": f"{host}/graph/auditLogs/signIns?skip=1"})
         if p == "/graph/reports/authenticationMethods/userRegistrationDetails":
             return self._send({"value": [
                 {"id": "m1", "userPrincipalName": "a@riversidehealth.test", "userType": "member",
