@@ -1,5 +1,9 @@
 # Contributing
 
+Using an AI coding agent? It must follow [AGENTS.md](AGENTS.md) too (CLAUDE.md imports it).
+Before you start, and before you push or deploy, check [robots_fighting.md](robots_fighting.md) to see
+who's working on what, claim your area, and add a log entry.
+
 ## Keep the repo generic
 
 This repo is meant to be shareable. Real organisation detail lives only in the
@@ -48,6 +52,38 @@ python3 -m venv venv && venv/bin/pip install -r requirements.txt   # the check n
 - `tools/check_identifiers.py --all` scans every tracked file (run it after changing the config or the rules).
 - A genuine false positive: put `identifier-check: ok` on the line, or add a generic regex to `.identifiers-allow` (committed -- describe the pattern, never the real value).
 - A clone without a `config.yaml` has nothing to check against and passes.
+
+## Writing reports
+
+The reports are read by people who won't open a security console. Each report should answer, in this order:
+what changed, what it means, whether remediation is keeping up, and what needs a decision. A list of
+what currently exists comes last.
+
+- **Separate risk from volume.** Never use a raw vulnerability count as a headline on its own. Show it next to
+  the counts that measure risk: known exploited (KEV), remotely exploitable, internet-facing, overdue against SLA.
+  A growing CVE population isn't the same as growing risk.
+- **Don't count coverage growth as new vulnerabilities.** Findings on newly assessed hosts and bulk loads
+  (`reporting.vuln_bulk_load_dates`) stay out of "opened". More visibility should never look like a worse result.
+- **Show incoming work next to completed work.** Wherever "fixed" appears, show "opened" for the same period,
+  plus the net movement, and the trend over several periods where history allows. One period's result is a
+  data point, not a trend.
+- **Remember that findings aren't effort.** One reboot can close a thousand findings, and one browser release
+  can open a thousand. When a report argues about workload or capacity, count in units of work (hosts patched,
+  fixes applied, campaigns finished) as well as findings, and say which unit a figure uses.
+- **Generated text states facts; people write decisions.** Code can write sentences like "opened exceeded
+  fixed for the fourth week running". Asks, decisions and judgements come from a person (an untracked input
+  file, not hard-coded text), so a report never shows an ask nobody made.
+- **Keep the wording neutral and checkable.** Use neutral arrows, state the period and denominator, and only
+  use words the data supports ("compromise indicators", not "signs of compromise"). Caveats go in the
+  footer, stated once.
+- **Label every number.** Any threshold or target you add (SLA days, "patched within 35 days", grace periods,
+  patch-tier offsets) is either **policy** (record who set it) or **assumed** (record why). Note it in
+  `config.yaml.example` or the ops guide's "Reading the numbers" section, so nobody mistakes a default for
+  a rule.
+- **Show before and after.** If a change moves report numbers, run `tests/demo_samples.py` before and after
+  on the same day and record what changed in [robots_fighting.md](robots_fighting.md).
+- **Keep each product focused.** The monthly scorecard's nine measures cover posture. New kinds of measure
+  (e.g. workload or sustainability) get their own page or scorecard, not extra rows on the existing one.
 
 ## Tests
 

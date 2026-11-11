@@ -277,7 +277,7 @@ The views (`fact_vuln_findings_current` etc.) need `security_invoker = true` so 
 
 ## 10. Testing
 
-Keeping the repo shareable: see [CONTRIBUTING.md](CONTRIBUTING.md) -- placeholders for anything organisation-specific, and a pre-commit check (`git config core.hooksPath .githooks`) that blocks real identifiers taken from your local config.
+Keeping the repo shareable: see [CONTRIBUTING.md](CONTRIBUTING.md) -- placeholders for anything organisation-specific, and a pre-commit check (`git config core.hooksPath .githooks`) that blocks real identifiers taken from your local config. Rules for AI coding agents working in the repo: [AGENTS.md](AGENTS.md). Who's working on what, and what they found: [robots_fighting.md](robots_fighting.md).
 
 `tests/run_e2e.py` runs every collector against an in-process mock of each vendor API (multi-page pagination included), into a throwaway Postgres DB. It then runs the rollups and **executes every SQL query in every dashboard JSON**:
 
