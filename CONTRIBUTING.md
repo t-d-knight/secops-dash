@@ -76,6 +76,15 @@ what currently exists comes last.
 - **Keep the wording neutral and checkable.** Use neutral arrows, state the period and denominator, and only
   use words the data supports ("compromise indicators", not "signs of compromise"). Caveats go in the
   footer, stated once.
+- **Keep outcomes separate.** Accepted risk is not remediation: never count it as "resolved" alongside fixed
+  items. "Done" means closure backed by evidence (a closed date plus a ticket, or the finding gone from the
+  data), not just a status change. Coverage gaps (no sensor, unsupported OS) are visibility and lifecycle
+  problems, so word them that way, not as confirmed vulnerability risk.
+- **Show the base.** Every percentage carries its denominator (n/N, or "42 fixes"), and a change on a small
+  base says so. "Small base" and "material movement" are thresholds too, so they follow the next rule.
+- **Prompt, don't judge.** Without agreed targets, the report shows direction and asks questions ("validate
+  the decline in high-severity SLA performance"). It doesn't hand out Improving/Worsening verdicts or RAG
+  colours.
 - **Label every number.** Any threshold or target you add (SLA days, "patched within 35 days", grace periods,
   patch-tier offsets) is either **policy** (record who set it) or **assumed** (record why). Note it in
   `config.yaml.example` or the ops guide's "Reading the numbers" section, so nobody mistakes a default for
