@@ -233,6 +233,7 @@ sudo dnf install -y grafana && sudo systemctl enable --now grafana-server
 | `grafana/secops-endpoint-identity.json` | **Endpoint & Identity**: sensor coverage, alerts, removable media (USB writes/scans), Identity Protection remediation list, Entra risk/MFA, sign-in activity |
 | `grafana/secops-email-external.json` | **Email & External Exposure**: HEC threats, DMARC alignment and failing senders, Hadrian assets and risks |
 | `grafana/secops-servers.json` | **Servers**: days since last confirmed patch, reboot pending, uptime, patch level by build, per-server risk, top missing fixes, applications/database products, disk and load, domain controllers |
+| `grafana/secops-patch-compliance.json` | **Server patch compliance**: servers against their SCCM patch schedule (from LogicMonitor), per team: on track, overdue past deadline, missed cycles, patch groups, schedule gaps, top missing fixes on servers not on track |
 | `grafana/secops-impact.json` | **Programme impact**: Day 0 vs now scorecard, trends, Patch Tuesday remediation cohorts, action log |
 | `grafana/secops-worklist.json` | **Cyber Team Worklist**: feed health, vulnerability-assessment coverage, stale/unmanaged endpoints, Hadrian triage queues, identity site-mapping gaps, DMARC |
 

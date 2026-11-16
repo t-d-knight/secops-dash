@@ -7,7 +7,8 @@ patch group a server is in, and which team manages it.
     FalconGroupingTags/Patch-T2-B      Tier 2, Group B
     FalconGroupingTags/Patch-<Name>    an update group with no tier in its name
     FalconGroupingTags/Patch-None      monitored in LogicMonitor, in no update group
-    FalconGroupingTags/Team-<Name>     LogicMonitor's team property (team_property)
+    FalconGroupingTags/Team-<Name>     lm_devices.team (collectors.logicmonitor.team_property;
+                                       falcon_tag_sync.team_property still works as a fallback)
 
 THE ONE PLACE THIS REPO WRITES TO A VENDOR (see AGENTS.md rule 4). Limits:
   - Only managed Falcon hosts whose type is server or domain controller.
@@ -81,7 +82,7 @@ def patch_tag(in_lm: bool, group: Optional[str], tier: Optional[int], sub: Optio
 
 def team_tags(v: Optional[str]) -> Set[str]:
     """'Applications, Database' -> {Team-Applications, Team-Database}."""
-    return {f"Team-{s}" for s in (slug(p) for p in re.split(r"[,;/&]|\band\b", v or "")) if s}
+    return {f"Team-{s}" for s in (slug(p) for p in re.split(r"[,;/&]", v or "")) if s}
 
 
 def is_managed(tag: str) -> bool:
@@ -94,7 +95,7 @@ def build_plan(conn, team_property: Optional[str]):
     cur.execute("""
         SELECT a.source_asset_id, a.hostname, coalesce(a.tags, '{}'),
                l.device_id, l.patch_group, l.patch_tier, l.patch_subgroup,
-               CASE WHEN %(tp)s IS NULL THEN NULL ELSE l.properties ->> %(tp)s END
+               coalesce(l.team, CASE WHEN %(tp)s IS NULL THEN NULL ELSE l.properties ->> %(tp)s END)
         FROM assets a
         LEFT JOIN lm_devices l
                ON NOT l.retired AND l.host_key = lower(split_part(a.hostname, '.', 1))

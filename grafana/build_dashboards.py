@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Dashboard-as-code for the five SecOps dashboards. Edit the panel
+Dashboard-as-code for the SecOps dashboards. Edit the panel
 definitions here and re-run; the generated JSON is committed alongside so it
 can be imported without running anything.
 
@@ -195,7 +195,7 @@ STALE_PCT = [{"color": "green", "value": None}, {"color": "orange", "value": 10}
 HOVER = "Hover the **i** on any panel for exactly what it counts."
 
 
-def dashboard(uid, title, description, b: Builder, help=None, tags=(), time_from="now-30d"):
+def dashboard(uid, title, description, b: Builder, help=None, tags=(), time_from="now-30d", extra_vars=()):
     """`help`: panel title -> description, for panels that don't set their own -- kept
     together per dashboard so the definitions read as one glossary."""
     def walk(ps):
@@ -222,7 +222,7 @@ def dashboard(uid, title, description, b: Builder, help=None, tags=(), time_from
             "name": "site", "type": "query", "label": "Site", "datasource": DS,
             "query": "SELECT site_label FROM dim_site ORDER BY site_label = 'Ungrouped', site_label",
             "definition": "SELECT site_label FROM dim_site", "refresh": 1, "sort": 0,
-            "multi": True, "includeAll": True, "current": {"text": "All", "value": "$__all"}}]},
+            "multi": True, "includeAll": True, "current": {"text": "All", "value": "$__all"}}, *extra_vars]},
         "panels": b.panels,
     }
 
@@ -1793,6 +1793,194 @@ def impact():
                      time_from="now-90d")
 
 
+# =====================================================================
+#  8. Server patch compliance (against the SCCM schedule, per team)
+# =====================================================================
+PC_HELP = {
+    "Servers": "Active servers and domain controllers (Falcon sensor seen in 7 days) for the selected sites and teams.",
+    "On track": "Servers judged on track out of those that can be judged: patched since their group's current "
+                "window opened (deadline passed, no reboot pending), or, with no current window, patched within "
+                "35 days. Servers still inside their window, and servers with no patch data, aren't judged.",
+    "Overdue: past deadline": "In an SCCM patch group whose deadline has passed, and Falcon hasn't confirmed a "
+                              "patch since the window opened.",
+    "Behind: 35+ days": "No current window to judge against (no patch group, not in LogicMonitor, window not "
+                        "started yet, or a stale deployment) and no confirmed patch in 35+ days: a missed monthly "
+                        "cycle.",
+    "Reboot pending after deadline": "Patched since the window opened but still waiting on a restart after the "
+                                     "deadline, so the patch isn't in effect.",
+    "No patch group": "Monitored in LogicMonitor but in no SCCM update group (tagged Patch-None in Falcon). Either "
+                      "patched some other way or not at all -- worth confirming which.",
+    "Not in LogicMonitor": "Servers with a Falcon sensor that LogicMonitor doesn't know, so there's no schedule or "
+                           "team for them.",
+    "Status": "Every server in scope by status (the rule is in the panel descriptions and the ops guide).",
+    "By team": "One row per team (from LogicMonitor). A server managed by several teams counts under each. "
+               "On track % = on track / judged, shown with the base.",
+    "By patch group": "Each SCCM group's current deployment: the most common window start and state among its "
+                      "servers, the latest deadline (one tier/group can span several SCCM collections), and how "
+                      "many of its servers Falcon has confirmed patched since their window opened.",
+    "Overdue servers": "Past their group's deadline and not confirmed patched since the window opened, most exposed "
+                       "first (known-exploited, then critical vulnerabilities).",
+    "Behind with no current window": "No patch in 35+ days and no current window to judge against, longest first. "
+                                     "Mostly servers in no patch group.",
+    "Top missing fixes on servers not on track": "Falcon's fixes for open critical/high findings on overdue or behind "
+                                                 "servers: one change that clears the most.",
+    "Schedule problems": "Schedules that can't be judged properly: deployments that started 45+ days ago (not this "
+                         "month's), groups with no dates, and servers in an SCCM group that have no Falcon sensor.",
+    "All servers": "Every server in scope with its schedule and status. Use the column filters to cut further.",
+}
+PC_BASE = ("server_patch_compliance c JOIN server_patch_compliance_status st USING (status) "
+           "LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid")
+PC_TEAM = "EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team))"
+PC_WHERE = f"c.site_label IN ($site) AND {PC_TEAM}"
+PC_STATUS_COLORS = {"Overdue: past deadline": "red", "Behind: 35+ days": "orange", "Patched, reboot pending": "orange",
+                    "Patched, reboot pending (in window)": "blue", "Not patched yet (in window)": "blue",
+                    "No patch data": "text", "Patched this cycle": "green", "Patched within 35 days": "green"}
+PC_DAYS = [{"color": "transparent", "value": None}, {"color": "orange", "value": 36}, {"color": "red", "value": 91}]
+
+
+def status_cell(col="Status"):
+    return {"matcher": {"id": "byName", "options": col},
+            "properties": [{"id": "custom.cellOptions", "value": {"type": "color-text"}},
+                           {"id": "mappings", "value": [{"type": "value", "options": {
+                               k: {"color": v, "index": i} for i, (k, v) in enumerate(PC_STATUS_COLORS.items())}}]}]}
+
+
+def patch_compliance():
+    b = Builder()
+    b.text("Are servers patched in line with their SCCM patch schedule? For system owners, per team. The schedule "
+           "(patch group, window, deadline) and team come from **LogicMonitor**; whether a server has patched comes "
+           "from **Falcon** (last patch confirmed). A server is **on track** if Falcon confirmed a patch after its "
+           "group's current window opened, or, where there's no current window, within 35 days. Point-in-time (the "
+           f"time picker doesn't apply). {HOVER}", h=3)
+
+    b.row("Where things stand", note="**Assumed** thresholds, no agreed policy yet: 35 days = one monthly cycle; a "
+          "window that opened 45+ days ago is a stale deployment, judged on the 35-day rule instead.")
+    b.stat("Servers", f"SELECT count(*) FROM {PC_BASE} WHERE {PC_WHERE}", thresholds=NEUTRAL)
+    b.stat("On track", f"""SELECT count(*) FILTER (WHERE st.on_track) || ' / ' || count(*) FILTER (WHERE st.judged)
+           FROM {PC_BASE} WHERE {PC_WHERE}""", thresholds=NEUTRAL)
+    b.stat("Overdue: past deadline", f"SELECT count(*) FROM {PC_BASE} WHERE {PC_WHERE} "
+           "AND c.status = 'Overdue: past deadline'", thresholds=BAD_UP)
+    b.stat("Behind: 35+ days", f"SELECT count(*) FROM {PC_BASE} WHERE {PC_WHERE} AND c.status = 'Behind: 35+ days'",
+           thresholds=BAD_UP)
+    b.stat("Reboot pending after deadline", f"SELECT count(*) FROM {PC_BASE} WHERE {PC_WHERE} "
+           "AND c.status = 'Patched, reboot pending'", thresholds=BAD_UP)
+    b.stat("No patch group", f"SELECT count(*) FROM {PC_BASE} WHERE {PC_WHERE} AND c.schedule_state = 'No patch group'",
+           thresholds=NEUTRAL)
+    b.bars("Status", f"""
+        SELECT c.status AS "Status", count(*) AS "Servers" FROM {PC_BASE} WHERE {PC_WHERE}
+        GROUP BY c.status, st.sort_order ORDER BY st.sort_order""", w=12, h=8, thresholds=[{"color": "orange", "value": None}])
+    b.stat("Not in LogicMonitor", f"SELECT count(*) FROM {PC_BASE} WHERE {PC_WHERE} "
+           "AND c.schedule_state = 'Not in LogicMonitor'", w=4, h=8, thresholds=NEUTRAL)
+    b.table("By patch group", f"""
+        SELECT c.schedule AS "Patch group",
+               (mode() WITHIN GROUP (ORDER BY c.window_start))::date AS "Window opens",
+               max(c.deadline) FILTER (WHERE c.schedule_state <> 'Stale deployment')::date AS "Deadline",
+               mode() WITHIN GROUP (ORDER BY c.schedule_state) AS "State", count(*) AS "Servers",
+               count(*) FILTER (WHERE c.last_patch_confirmed >= c.window_start) AS "Patched since window",
+               count(*) FILTER (WHERE c.status LIKE 'Patched, reboot pending%%') AS "Reboot pending",
+               count(*) FILTER (WHERE c.status = 'Overdue: past deadline') AS "Overdue",
+               round(100.0 * count(*) FILTER (WHERE c.last_patch_confirmed >= c.window_start) / count(*))::int
+                 AS "Patched %%",
+               percentile_disc(0.5) WITHIN GROUP (ORDER BY c.days_since_patched) AS "Median days since patched"
+        FROM {PC_BASE} WHERE {PC_WHERE} AND c.patch_group IS NOT NULL
+        GROUP BY c.schedule ORDER BY min(c.patch_tier) NULLS LAST, c.schedule""".replace("%%", "%"), w=8, h=8,
+            overrides=[thresh_bg("Overdue", [{"color": "transparent", "value": None}, {"color": "red", "value": 1}])])
+
+    b.row("By team", note="Teams come from LogicMonitor; a server several teams manage counts under each, so team "
+          "rows can add up to more than the total. **(no team)** = no team set in LogicMonitor, or not in it at all.")
+    b.table("By team", f"""
+        SELECT x.team AS "Team", count(*) AS "Servers",
+               round(100.0 * count(*) FILTER (WHERE x.on_track) / nullif(count(*) FILTER (WHERE x.judged), 0))::int
+                 AS "On track %%",
+               count(*) FILTER (WHERE x.on_track) || ' / ' || count(*) FILTER (WHERE x.judged) AS "On track / judged",
+               count(*) FILTER (WHERE x.status = 'Overdue: past deadline') AS "Overdue",
+               count(*) FILTER (WHERE x.status = 'Behind: 35+ days') AS "Behind 35+ d",
+               count(*) FILTER (WHERE x.status = 'Patched, reboot pending') AS "Reboot pending",
+               count(*) FILTER (WHERE x.schedule_state = 'In window') AS "In window now",
+               count(*) FILTER (WHERE x.schedule_state = 'No patch group') AS "No patch group",
+               percentile_disc(0.5) WITHIN GROUP (ORDER BY x.days_since_patched) AS "Median days since patched",
+               count(*) FILTER (WHERE x.kev > 0) AS "Servers with KEV",
+               coalesce(sum(x.crit) FILTER (WHERE x.judged AND NOT x.on_track), 0) AS "Critical on off-track servers"
+        FROM (SELECT trim(t) AS team, c.status, c.schedule_state, c.days_since_patched, st.on_track, st.judged,
+                     r.open_kev_count AS kev, r.open_critical AS crit
+              FROM {PC_BASE} CROSS JOIN LATERAL unnest(string_to_array(c.team, ',')) t
+              WHERE c.site_label IN ($site) AND trim(t) IN ($team)) x
+        GROUP BY x.team ORDER BY "Overdue" DESC, "Behind 35+ d" DESC, x.team""".replace("%%", "%"), h=10,
+            overrides=[thresh_bg("On track %", [{"color": "red", "value": None}, {"color": "orange", "value": 80},
+                                                {"color": "green", "value": 95}]),
+                       thresh_bg("Overdue", [{"color": "transparent", "value": None}, {"color": "red", "value": 1}]),
+                       thresh_bg("Behind 35+ d", [{"color": "transparent", "value": None}, {"color": "orange", "value": 1}]),
+                       thresh_bg("Servers with KEV", [{"color": "transparent", "value": None}, {"color": "red", "value": 1}])])
+
+    b.row("Biggest problems")
+    b.table("Overdue servers", f"""
+        SELECT c.hostname AS "Server", c.team AS "Team", c.site_label AS "Site", c.schedule AS "Patch group",
+               c.deadline::date AS "Deadline", c.last_patch_confirmed::date AS "Last patch confirmed",
+               c.days_since_patched AS "Days since patched", c.reboot_required AS "Reboot pending",
+               c.days_up AS "Days up", r.open_kev_count AS "KEV", r.open_critical AS "Crit", r.open_high AS "High",
+               c.os_version AS "OS"
+        FROM {PC_BASE} WHERE {PC_WHERE} AND c.status = 'Overdue: past deadline'
+        ORDER BY r.open_kev_count DESC NULLS LAST, r.open_critical DESC NULLS LAST, c.days_since_patched DESC NULLS FIRST
+        LIMIT 500""", w=12, h=10,
+            overrides=[thresh_bg("Days since patched", PC_DAYS),
+                       thresh_bg("KEV", [{"color": "transparent", "value": None}, {"color": "red", "value": 1}])])
+    b.table("Behind with no current window", f"""
+        SELECT c.hostname AS "Server", c.team AS "Team", c.site_label AS "Site", c.schedule_state AS "Why no window",
+               c.last_patch_confirmed::date AS "Last patch confirmed", c.days_since_patched AS "Days since patched",
+               r.open_kev_count AS "KEV", r.open_critical AS "Crit", c.os_version AS "OS"
+        FROM {PC_BASE} WHERE {PC_WHERE} AND c.status = 'Behind: 35+ days'
+        ORDER BY c.days_since_patched DESC NULLS FIRST, r.open_kev_count DESC NULLS LAST LIMIT 500""", w=12, h=10,
+            overrides=[thresh_bg("Days since patched", PC_DAYS),
+                       thresh_bg("KEV", [{"color": "transparent", "value": None}, {"color": "red", "value": 1}])])
+    b.table("Top missing fixes on servers not on track", f"""
+        SELECT vf.fix_title AS "Fix", max(vf.product_family) AS "Product",
+               count(DISTINCT vf.source_asset_id) AS "Servers", count(*) AS "Crit/high findings",
+               count(*) FILTER (WHERE vf.severity = 'critical') AS "Critical",
+               string_agg(DISTINCT trim(t), ', ') AS "Teams"
+        FROM vuln_findings vf
+        JOIN server_patch_compliance c ON c.aid = vf.source_asset_id
+        JOIN server_patch_compliance_status st USING (status)
+        CROSS JOIN LATERAL unnest(string_to_array(c.team, ',')) t
+        WHERE vf.source = 'falcon_spotlight' AND vf.state IN ('OPEN','REOPENED') AND vf.severity IN ('critical','high')
+          AND vf.fix_title IS NOT NULL AND st.judged AND NOT st.on_track
+          AND c.site_label IN ($site) AND trim(t) IN ($team)
+        GROUP BY vf.fix_title ORDER BY 3 DESC, 4 DESC LIMIT 25""", w=14, h=10, overrides=[bg("Servers")])
+    b.table("Schedule problems", f"""
+        SELECT * FROM (
+          SELECT c.hostname AS "Server", c.team AS "Team", c.schedule AS "Patch group",
+                 CASE c.schedule_state WHEN 'Stale deployment' THEN 'Window opened ' || c.window_start::date
+                                       || ': not this month''s deployment' ELSE 'Group has no window dates' END AS "Problem"
+          FROM {PC_BASE} WHERE {PC_WHERE} AND c.schedule_state IN ('Stale deployment', 'Group has no dates')
+          UNION ALL
+          SELECT l.display_name, coalesce(d.team, '(no team)'), l.patch_group, 'In an SCCM group but no Falcon sensor'
+          FROM lm_device_patch l JOIN lm_devices d USING (device_id)
+          WHERE l.in_patch_group AND l.falcon_aid IS NULL AND l.site_label IN ($site)
+            AND EXISTS (SELECT 1 FROM unnest(string_to_array(coalesce(d.team, '(no team)'), ',')) t
+                        WHERE trim(t) IN ($team))
+        ) x ORDER BY "Problem", "Server" """, w=10, h=10)
+
+    b.row("All servers")
+    b.table("All servers", f"""
+        SELECT c.hostname AS "Server", c.status AS "Status", c.team AS "Team", c.site_label AS "Site",
+               c.schedule AS "Patch group", c.schedule_state AS "Schedule", c.window_start::date AS "Window opens",
+               c.deadline::date AS "Deadline", c.last_patch_confirmed::date AS "Last patch confirmed",
+               c.days_since_patched AS "Days since patched", c.reboot_required AS "Reboot pending",
+               c.pending_patches AS "Pending patches", c.days_up AS "Days up",
+               r.open_kev_count AS "KEV", r.open_critical AS "Crit", r.open_high AS "High", c.os_version AS "OS"
+        FROM {PC_BASE} WHERE {PC_WHERE}
+        ORDER BY st.sort_order, c.days_since_patched DESC NULLS FIRST LIMIT 3000""", h=14,
+            overrides=[status_cell(), thresh_bg("Days since patched", PC_DAYS),
+                       thresh_bg("KEV", [{"color": "transparent", "value": None}, {"color": "red", "value": 1}])])
+
+    team_var = {"name": "team", "type": "query", "label": "Team", "datasource": DS,
+                "query": "SELECT DISTINCT trim(t) FROM server_patch_compliance, unnest(string_to_array(team, ',')) t ORDER BY 1",
+                "definition": "teams from server_patch_compliance", "refresh": 1, "sort": 0,
+                "multi": True, "includeAll": True, "current": {"text": "All", "value": "$__all"}}
+    return dashboard("secops-patch-compliance", "Server patch compliance",
+                     "Servers patched in line with their SCCM schedule, per team: overdue servers, missed cycles, "
+                     "schedule gaps.", b, help=PC_HELP, extra_vars=[team_var])
+
+
 def main():
     for fname, fn in (("secops-overview.json", overview),
                       ("secops-endpoint-identity.json", endpoint_identity),
@@ -1800,7 +1988,8 @@ def main():
                       ("secops-worklist.json", worklist),
                       ("vuln-dashboard.json", vuln),
                       ("secops-servers.json", servers),
-                      ("secops-impact.json", impact)):
+                      ("secops-impact.json", impact),
+                      ("secops-patch-compliance.json", patch_compliance)):
         path = os.path.join(HERE, fname)
         with open(path, "w") as f:
             json.dump(fn(), f, indent=2)

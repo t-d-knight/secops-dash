@@ -65,6 +65,23 @@ Each entry heading is `### YYYY-MM-DD, <who> for <whom>: <what>`. In the entry:
 Keep entries short and link to the commit for detail. When the log passes about 300 lines, move entries
 older than a month to `docs/robots_fighting-archive.md`.
 
+### 2026-11-16, Claude for TK: server patch compliance dashboard
+- **Status:** pushed to `main`. Not deployed (owner pulls and deploys on the separate network).
+- **Changed:** `lm_devices.team` from new `collectors.logicmonitor.team_property` (normalised "A, B"); tag sync reads
+  it, `falcon_tag_sync.team_property` kept as a fallback. Views `server_patch_compliance` (one row per active Falcon
+  server: SCCM schedule state from LogicMonitor + status from Falcon's last confirmed patch) and
+  `server_patch_compliance_status` (sort order, on-track, judged). New dashboard `secops-patch-compliance`
+  (Team variable; tiles, status, by patch group, by team, overdue, behind, top fixes, schedule problems, all
+  servers). `dashboard()` takes extra template variables. Ops guide "Reading the numbers" row, readme table.
+  Touches: collectors, schema, Grafana (new dashboard only; the others regenerate unchanged), tools, tests, docs.
+- **Verified:** `tests/run_e2e.py` all pass (new section: overdue, behind, reboot pending, in window, stale
+  deployment, teams combined; dashboard SQL now also runs template-variable queries). Every panel query run against
+  real Falcon + LogicMonitor data in a throwaway local database (since dropped); fixed the per-group summary picking
+  a stray old window.
+- **Not verified / open:** thresholds are **assumed** (35 days = monthly cycle, 45 days = stale deployment), no
+  policy yet. Not looked at in a running Grafana. No trend over time yet (needs a nightly snapshot). Falcon's
+  "last patch confirmed" as proof of patching in the window is unconfirmed: spot-check a few overdue servers.
+
 ### 2026-11-16, Claude for TK: LogicMonitor collector and Falcon server tag sync
 - **Status:** pushed to `main` in two commits (impact outcomes; LogicMonitor collector + tag sync). Not deployed:
   the live install is on a separate network; the owner pulls and deploys. Claims on schema, impact and Grafana from

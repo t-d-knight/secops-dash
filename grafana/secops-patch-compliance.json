@@ -1,0 +1,1380 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_POSTGRESQL",
+      "label": "PostgreSQL",
+      "description": "Postgres datasource pointing at the secops_dashboard database",
+      "type": "datasource",
+      "pluginId": "postgres",
+      "pluginName": "PostgreSQL"
+    }
+  ],
+  "__requires": [
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "10.0.0"
+    },
+    {
+      "type": "datasource",
+      "id": "postgres",
+      "name": "PostgreSQL",
+      "version": "1.0.0"
+    }
+  ],
+  "id": null,
+  "uid": "secops-patch-compliance",
+  "title": "Server patch compliance",
+  "description": "Servers patched in line with their SCCM schedule, per team: overdue servers, missed cycles, schedule gaps.",
+  "tags": [
+    "secops"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "1h",
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "type": "dashboards",
+      "tags": [
+        "secops"
+      ],
+      "asDropdown": false,
+      "title": "SecOps",
+      "includeVars": true,
+      "keepTime": true
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "site",
+        "type": "query",
+        "label": "Site",
+        "datasource": {
+          "type": "postgres",
+          "uid": "${DS_POSTGRESQL}"
+        },
+        "query": "SELECT site_label FROM dim_site ORDER BY site_label = 'Ungrouped', site_label",
+        "definition": "SELECT site_label FROM dim_site",
+        "refresh": 1,
+        "sort": 0,
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "team",
+        "type": "query",
+        "label": "Team",
+        "datasource": {
+          "type": "postgres",
+          "uid": "${DS_POSTGRESQL}"
+        },
+        "query": "SELECT DISTINCT trim(t) FROM server_patch_compliance, unnest(string_to_array(team, ',')) t ORDER BY 1",
+        "definition": "teams from server_patch_compliance",
+        "refresh": 1,
+        "sort": 0,
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 2,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 3
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Are servers patched in line with their SCCM patch schedule? For system owners, per team. The schedule (patch group, window, deadline) and team come from **LogicMonitor**; whether a server has patched comes from **Falcon** (last patch confirmed). A server is **on track** if Falcon confirmed a patch after its group's current window opened, or, where there's no current window, within 35 days. Point-in-time (the time picker doesn't apply). Hover the **i** on any panel for exactly what it counts."
+      }
+    },
+    {
+      "id": 3,
+      "type": "row",
+      "title": "Where things stand",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 4,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**Assumed** thresholds, no agreed policy yet: 35 days = one monthly cycle; a window that opened 45+ days ago is a stale deployment, judged on the 35-day rule instead."
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Servers",
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team))"
+        }
+      ],
+      "description": "Active servers and domain controllers (Falcon sensor seen in 7 days) for the selected sites and teams."
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "On track",
+      "gridPos": {
+        "x": 4,
+        "y": 6,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FILTER (WHERE st.on_track) || ' / ' || count(*) FILTER (WHERE st.judged) FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team))"
+        }
+      ],
+      "description": "Servers judged on track out of those that can be judged: patched since their group's current window opened (deadline passed, no reboot pending), or, with no current window, patched within 35 days. Servers still inside their window, and servers with no patch data, aren't judged."
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Overdue: past deadline",
+      "gridPos": {
+        "x": 8,
+        "y": 6,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) AND c.status = 'Overdue: past deadline'"
+        }
+      ],
+      "description": "In an SCCM patch group whose deadline has passed, and Falcon hasn't confirmed a patch since the window opened."
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Behind: 35+ days",
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) AND c.status = 'Behind: 35+ days'"
+        }
+      ],
+      "description": "No current window to judge against (no patch group, not in LogicMonitor, window not started yet, or a stale deployment) and no confirmed patch in 35+ days: a missed monthly cycle."
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "Reboot pending after deadline",
+      "gridPos": {
+        "x": 16,
+        "y": 6,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) AND c.status = 'Patched, reboot pending'"
+        }
+      ],
+      "description": "Patched since the window opened but still waiting on a restart after the deadline, so the patch isn't in effect."
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "No patch group",
+      "gridPos": {
+        "x": 20,
+        "y": 6,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) AND c.schedule_state = 'No patch group'"
+        }
+      ],
+      "description": "Monitored in LogicMonitor but in no SCCM update group (tagged Patch-None in Falcon). Either patched some other way or not at all -- worth confirming which."
+    },
+    {
+      "id": 11,
+      "type": "bargauge",
+      "title": "Status",
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "showUnfilled": true,
+        "reduceOptions": {
+          "values": true,
+          "calcs": [],
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT c.status AS \"Status\", count(*) AS \"Servers\" FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) GROUP BY c.status, st.sort_order ORDER BY st.sort_order"
+        }
+      ],
+      "description": "Every server in scope by status (the rule is in the panel descriptions and the ops guide)."
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "Not in LogicMonitor",
+      "gridPos": {
+        "x": 12,
+        "y": 10,
+        "w": 4,
+        "h": 8
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) AND c.schedule_state = 'Not in LogicMonitor'"
+        }
+      ],
+      "description": "Servers with a Falcon sensor that LogicMonitor doesn't know, so there's no schedule or team for them."
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "By patch group",
+      "gridPos": {
+        "x": 16,
+        "y": 10,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Overdue"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT c.schedule AS \"Patch group\", (mode() WITHIN GROUP (ORDER BY c.window_start))::date AS \"Window opens\", max(c.deadline) FILTER (WHERE c.schedule_state <> 'Stale deployment')::date AS \"Deadline\", mode() WITHIN GROUP (ORDER BY c.schedule_state) AS \"State\", count(*) AS \"Servers\", count(*) FILTER (WHERE c.last_patch_confirmed >= c.window_start) AS \"Patched since window\", count(*) FILTER (WHERE c.status LIKE 'Patched, reboot pending%') AS \"Reboot pending\", count(*) FILTER (WHERE c.status = 'Overdue: past deadline') AS \"Overdue\", round(100.0 * count(*) FILTER (WHERE c.last_patch_confirmed >= c.window_start) / count(*))::int AS \"Patched %\", percentile_disc(0.5) WITHIN GROUP (ORDER BY c.days_since_patched) AS \"Median days since patched\" FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) AND c.patch_group IS NOT NULL GROUP BY c.schedule ORDER BY min(c.patch_tier) NULLS LAST, c.schedule"
+        }
+      ],
+      "description": "Each SCCM group's current deployment: the most common window start and state among its servers, the latest deadline (one tier/group can span several SCCM collections), and how many of its servers Falcon has confirmed patched since their window opened."
+    },
+    {
+      "id": 14,
+      "type": "row",
+      "title": "By team",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 15,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Teams come from LogicMonitor; a server several teams manage counts under each, so team rows can add up to more than the total. **(no team)** = no team set in LogicMonitor, or not in it at all."
+      }
+    },
+    {
+      "id": 16,
+      "type": "table",
+      "title": "By team",
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "On track %"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 80
+                    },
+                    {
+                      "color": "green",
+                      "value": 95
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Overdue"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Behind 35+ d"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Servers with KEV"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT x.team AS \"Team\", count(*) AS \"Servers\", round(100.0 * count(*) FILTER (WHERE x.on_track) / nullif(count(*) FILTER (WHERE x.judged), 0))::int AS \"On track %\", count(*) FILTER (WHERE x.on_track) || ' / ' || count(*) FILTER (WHERE x.judged) AS \"On track / judged\", count(*) FILTER (WHERE x.status = 'Overdue: past deadline') AS \"Overdue\", count(*) FILTER (WHERE x.status = 'Behind: 35+ days') AS \"Behind 35+ d\", count(*) FILTER (WHERE x.status = 'Patched, reboot pending') AS \"Reboot pending\", count(*) FILTER (WHERE x.schedule_state = 'In window') AS \"In window now\", count(*) FILTER (WHERE x.schedule_state = 'No patch group') AS \"No patch group\", percentile_disc(0.5) WITHIN GROUP (ORDER BY x.days_since_patched) AS \"Median days since patched\", count(*) FILTER (WHERE x.kev > 0) AS \"Servers with KEV\", coalesce(sum(x.crit) FILTER (WHERE x.judged AND NOT x.on_track), 0) AS \"Critical on off-track servers\" FROM (SELECT trim(t) AS team, c.status, c.schedule_state, c.days_since_patched, st.on_track, st.judged, r.open_kev_count AS kev, r.open_critical AS crit FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid CROSS JOIN LATERAL unnest(string_to_array(c.team, ',')) t WHERE c.site_label IN ($site) AND trim(t) IN ($team)) x GROUP BY x.team ORDER BY \"Overdue\" DESC, \"Behind 35+ d\" DESC, x.team"
+        }
+      ],
+      "description": "One row per team (from LogicMonitor). A server managed by several teams counts under each. On track % = on track / judged, shown with the base."
+    },
+    {
+      "id": 17,
+      "type": "row",
+      "title": "Biggest problems",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 31,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 18,
+      "type": "table",
+      "title": "Overdue servers",
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 12,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Days since patched"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 36
+                    },
+                    {
+                      "color": "red",
+                      "value": 91
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "KEV"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT c.hostname AS \"Server\", c.team AS \"Team\", c.site_label AS \"Site\", c.schedule AS \"Patch group\", c.deadline::date AS \"Deadline\", c.last_patch_confirmed::date AS \"Last patch confirmed\", c.days_since_patched AS \"Days since patched\", c.reboot_required AS \"Reboot pending\", c.days_up AS \"Days up\", r.open_kev_count AS \"KEV\", r.open_critical AS \"Crit\", r.open_high AS \"High\", c.os_version AS \"OS\" FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) AND c.status = 'Overdue: past deadline' ORDER BY r.open_kev_count DESC NULLS LAST, r.open_critical DESC NULLS LAST, c.days_since_patched DESC NULLS FIRST LIMIT 500"
+        }
+      ],
+      "description": "Past their group's deadline and not confirmed patched since the window opened, most exposed first (known-exploited, then critical vulnerabilities)."
+    },
+    {
+      "id": 19,
+      "type": "table",
+      "title": "Behind with no current window",
+      "gridPos": {
+        "x": 12,
+        "y": 32,
+        "w": 12,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Days since patched"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 36
+                    },
+                    {
+                      "color": "red",
+                      "value": 91
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "KEV"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT c.hostname AS \"Server\", c.team AS \"Team\", c.site_label AS \"Site\", c.schedule_state AS \"Why no window\", c.last_patch_confirmed::date AS \"Last patch confirmed\", c.days_since_patched AS \"Days since patched\", r.open_kev_count AS \"KEV\", r.open_critical AS \"Crit\", c.os_version AS \"OS\" FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) AND c.status = 'Behind: 35+ days' ORDER BY c.days_since_patched DESC NULLS FIRST, r.open_kev_count DESC NULLS LAST LIMIT 500"
+        }
+      ],
+      "description": "No patch in 35+ days and no current window to judge against, longest first. Mostly servers in no patch group."
+    },
+    {
+      "id": 20,
+      "type": "table",
+      "title": "Top missing fixes on servers not on track",
+      "gridPos": {
+        "x": 0,
+        "y": 42,
+        "w": 14,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Servers"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT vf.fix_title AS \"Fix\", max(vf.product_family) AS \"Product\", count(DISTINCT vf.source_asset_id) AS \"Servers\", count(*) AS \"Crit/high findings\", count(*) FILTER (WHERE vf.severity = 'critical') AS \"Critical\", string_agg(DISTINCT trim(t), ', ') AS \"Teams\" FROM vuln_findings vf JOIN server_patch_compliance c ON c.aid = vf.source_asset_id JOIN server_patch_compliance_status st USING (status) CROSS JOIN LATERAL unnest(string_to_array(c.team, ',')) t WHERE vf.source = 'falcon_spotlight' AND vf.state IN ('OPEN','REOPENED') AND vf.severity IN ('critical','high') AND vf.fix_title IS NOT NULL AND st.judged AND NOT st.on_track AND c.site_label IN ($site) AND trim(t) IN ($team) GROUP BY vf.fix_title ORDER BY 3 DESC, 4 DESC LIMIT 25"
+        }
+      ],
+      "description": "Falcon's fixes for open critical/high findings on overdue or behind servers: one change that clears the most."
+    },
+    {
+      "id": 21,
+      "type": "table",
+      "title": "Schedule problems",
+      "gridPos": {
+        "x": 14,
+        "y": 42,
+        "w": 10,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT * FROM ( SELECT c.hostname AS \"Server\", c.team AS \"Team\", c.schedule AS \"Patch group\", CASE c.schedule_state WHEN 'Stale deployment' THEN 'Window opened ' || c.window_start::date || ': not this month''s deployment' ELSE 'Group has no window dates' END AS \"Problem\" FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) AND c.schedule_state IN ('Stale deployment', 'Group has no dates') UNION ALL SELECT l.display_name, coalesce(d.team, '(no team)'), l.patch_group, 'In an SCCM group but no Falcon sensor' FROM lm_device_patch l JOIN lm_devices d USING (device_id) WHERE l.in_patch_group AND l.falcon_aid IS NULL AND l.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(coalesce(d.team, '(no team)'), ',')) t WHERE trim(t) IN ($team)) ) x ORDER BY \"Problem\", \"Server\""
+        }
+      ],
+      "description": "Schedules that can't be judged properly: deployments that started 45+ days ago (not this month's), groups with no dates, and servers in an SCCM group that have no Falcon sensor."
+    },
+    {
+      "id": 22,
+      "type": "row",
+      "title": "All servers",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 52,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 23,
+      "type": "table",
+      "title": "All servers",
+      "gridPos": {
+        "x": 0,
+        "y": 53,
+        "w": 24,
+        "h": 14
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Overdue: past deadline": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "Behind: 35+ days": {
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "Patched, reboot pending": {
+                        "color": "orange",
+                        "index": 2
+                      },
+                      "Patched, reboot pending (in window)": {
+                        "color": "blue",
+                        "index": 3
+                      },
+                      "Not patched yet (in window)": {
+                        "color": "blue",
+                        "index": 4
+                      },
+                      "No patch data": {
+                        "color": "text",
+                        "index": 5
+                      },
+                      "Patched this cycle": {
+                        "color": "green",
+                        "index": 6
+                      },
+                      "Patched within 35 days": {
+                        "color": "green",
+                        "index": 7
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Days since patched"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 36
+                    },
+                    {
+                      "color": "red",
+                      "value": 91
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "KEV"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT c.hostname AS \"Server\", c.status AS \"Status\", c.team AS \"Team\", c.site_label AS \"Site\", c.schedule AS \"Patch group\", c.schedule_state AS \"Schedule\", c.window_start::date AS \"Window opens\", c.deadline::date AS \"Deadline\", c.last_patch_confirmed::date AS \"Last patch confirmed\", c.days_since_patched AS \"Days since patched\", c.reboot_required AS \"Reboot pending\", c.pending_patches AS \"Pending patches\", c.days_up AS \"Days up\", r.open_kev_count AS \"KEV\", r.open_critical AS \"Crit\", r.open_high AS \"High\", c.os_version AS \"OS\" FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) ORDER BY st.sort_order, c.days_since_patched DESC NULLS FIRST LIMIT 3000"
+        }
+      ],
+      "description": "Every server in scope with its schedule and status. Use the column filters to cut further."
+    }
+  ]
+}

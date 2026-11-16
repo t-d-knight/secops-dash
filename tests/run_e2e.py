@@ -77,6 +77,7 @@ collectors:
     base_url: "{M}/lm/santaba/rest"
     page_size: 2
     patch_timezone: "Asia/Tokyo"
+    team_property: org.managedBy
     keep_properties: ["org.class", "org.managedBy", "snmp.community"]
   checkpoint_hec: {{enabled: true, gateway: "{M}/hec"}}
   checkpoint_hec_flow: {{enabled: true, lookback_days: 1}}
@@ -89,7 +90,7 @@ collectors:
     workspaces: [{{name: ws, tenant: main, workspace_id: w1}}]
     queries: [{{name: signins, key_type: upn, kql: "SigninLogs | take 1"}}]
   dmarc: {{enabled: true, opensearch_url: "{M}/os", username: u}}
-falcon_tag_sync: {{team_property: org.managedBy, max_changes: 5}}
+falcon_tag_sync: {{max_changes: 5}}
 notify: {{enabled: true, host_label: e2e, healthcheck_url: "{M}/hc/abc",
           pushover: {{api_url: "{M}/pushover/1/messages.json"}}}}
 """
@@ -341,6 +342,41 @@ def main() -> int:
     srv.shutdown()
     srv.server_close()
 
+    print("== server patch compliance")
+    teams = dict(q(cur, "SELECT device_id, team FROM lm_devices WHERE device_id IN (101, 105)"))
+    check(teams == {101: "Power BI", 105: "Systems, Cyber"}, f"team_property stored, several teams normalised: {teams}")
+    cur.execute("UPDATE lm_devices SET patch_window_start = now() - interval '5 days', "
+                "patch_deadline = now() - interval '2 days' WHERE device_id = 101")
+    cur.execute("INSERT INTO host_patch_status (aid, hostname, reboot_required, last_patch_confirmed) VALUES "
+                "('aid2', 'LKH-SRV01', FALSE, now() - interval '10 days'), "
+                "('aid4', 'MYSTERY', FALSE, now() - interval '50 days')")
+    conn.commit()
+    def pc():
+        return {r[0]: r[1:] for r in q(cur, "SELECT aid, schedule_state, status, team, schedule FROM server_patch_compliance")}
+    v = pc()
+    check(sorted(v) == ["aid2", "aid4"], f"servers and DCs only, workstations left out: {sorted(v)}")
+    check(v["aid2"] == ("Past deadline", "Overdue: past deadline", "Cyber, Power BI, Systems", "Tier 1"),
+          f"deadline passed, last patch before the window -> overdue; duplicate LM entry's teams combined: {v['aid2']}")
+    check(v["aid4"][:3] == ("Not in LogicMonitor", "Behind: 35+ days", "(no team)"),
+          f"no schedule, 50 days since patched -> behind: {v['aid4']}")
+    cur.execute("UPDATE host_patch_status SET last_patch_confirmed = now() - interval '1 day', reboot_required = TRUE "
+                "WHERE aid = 'aid2'")
+    conn.commit()
+    check(pc()["aid2"][1] == "Patched, reboot pending", f"patched since the window, restart outstanding: {pc()['aid2']}")
+    cur.execute("UPDATE lm_devices SET patch_deadline = now() + interval '2 days' WHERE device_id = 101")
+    cur.execute("UPDATE host_patch_status SET last_patch_confirmed = now() - interval '8 days', reboot_required = FALSE "
+                "WHERE aid = 'aid2'")
+    conn.commit()
+    check(pc()["aid2"][:2] == ("In window", "Not patched yet (in window)"), f"inside the window: not judged yet: {pc()['aid2']}")
+    cur.execute("UPDATE lm_devices SET patch_window_start = now() - interval '60 days', "
+                "patch_deadline = now() - interval '50 days' WHERE device_id = 101")
+    conn.commit()
+    check(pc()["aid2"][:2] == ("Stale deployment", "Patched within 35 days"),
+          f"window opened 45+ days ago -> judged on the 35-day rule: {pc()['aid2']}")
+    judged = dict(q(cur, "SELECT status, judged FROM server_patch_compliance_status"))
+    known = {r[0] for r in q(cur, "SELECT DISTINCT status FROM server_patch_compliance")}
+    check(known <= set(judged), f"every status has a sort order / on-track entry: {known - set(judged)}")
+
     print("== other domains")
     check(q(cur, "SELECT count(*) FROM security_alerts")[0][0] == 3, "3 alerts")
     al2 = q(cur, "SELECT site_label, closed_at IS NOT NULL FROM security_alerts WHERE alert_id='al2'")[0]
@@ -559,12 +595,22 @@ def main() -> int:
                 yield p
                 yield from walk(p.get("panels", []))
         site_vals = "'Riverside Health','Lakeside Health','Ungrouped'"
+        for v in d.get("templating", {}).get("list", []):
+            if v.get("type") == "query" and v.get("query"):
+                try:
+                    cur.execute(v["query"])
+                    cur.fetchall()
+                    n += 1
+                except Exception as e:
+                    conn.rollback()
+                    check(False, f"{os.path.basename(path)} :: variable {v.get('name')} :: {e}".splitlines()[0])
         for p in walk(d.get("panels", [])):
             for t in p.get("targets", []):
                 sql = t.get("rawSql")
                 if not sql:
                     continue
                 sql = (sql.replace("$site", site_vals).replace("${site:sqlstring}", site_vals)
+                       .replace("$team", "'Systems','Cyber','Power BI','(no team)'")
                        .replace("$source", "'falcon_spotlight','hadrian'")
                        .replace("$__timeFilter(", "TRUE OR (").replace("$__timeFrom()", "now()-interval '30 days'")
                        .replace("$__timeTo()", "now()")

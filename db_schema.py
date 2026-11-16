@@ -364,6 +364,7 @@ DDL_STATEMENTS = [
     );
     """,
     "CREATE INDEX IF NOT EXISTS idx_lm_devices_host_key ON lm_devices (host_key) WHERE NOT retired;",
+    "ALTER TABLE lm_devices ADD COLUMN IF NOT EXISTS team TEXT;",   # team_property, "A, B" when several
     # One row per current LogicMonitor device with its patch schedule and the
     # matching managed Falcon host (if any) -- same short-name join as the collector.
     """
@@ -381,6 +382,81 @@ DDL_STATEMENTS = [
         ORDER BY a.last_seen DESC NULLS LAST LIMIT 1
     ) a ON TRUE
     WHERE NOT l.retired;
+    """,
+    # Server patch compliance against the SCCM schedule (patch compliance dashboard).
+    # One row per active Falcon server (sensor seen in 7 days). The schedule comes from
+    # LogicMonitor (same short-hostname join and duplicate rule as tools/falcon_tag_sync.py:
+    # the entry with an SCCM group wins, teams are combined). "Patched" = Falcon confirmed
+    # a patch on or after the group's current window start. ASSUMED thresholds (no policy
+    # yet): a window that started 45+ days ago is a stale deployment, not this month's;
+    # with no current window, 35 days since the last confirmed patch = a missed monthly cycle.
+    "DROP VIEW IF EXISTS server_patch_compliance;",
+    """
+    CREATE VIEW server_patch_compliance AS
+    WITH srv AS (
+        SELECT a.source_asset_id AS aid, a.hostname, a.site_label, a.os_version, a.product_type,
+               a.last_reboot, lower(split_part(a.hostname, '.', 1)) AS host_key
+        FROM assets a
+        WHERE a.source = 'falcon' AND NOT a.retired AND a.product_type IN ('server', 'domain_controller')
+          AND a.last_seen > now() - interval '7 days'
+    ), lm AS (
+        SELECT host_key,
+               (array_agg(patch_group ORDER BY patch_group IS NULL, patch_window_start DESC NULLS LAST))[1] AS patch_group,
+               (array_agg(patch_tier ORDER BY patch_group IS NULL, patch_window_start DESC NULLS LAST))[1] AS patch_tier,
+               (array_agg(patch_subgroup ORDER BY patch_group IS NULL, patch_window_start DESC NULLS LAST))[1] AS patch_subgroup,
+               (array_agg(patch_window_start ORDER BY patch_group IS NULL, patch_window_start DESC NULLS LAST))[1] AS window_start,
+               (array_agg(patch_deadline ORDER BY patch_group IS NULL, patch_window_start DESC NULLS LAST))[1] AS deadline,
+               (SELECT string_agg(DISTINCT trim(t), ', ' ORDER BY trim(t))
+                FROM unnest(string_to_array(string_agg(team, ','), ',')) t WHERE trim(t) <> '') AS team
+        FROM lm_devices WHERE NOT retired AND host_key IS NOT NULL
+        GROUP BY host_key
+    ), base AS (
+        SELECT s.*, (lm.host_key IS NOT NULL) AS in_lm, coalesce(lm.team, '(no team)') AS team,
+               lm.patch_group, lm.patch_tier, lm.patch_subgroup, lm.window_start, lm.deadline,
+               CASE WHEN lm.patch_tier IS NOT NULL
+                    THEN 'Tier ' || lm.patch_tier || coalesce(' / Group ' || lm.patch_subgroup, '')
+                    ELSE lm.patch_group END AS schedule,
+               p.last_patch_confirmed, p.reboot_required, p.pending_patches,
+               floor(EXTRACT(EPOCH FROM now() - p.last_patch_confirmed) / 86400)::int AS days_since_patched,
+               floor(EXTRACT(EPOCH FROM now() - s.last_reboot) / 86400)::int AS days_up,
+               CASE WHEN lm.host_key IS NULL THEN 'Not in LogicMonitor'
+                    WHEN lm.patch_group IS NULL THEN 'No patch group'
+                    WHEN lm.window_start IS NULL OR lm.deadline IS NULL THEN 'Group has no dates'
+                    WHEN lm.window_start < now() - interval '45 days' THEN 'Stale deployment'
+                    WHEN now() < lm.window_start THEN 'Window not started'
+                    WHEN now() <= lm.deadline THEN 'In window'
+                    ELSE 'Past deadline' END AS schedule_state
+        FROM srv s
+        LEFT JOIN lm ON lm.host_key = s.host_key
+        LEFT JOIN host_patch_status p ON p.aid = s.aid
+    )
+    SELECT b.*,
+           CASE WHEN b.last_patch_confirmed IS NULL THEN 'No patch data'
+                WHEN b.schedule_state IN ('In window', 'Past deadline') THEN
+                     CASE WHEN b.last_patch_confirmed >= b.window_start AND coalesce(b.reboot_required, FALSE)
+                               AND b.schedule_state = 'In window' THEN 'Patched, reboot pending (in window)'
+                          WHEN b.last_patch_confirmed >= b.window_start AND coalesce(b.reboot_required, FALSE)
+                               THEN 'Patched, reboot pending'
+                          WHEN b.last_patch_confirmed >= b.window_start THEN 'Patched this cycle'
+                          WHEN b.schedule_state = 'In window' THEN 'Not patched yet (in window)'
+                          ELSE 'Overdue: past deadline' END
+                WHEN b.last_patch_confirmed >= now() - interval '35 days' THEN 'Patched within 35 days'
+                ELSE 'Behind: 35+ days' END AS status
+    FROM base b;
+    """,
+    # status -> sort order and whether it counts as on track / judged at all
+    """
+    CREATE OR REPLACE VIEW server_patch_compliance_status AS
+    SELECT * FROM (VALUES
+        ('Overdue: past deadline',      1, FALSE, TRUE),
+        ('Behind: 35+ days',            2, FALSE, TRUE),
+        ('Patched, reboot pending',     3, FALSE, TRUE),
+        ('Patched, reboot pending (in window)', 4, NULL, FALSE),
+        ('Not patched yet (in window)', 4, NULL,  FALSE),
+        ('No patch data',               5, NULL,  FALSE),
+        ('Patched this cycle',          6, TRUE,  TRUE),
+        ('Patched within 35 days',      7, TRUE,  TRUE)
+    ) v(status, sort_order, on_track, judged);
     """,
     """
     CREATE TABLE IF NOT EXISTS external_assets (

@@ -232,6 +232,9 @@ collectors:
     # ASSUMED: the raw times carry no zone and are taken as local time in this
     # zone (default: the database's timezone). Check one against the SCCM console.
     # patch_timezone: "Area/City"
+    # Property naming the team(s) that manage the device -> lm_devices.team, used by the
+    # patch compliance dashboard and the Team- tags. "A, B" / "A & B" = several teams.
+    team_property: "org.managedBy"
     # Extra device properties to keep (JSONB lm_devices.properties). Anything
     # credential-like (pass, community, key, token, user...) is never stored.
     keep_properties: ["org.class", "org.managedBy"]
@@ -338,8 +341,7 @@ collectors:
 # step with LogicMonitor (lm_devices). Run by hand after the nightly collection; dry
 # run unless --apply. client_id / client_secret -> secrets.yaml (separate API client).
 falcon_tag_sync:
-  team_property: "org.managedBy"   # LogicMonitor property naming the managing team;
-                                   # must also be in collectors.logicmonitor.keep_properties
+  # Team- tags come from lm_devices.team (collectors.logicmonitor.team_property).
   max_changes: 100                 # ASSUMED safety cap: refuse a plan touching more hosts than this
   max_lm_age_hours: 36             # refuse if the LogicMonitor pull is older than this
   # plan_out: "reports/falcon-tag-plan.csv"

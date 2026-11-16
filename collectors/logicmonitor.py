@@ -18,6 +18,8 @@ API (confirmed against a live portal, 2026-11-16 probe):
       sccm.deploymentStartRaw    e.g. "11/19/2026 19:00:00", month first, no zone
       sccm.deploymentDeadlineRaw same format
   Property names, the time format and zone are config (collectors.logicmonitor).
+  `team_property` names the property holding the managing team(s); stored
+  normalised in lm_devices.team ("A, B" when several).
 
 Auth is LMv1: HMAC-SHA256 over verb + epoch-ms + body + resource path, hex
 digest, base64'd. Read-only: this collector only ever issues GETs.
@@ -155,6 +157,13 @@ def parse_local(v: Optional[str], fmt: str, tz: dt.tzinfo) -> Optional[dt.dateti
         return None
 
 
+def norm_team(v: Any) -> Optional[str]:
+    """'Applications, Database' / 'Applications & Database' -> 'Applications, Database'
+    (split the same way tools/falcon_tag_sync.py splits it into Team- tags)."""
+    parts = [p.strip() for p in re.split(r"[,;/&]", str(v or "")) if p.strip()]
+    return ", ".join(dict.fromkeys(parts)) or None
+
+
 def _epoch(v: Any) -> Optional[dt.datetime]:
     try:
         x = float(v)
@@ -219,6 +228,7 @@ def to_row(ctx: RunContext, dev: Dict[str, Any], cfg: Dict[str, Any], tz: dt.tzi
         "model": p.get("system.model"),
         "categories": TextArray(_split(p.get("system.categories"))),
         "properties": {k: p[k] for k in keep if k in p and not SECRETISH.search(k)},
+        "team": norm_team(p.get(cfg["team_property"])) if cfg.get("team_property") else None,
         "patch_group": group,
         "patch_tier": tier,
         "patch_subgroup": sub,
