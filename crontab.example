@@ -34,6 +34,12 @@
 # Monthly per-site security scorecard (PDF, direction only) -> next to the action packs in reports/monthly-YYYY-MM/
 15 4 1 * *        cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock venv/bin/python3 scorecard.py --config config.yaml >> logs/report.log 2>&1 || venv/bin/python3 notify.py --config config.yaml send --priority 1 --title "monthly scorecards failed" --message "See logs/report.log"
 
+# Falcon server tags from LogicMonitor (tools/falcon_tag_sync.py) -- the one job that WRITES to a vendor.
+# Differential: sends only tags that changed since the last run, and refuses (exit 3 -> alert) if more
+# than falcon_tag_sync.max_changes hosts would change. Leave commented out until a --host pilot and one
+# full manual --apply are done. Daily; once things settle, weekly is fine (e.g. "0 8 * * 2").
+#0  8 * * *       cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock venv/bin/python3 tools/falcon_tag_sync.py --config config.yaml --apply >> logs/tag-sync.log 2>&1 || venv/bin/python3 notify.py --config config.yaml send --priority 1 --title "Falcon tag sync needs a look" --message "See logs/tag-sync.log"
+
 # Publish anything new to the file share (no-op unless publish.enabled in config.yaml)
 30 7 * * *        cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock venv/bin/python3 publish.py --config config.yaml >> logs/publish.log 2>&1
 

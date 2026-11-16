@@ -8,6 +8,7 @@ Grafana dashboards. Exits non-zero on any failure.
 
 Needs a Postgres it may DROP/CREATE the database `secops_e2e` on.
 """
+import csv
 import datetime as dt
 import glob
 import json
@@ -71,6 +72,12 @@ collectors:
             fields: {{id: id, title: title, severity: riskSeverity, activity: activityStatus, status: status,
                      visibility: riskVisibility, risk_type: riskType, category: primaryCategory.id,
                      first_seen: created, last_seen: lastSeen, resolved_at: resolvedOn}}}}
+  logicmonitor:
+    enabled: true
+    base_url: "{M}/lm/santaba/rest"
+    page_size: 2
+    patch_timezone: "Asia/Tokyo"
+    keep_properties: ["org.class", "org.managedBy", "snmp.community"]
   checkpoint_hec: {{enabled: true, gateway: "{M}/hec"}}
   checkpoint_hec_flow: {{enabled: true, lookback_days: 1}}
   entra:
@@ -82,6 +89,7 @@ collectors:
     workspaces: [{{name: ws, tenant: main, workspace_id: w1}}]
     queries: [{{name: signins, key_type: upn, kql: "SigninLogs | take 1"}}]
   dmarc: {{enabled: true, opensearch_url: "{M}/os", username: u}}
+falcon_tag_sync: {{team_property: org.managedBy, max_changes: 5}}
 notify: {{enabled: true, host_label: e2e, healthcheck_url: "{M}/hc/abc",
           pushover: {{api_url: "{M}/pushover/1/messages.json"}}}}
 """
@@ -90,10 +98,12 @@ database: {password: null}
 crowdstrike: {client_id: cid, client_secret: sec}
 collectors:
   hadrian: {api_key: hk}
+  logicmonitor: {access_id: lid, access_key: lk}
   checkpoint_hec: {client_id: hc, access_key: hk}
   entra: {tenants: [{name: main, client_id: ac, client_secret: as}]}
   dmarc: {password: p}
 notify: {pushover: {app_token: at, user_key: uk}}
+falcon_tag_sync: {client_id: tcid, client_secret: tsec}
 """
 
 failures = []
@@ -213,7 +223,7 @@ def main() -> int:
     rows = q(cur, "SELECT collector, status, error FROM collector_freshness ORDER BY 1")
     for r in rows:
         check(r[1] == "ok", f"collector {r[0]} status ok ({r[2] or ''})")
-    check(len(rows) == 11, f"11 collectors ran (got {len(rows)})")
+    check(len(rows) == 12, f"12 collectors ran (got {len(rows)})")
 
     print("== site resolution")
     sites = dict(q(cur, "SELECT source_asset_id, site_label || '/' || site_matched_by FROM assets"))
@@ -263,6 +273,73 @@ def main() -> int:
     check(patch and patch[0][1] == 2, f"R1 patch groups both Chrome CVEs: {patch}")
     ext = q(cur, "SELECT site_label, asset_type FROM vuln_findings WHERE source='hadrian' AND source_rule_id='r1'")[0]
     check(ext == ("Riverside Health", "internet"), f"Hadrian risk site/type {ext}")
+
+    print("== logicmonitor")
+    conn.commit()
+    lm = {r[0]: r[1:] for r in q(cur, """SELECT device_id, host_key, site_label, site_matched_by, patch_tier,
+                                                patch_subgroup, patch_window_start, patch_deadline, properties
+                                         FROM lm_devices""")}
+    check(sorted(lm) == [101, 102, 103, 104, 105], f"all LogicMonitor devices across pages: {sorted(lm)}")
+    check(lm[101][:5] == ("lkh-srv01", "Lakeside Health", "falcon_asset", 1, None),
+          f"sysname -> host_key, site taken from the matching Falcon host, Tier 1: {lm[101][:5]}")
+    check(lm[101][5].isoformat() == "2026-11-11T10:00:00+00:00" and lm[101][6].isoformat() == "2026-11-12T22:00:00+00:00",
+          f"SCCM local times read in patch_timezone: {lm[101][5]}, {lm[101][6]}")
+    check(lm[102][1:5] == ("Riverside Health", "ad_domains", 2, "B") and lm[102][6] is None,
+          f"no Falcon twin -> resolver; Tier 2 Group B; bad date -> NULL: {lm[102][1:7]}")
+    check(lm[103][0] is None and lm[103][3] is None, f"IP-only device has no host key or tier: {lm[103][:4]}")
+    check(lm[104][3] is None and lm[104][5] is not None, f"group with no tier keeps its schedule: {lm[104][3:6]}")
+    leaked = [k for v in lm.values() for k in (v[7] or {}) if k not in ("org.class", "org.managedBy")]
+    check(lm[101][7] == {"org.class": "Server Endpoints", "org.managedBy": "Power BI"} and not leaked,
+          f"only keep_properties stored, credential-like ones dropped even if listed: {lm[101][7]}, {leaked}")
+    view = q(cur, "SELECT device_id, falcon_aid, in_patch_group FROM lm_device_patch ORDER BY 1")
+    check(view == [(101, "aid2", True), (102, None, True), (103, None, False), (104, None, True), (105, "aid2", False)],
+          f"lm_device_patch joins Falcon by short hostname: {view}")
+    cur.execute("INSERT INTO lm_devices (device_id, site_label, collected_at) VALUES (999, 'Ungrouped', now() - interval '2 days')")
+    conn.commit()   # also ends this connection's read transaction: collect.py's schema step needs the locks
+    srv.server_close()
+    srv = mock_vendors.start(PORT)   # the mocks were stopped after the collector runs above
+    check(run("collect.py", "--only", "logicmonitor") == 0, "logicmonitor re-run exited 0")
+    ret = dict(q(cur, "SELECT device_id, retired FROM lm_devices WHERE device_id IN (101, 999)"))
+    check(ret == {101: False, 999: True}, f"device gone from LogicMonitor is retired: {ret}")
+
+    print("== falcon tag sync")
+    def tag_calls():
+        return [c for c in mock_vendors.CALLS if c[0] == "PATCH"]
+    r = subprocess.run([sys.executable, "tools/falcon_tag_sync.py", "--config", cfgp], cwd=ROOT,
+                       capture_output=True, text=True)
+    print(r.stdout[-2000:], r.stderr[-2000:])
+    plan = {row["aid"]: (row["add"], row["remove"]) for row in
+            csv.DictReader(open(os.path.join(tmp, "reports", "falcon-tag-plan.csv")))}
+    check(r.returncode == 0 and not tag_calls(), "tag sync dry run exits 0 and sends nothing")
+    check(plan == {"aid2": ("FalconGroupingTags/Patch-T1 FalconGroupingTags/Team-Cyber "
+                            "FalconGroupingTags/Team-PowerBI FalconGroupingTags/Team-Systems", ""),
+                   "aid4": ("", "FalconGroupingTags/Patch-T9")},
+          f"servers only; duplicate LM entry: SCCM group wins, teams combined and split; stale managed tag removed; Owner-/sensor tags untouched: {plan}")
+    r = subprocess.run([sys.executable, "tools/falcon_tag_sync.py", "--config", cfgp, "--apply", "--max-changes", "1"],
+                       cwd=ROOT, capture_output=True, text=True)
+    check(r.returncode == 3 and not tag_calls(), f"over --max-changes: refuses, sends nothing (rc {r.returncode})")
+    r = subprocess.run([sys.executable, "tools/falcon_tag_sync.py", "--config", cfgp, "--apply", "--host", "mystery"],
+                       cwd=ROOT, capture_output=True, text=True)
+    pilot = [(c[2]["action"], c[2]["tags"][0], tuple(c[2]["device_ids"])) for c in tag_calls()]
+    check(r.returncode == 0 and pilot == [("remove", "FalconGroupingTags/Patch-T9", ("aid4",))],
+          f"--host pilot touches only that server: {pilot}")
+    del mock_vendors.CALLS[:]
+    r = subprocess.run([sys.executable, "tools/falcon_tag_sync.py", "--config", cfgp, "--apply"], cwd=ROOT,
+                       capture_output=True, text=True)
+    sent = sorted((c[2]["action"], c[2]["tags"][0], tuple(c[2]["device_ids"])) for c in tag_calls())
+    check(r.returncode == 0 and sent == [("add", "FalconGroupingTags/Patch-T1", ("aid2",)),
+                                         ("add", "FalconGroupingTags/Team-Cyber", ("aid2",)),
+                                         ("add", "FalconGroupingTags/Team-PowerBI", ("aid2",)),
+                                         ("add", "FalconGroupingTags/Team-Systems", ("aid2",)),
+                                         ("remove", "FalconGroupingTags/Patch-T9", ("aid4",))],
+          f"--apply sends one call per tag change: {sent} (rc {r.returncode}) {r.stdout[-300:]}")
+    cur.execute("UPDATE lm_devices SET collected_at = now() - interval '3 days'")
+    conn.commit()
+    r = subprocess.run([sys.executable, "tools/falcon_tag_sync.py", "--config", cfgp], cwd=ROOT,
+                       capture_output=True, text=True)
+    check(r.returncode == 2, f"stale LogicMonitor data: refuses to plan (rc {r.returncode})")
+    srv.shutdown()
+    srv.server_close()
 
     print("== other domains")
     check(q(cur, "SELECT count(*) FROM security_alerts")[0][0] == 3, "3 alerts")

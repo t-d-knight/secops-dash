@@ -23,13 +23,13 @@ HOSTS = {
              "product_type_desc": "Workstation", "last_seen": iso(0, 2), "first_seen": iso(300),
              "agent_version": "7.20", "reduced_functionality_mode": "no", "status": "normal",
              "mac_address": "00-50-56-aa-bb-01", "device_policies": {"prevention": {"policy_id": "p1"}}},
-    "aid2": {"device_id": "aid2", "hostname": "LKH-SRV01", "groups": [], "tags": ["SensorGroupingTags/LKH"],
+    "aid2": {"device_id": "aid2", "hostname": "LKH-SRV01", "groups": [], "tags": ["SensorGroupingTags/LKH", "FalconGroupingTags/Owner-Vendor"],
              "local_ip": "10.9.0.4", "platform_name": "Windows", "product_type_desc": "Server",
              "last_seen": iso(2), "first_seen": iso(400), "reduced_functionality_mode": "no"},
     "aid3": {"device_id": "aid3", "hostname": "RANDOM01", "groups": [], "tags": [], "machine_domain": "rvh.local",
              "product_type_desc": "Workstation", "last_seen": iso(20), "first_seen": iso(500),
              "reduced_functionality_mode": "yes"},
-    "aid4": {"device_id": "aid4", "hostname": "MYSTERY", "groups": [], "tags": [],
+    "aid4": {"device_id": "aid4", "hostname": "MYSTERY", "groups": [], "tags": ["FalconGroupingTags/Patch-T9"],
              "product_type_desc": "Domain Controller", "last_seen": iso(1), "first_seen": iso(100)},
 }
 
@@ -272,6 +272,58 @@ USB_SCANS = [
      "filecount": {"traversed": 10, "scanned": 0, "malicious": 0, "quarantined": 0}},
 ]
 
+# LogicMonitor: /lm/santaba/rest/device/devices, LMv1-signed with access key "lk".
+def _lmp(**kw):
+    return [{"name": k.replace("__", "."), "value": v} for k, v in kw.items()]
+
+
+LM_KEY = "lk"
+LM_DEVICES = [
+    {"id": 101, "displayName": "lkh-srv01.lakeside.test", "name": "10.9.0.4", "deviceType": 0, "hostStatus": "normal",
+     "createdOn": 1700000000, "lastDataTime": 1790000000,
+     "systemProperties": _lmp(system__hostname="10.9.0.4", system__sysname="LKH-SRV01", system__ips="10.9.0.4",
+                              system__categories="MSSQL,WSFC_Node", system__model="Virtual Machine"),
+     "autoProperties": _lmp(auto__os__version__description="Windows Server 2019 Standard"),
+     "customProperties": _lmp(sccm__updateGroup="Servers (Tier 1)", sccm__deploymentStartRaw="11/11/2026 19:00:00",
+                              sccm__deploymentDeadlineRaw="11/13/2026 07:00:00", org__class="Server Endpoints",
+                              org__managedBy="Power BI"),
+     "inheritedProperties": _lmp(wmi__pass="********", snmp__community="********")},
+    {"id": 102, "displayName": "RVH-APP02", "name": "rvh-app02.rvh.local", "deviceType": 0, "hostStatus": "normal",
+     "createdOn": 1700000000, "lastDataTime": 1790000000,
+     "systemProperties": _lmp(system__hostname="rvh-app02.rvh.local", system__ips="10.1.5.6,10.1.5.7"),
+     "autoProperties": _lmp(auto__os__domain="rvh.local"),
+     "customProperties": _lmp(sccm__updateGroup="Regional Servers (Tier 2 - Group b)",
+                              sccm__deploymentStartRaw="11/19/2026 20:00:00",
+                              sccm__deploymentDeadlineRaw="not a date", snmp__community="********"),
+     "inheritedProperties": _lmp(wmi__pass="********")},
+    {"id": 103, "displayName": "192.0.2.10", "name": "192.0.2.10", "deviceType": 0, "hostStatus": "dead",
+     "createdOn": 1700000000, "lastDataTime": 0,
+     "systemProperties": _lmp(system__hostname="192.0.2.10", system__categories="snmp,Cisco"),
+     "autoProperties": [], "customProperties": [], "inheritedProperties": []},
+    {"id": 104, "displayName": "LKH-FS01", "name": "lkh-fs01", "deviceType": 0, "hostStatus": "normal",
+     "systemProperties": _lmp(system__hostname="lkh-fs01"), "autoProperties": [],
+     "customProperties": _lmp(sccm__updateGroup="File Servers", sccm__deploymentStartRaw="11/19/2026 20:00:00",
+                              sccm__deploymentDeadlineRaw="11/24/2026 09:00:00"),
+     "inheritedProperties": []},
+    # the same server again (e.g. monitored by its cluster/IP entry): no SCCM group, two teams
+    {"id": 105, "displayName": "LKH-SRV01", "name": "10.9.0.40", "deviceType": 0, "hostStatus": "normal",
+     "systemProperties": _lmp(system__hostname="10.9.0.40"), "autoProperties": [],
+     "customProperties": _lmp(org__managedBy="Systems, Cyber"), "inheritedProperties": []},
+]
+
+
+def lm_signature_ok(header, method, resource, body=""):
+    import base64, hashlib, hmac
+    try:
+        scheme, rest = header.split(" ", 1)
+        access_id, sig, ts = rest.split(":")
+    except ValueError:
+        return False
+    want = base64.b64encode(hmac.new(LM_KEY.encode(), (method + ts + body + resource).encode(),
+                                     hashlib.sha256).hexdigest().encode()).decode()
+    return scheme == "LMv1" and access_id == "lid" and hmac.compare_digest(sig, want)
+
+
 CALLS = []
 
 
@@ -318,6 +370,16 @@ class H(BaseHTTPRequestHandler):
         CALLS.append(("GET", p, q))
         if p.startswith("/hc/"):   # dead-man's-switch pings carry no auth
             return self._send_text("OK")
+        if p.startswith("/lm/santaba/rest/"):
+            if not lm_signature_ok(self.headers.get("Authorization") or "", "GET", p[len("/lm/santaba/rest"):]):
+                return self._send({"errorMessage": "Authentication failed", "errorCode": 1401}, 401)
+            if self.headers.get("X-Version") != "3":
+                return self._send({"status": 1401, "errmsg": "v1 envelope", "data": None})
+            if p == "/lm/santaba/rest/device/devices":
+                size, off = int(q["size"][0]), int(q.get("offset", ["0"])[0])
+                return self._send({"total": len(LM_DEVICES), "items": LM_DEVICES[off:off + size],
+                                   "searchId": None, "isMin": False})
+            return self._send({"errorMessage": "not found"}, 404)
         if not self._auth_ok():
             return self._send({"error": "no auth"}, 401)
         # ---- Falcon
@@ -412,6 +474,19 @@ class H(BaseHTTPRequestHandler):
                 {"id": "m3", "userPrincipalName": "guest_x#EXT#@rvh.onmicrosoft.com", "userType": "guest",
                  "isMfaRegistered": False}]})
         return self._send({"error": f"unmocked GET {p}"}, 404)
+
+    def do_PATCH(self):
+        u = urlparse(self.path)
+        p = u.path
+        body = self._body()
+        CALLS.append(("PATCH", p, body))
+        if not self._auth_ok():
+            return self._send({"error": "no auth"}, 401)
+        if p == "/falcon/devices/entities/devices/tags/v1":
+            assert body["action"] in ("add", "remove") and body["device_ids"] and body["tags"], body
+            return self._send({"resources": [{"device_id": d, "code": 200, "updated": True}
+                                             for d in body["device_ids"]], "errors": []})
+        return self._send({"error": "not found"}, 404)
 
     def do_POST(self):
         u = urlparse(self.path)

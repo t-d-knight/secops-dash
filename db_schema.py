@@ -332,6 +332,56 @@ DDL_STATEMENTS = [
     "ALTER TABLE assets ADD COLUMN IF NOT EXISTS description TEXT;",
     "ALTER TABLE assets ADD COLUMN IF NOT EXISTS discovery_class TEXT;",
     "ALTER TABLE assets ADD COLUMN IF NOT EXISTS managed_twin TEXT;",
+    # --- LogicMonitor device inventory + patch schedule (collectors/logicmonitor.py)
+    # patch_* come from the SCCM update group pushed into LogicMonitor custom
+    # properties; window/deadline are that group's CURRENT deployment only.
+    """
+    CREATE TABLE IF NOT EXISTS lm_devices (
+        device_id          BIGINT PRIMARY KEY,
+        display_name       TEXT,
+        hostname           TEXT,
+        host_key           TEXT,              -- short lower-case name; joins assets
+        domain             TEXT,
+        ips                TEXT[],
+        device_type        INTEGER,           -- LogicMonitor deviceType (0 = collector-monitored)
+        host_status        TEXT,
+        os                 TEXT,
+        model              TEXT,
+        categories         TEXT[],
+        properties         JSONB,             -- only keep_properties; never credentials
+        patch_group        TEXT,
+        patch_tier         SMALLINT,
+        patch_subgroup     TEXT,
+        patch_window_start TIMESTAMPTZ,
+        patch_deadline     TIMESTAMPTZ,
+        created_on         TIMESTAMPTZ,
+        last_data_at       TIMESTAMPTZ,
+        site_label         TEXT NOT NULL,
+        site_tag           TEXT,
+        site_matched_by    TEXT,
+        retired            BOOLEAN NOT NULL DEFAULT FALSE,
+        collected_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_lm_devices_host_key ON lm_devices (host_key) WHERE NOT retired;",
+    # One row per current LogicMonitor device with its patch schedule and the
+    # matching managed Falcon host (if any) -- same short-name join as the collector.
+    """
+    CREATE OR REPLACE VIEW lm_device_patch AS
+    SELECT l.device_id, l.display_name, l.host_key, l.site_label, l.os, l.device_type,
+           l.patch_group, l.patch_tier, l.patch_subgroup, l.patch_window_start, l.patch_deadline,
+           (l.patch_group IS NOT NULL) AS in_patch_group,
+           a.source_asset_id AS falcon_aid, a.last_seen AS falcon_last_seen,
+           a.product_type AS falcon_product_type, a.kernel_version AS falcon_kernel_version
+    FROM lm_devices l
+    LEFT JOIN LATERAL (
+        SELECT * FROM assets a
+        WHERE a.source = 'falcon' AND NOT a.retired AND l.host_key IS NOT NULL
+          AND lower(split_part(a.hostname, '.', 1)) = l.host_key
+        ORDER BY a.last_seen DESC NULLS LAST LIMIT 1
+    ) a ON TRUE
+    WHERE NOT l.retired;
+    """,
     """
     CREATE TABLE IF NOT EXISTS external_assets (
         source           TEXT NOT NULL,

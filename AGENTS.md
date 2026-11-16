@@ -51,6 +51,10 @@ the real organisation's details exist only in untracked files on the server that
 4. **Read from vendor APIs, never change them.** Collectors use read-only scopes. Don't add calls that change
    vendor state (containing hosts, closing or assigning alerts, suppressing findings, disabling accounts),
    even if the scope would allow it.
+   **One exception, approved by the owner on 2026-11-16:** `tools/falcon_tag_sync.py` adds and removes
+   Falcon grouping tags under the `Patch-` and `Team-` prefixes on servers, and nothing else. It has its
+   own API client (Hosts: Write), is dry-run by default and is never called by the collectors. Don't
+   widen what it touches, or add another writer, without the owner's say-so.
 5. **Don't rewrite shared history.** No force-push, no history rewrites, no deleting branches unless the
    user does it themselves.
 6. **Don't touch the live install unless asked.** Deploying, running collectors, editing the server's

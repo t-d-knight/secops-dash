@@ -16,6 +16,7 @@ from collectors import (
     falcon_spotlight,
     falcon_usb,
     hadrian,
+    logicmonitor,
 )
 
 REGISTRY = {m.NAME: m for m in (
@@ -26,6 +27,7 @@ REGISTRY = {m.NAME: m for m in (
     falcon_identity,
     falcon_usb,
     hadrian,
+    logicmonitor,
     checkpoint_hec,
     checkpoint_hec_flow,
     entra,

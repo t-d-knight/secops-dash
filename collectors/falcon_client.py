@@ -67,6 +67,15 @@ class FalconClient:
         raise_for_status(r, "Falcon")
         return r.json()
 
+    def patch(self, path: str, body: Any) -> Dict[str, Any]:
+        """Only tools/falcon_tag_sync.py uses this (with its own client). Collectors never write."""
+        r = self.s.patch(f"{self.base}{path}", headers=self._h(), json=body)
+        if r.status_code == 401:
+            self._tok.invalidate()
+            r = self.s.patch(f"{self.base}{path}", headers=self._h(), json=body)
+        raise_for_status(r, "Falcon")
+        return r.json()
+
     def download(self, path: str) -> str:
         """A file endpoint (e.g. an NG-SIEM lookup file), as text."""
         h = dict(self._h(), Accept="application/octet-stream")

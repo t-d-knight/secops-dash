@@ -211,6 +211,31 @@ collectors:
       assets_path: "data/hadrian/assets.csv"   # column names = the field map values above
       risks_path: "data/hadrian/risks.csv"
 
+  # LogicMonitor device inventory + SCCM patch schedule -> lm_devices and the
+  # lm_device_patch view (joined to Falcon assets by short hostname). Read-only
+  # API token (LMv1): Settings > Users & Roles > API Tokens, on a user whose
+  # role can view devices. Confirmed against a live portal 2026-11-16.
+  logicmonitor:
+    enabled: false
+    company: "YOUR_PORTAL"        # https://YOUR_PORTAL.logicmonitor.com
+    # access_id / access_key -> secrets.yaml
+    page_size: 1000
+    # The SCCM sync writes the update group and its current deployment into
+    # these custom properties. Tier and subgroup are parsed from the group name,
+    # e.g. "Servers (Tier 2 - Group B)" -> tier 2, subgroup B.
+    patch_group_property: "sccm.updateGroup"
+    patch_start_property: "sccm.deploymentStartRaw"
+    patch_deadline_property: "sccm.deploymentDeadlineRaw"
+    patch_time_format: "%m/%d/%Y %H:%M:%S"
+    patch_tier_regex: 'Tier\s*(\d+)'
+    patch_subgroup_regex: 'Group\s+([A-Za-z0-9]+)'
+    # ASSUMED: the raw times carry no zone and are taken as local time in this
+    # zone (default: the database's timezone). Check one against the SCCM console.
+    # patch_timezone: "Area/City"
+    # Extra device properties to keep (JSONB lm_devices.properties). Anything
+    # credential-like (pass, community, key, token, user...) is never stored.
+    keep_properties: ["org.class", "org.managedBy"]
+
   # Check Point Harmony Email & Collaboration
   checkpoint_hec:
     enabled: true
@@ -307,6 +332,17 @@ collectors:
 # (e.g. healthchecks.io, which can itself alert via Pushover): pinged at the
 # start and end of each nightly run, so a box that's off or hung still gets
 # noticed. Keys: notify.pushover.app_token / user_key in secrets.yaml.
+
+# tools/falcon_tag_sync.py: the one tool that writes to a vendor (AGENTS.md rule 4).
+# Keeps FalconGroupingTags/Patch-* and FalconGroupingTags/Team-* on Falcon servers in
+# step with LogicMonitor (lm_devices). Run by hand after the nightly collection; dry
+# run unless --apply. client_id / client_secret -> secrets.yaml (separate API client).
+falcon_tag_sync:
+  team_property: "org.managedBy"   # LogicMonitor property naming the managing team;
+                                   # must also be in collectors.logicmonitor.keep_properties
+  max_changes: 100                 # ASSUMED safety cap: refuse a plan touching more hosts than this
+  max_lm_age_hours: 36             # refuse if the LogicMonitor pull is older than this
+  # plan_out: "reports/falcon-tag-plan.csv"
 notify:
   enabled: false
   healthcheck_url: null   # e.g. "https://hc-ping.com/<uuid>"

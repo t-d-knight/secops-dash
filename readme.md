@@ -147,6 +147,18 @@ Grant the same app **Log Analytics Reader** on each workspace. Each query in `co
 ### DMARC (parsedmarc on cyber-dmarc)
 Create a read-only OpenSearch user with `read` on `dmarc_aggregate*`. Point `opensearch_url` at the cluster; use `ca_file` for the cluster CA rather than `verify_tls: false`. parsedmarc maps `header_from` and friends as `text` (not aggregatable), so the collector scrolls raw aggregate records for the window and aggregates them itself. That's a few thousand rows a day, so it's cheap. The window (default 10 days) is recomputed each run because reporters send late.
 
+### LogicMonitor (server inventory + SCCM patch schedule)
+An LMv1 API token (access ID + key) on a user whose role can view devices; `company` is the portal name in `https://<company>.logicmonitor.com`. The collector pulls every device into `lm_devices`: hostname, IPs, OS, the SCCM update group (tier and subgroup parsed from its name) and that group's current deployment start and deadline, which the SCCM sync writes into custom properties. Only properties listed in `keep_properties` are stored, and credential-like ones never are. The `lm_device_patch` view joins each device to its Falcon host by short hostname. The SCCM times carry no zone; set `patch_timezone`.
+
+### Falcon server tags from LogicMonitor (`tools/falcon_tag_sync.py`)
+The one tool that writes to a vendor (AGENTS.md rule 4). On Falcon servers it keeps `FalconGroupingTags/Patch-*` (SCCM tier/group, or `Patch-None`) and `FalconGroupingTags/Team-*` (LogicMonitor's team property) in step with `lm_devices`, and touches no other tag. It needs its own API client with **Hosts: Write** (`falcon_tag_sync:` in secrets.yaml). Each run sends only the difference from the tags hosts carry now (as of the last `falcon_hosts` run).
+```
+venv/bin/python3 tools/falcon_tag_sync.py --config config.yaml                      # plan -> reports/falcon-tag-plan.csv
+venv/bin/python3 tools/falcon_tag_sync.py --config config.yaml --apply --host SRV01  # pilot on one server
+venv/bin/python3 tools/falcon_tag_sync.py --config config.yaml --apply --max-changes 800  # first full run
+```
+Afterwards the commented line in `crontab.example` runs it daily, refusing and alerting if more than `max_changes` hosts would change.
+
 ## 5. Running
 
 ```bash

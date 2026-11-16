@@ -44,9 +44,10 @@ A claim older than 14 days with no log entry can be taken over, but say so in th
 | Rollups (`rollup_daily_metrics.py`, `impact.py`) | unclaimed | | Changes move every trend line |
 | Weekly report (`exec_report.py`) | unclaimed | | Large file; reporting review in CONTRIBUTING "Writing reports" |
 | Scorecard / impact / servers report / action pack | unclaimed | | |
+| Report comparison samples and review note | unclaimed | | |
 | Grafana dashboards (`grafana/`) | unclaimed | | |
 | Collectors (`collectors/<name>.py`, one row each when claimed) | unclaimed | | |
-| LogicMonitor collector (planned) | unclaimed | | Waiting on an API token; patch-tier mapping drafted |
+| Falcon tag sync (`tools/falcon_tag_sync.py`), the only vendor writer | unclaimed | | Changes need the owner's say-so (AGENTS.md rule 4) |
 | Migration scripts (branch `migration-scripts`) | unclaimed | | Two commits not on `main` yet |
 
 ## State of the repo when this file was written
@@ -63,6 +64,57 @@ Each entry heading is `### YYYY-MM-DD, <who> for <whom>: <what>`. In the entry:
 
 Keep entries short and link to the commit for detail. When the log passes about 300 lines, move entries
 older than a month to `docs/robots_fighting-archive.md`.
+
+### 2026-11-16, Claude for TK: LogicMonitor collector and Falcon server tag sync
+- **Status:** pushed to `main` in two commits (impact outcomes; LogicMonitor collector + tag sync). Not deployed:
+  the live install is on a separate network; the owner pulls and deploys. Claims on schema, impact and Grafana from
+  2026-11-11 released.
+- **Changed:** `collectors/logicmonitor.py` (new, read-only, LMv1) -> `lm_devices` + view `lm_device_patch`
+  (schema); SCCM update group, tier/subgroup and current deployment window from custom properties; only
+  `keep_properties` stored, credential-like names always dropped. `tools/falcon_tag_sync.py` (new): the one vendor
+  writer, approved by the owner today and recorded in AGENTS.md rule 4. Adds/removes only `Patch-*` / `Team-*`
+  grouping tags on Falcon servers; dry run by default, `--host` pilot, `max_changes` cap, refuses stale
+  LogicMonitor data, own API client (Hosts: Write). `FalconClient.patch` added for it. Config/secrets examples,
+  readme, commented daily cron line. Touches: collectors, schema, tools, tests, docs.
+- **Verified:** `tests/run_e2e.py` all pass on a local Postgres 18 container (new LogicMonitor and tag-sync sections:
+  paging, LMv1 signature, site via Falcon twin, timezone, property allowlist, retire, plan/cap/pilot/apply/stale).
+  Read-only collector run and tag-sync dry run against the real APIs into a throwaway local database (since dropped):
+  join to Falcon servers works for nearly all SCCM-grouped devices; duplicate LogicMonitor entries resolved by the
+  merge rule. Identifier check clean.
+- **Not verified / open:** the Falcon tag PATCH request shape and allowed tag characters (mock only; pilot with
+  `--host` first). SCCM raw times assumed local (`patch_timezone`). `Patch-None` may include SCCM-sync misses, not
+  only ungrouped servers.
+
+### 2026-11-16, Claude for TK: impact outcomes now e2e-verified
+- **Status:** committed and pushed with the entry below's work (first of the two commits).
+- **Verified:** `tests/run_e2e.py` all pass including "impact action log outcomes" (10 cases + report render).
+- **Not verified / open:** `tests/demo_samples.py` before/after comparison still not run; the live workbook headings
+  note in the 2026-11-11 entry still applies.
+
+### 2026-11-11, Claude for TK: impact report keeps outcomes separate (redesign step 1)
+- **Status:** local, uncommitted. Claims held on impact, schema and Grafana until the e2e suite has run.
+- **Changed:** one shared rule, `impact_spec.OUTCOME_SQL`, used by both the report and the dashboard. Every action
+  is exactly one of: remediated (Done + closed date + ticket ref or evidence), Done with no evidence, risk accepted,
+  risk accepted needing review (review date passed, or approver/date missing), or open. Impact report page 1 swaps
+  "Resolved" for a factual headline plus Remediated / Risk accepted / Open / Awaiting owner tiles, and its table
+  shows the outcome. The Grafana impact stats and table follow the same rule. The action log gains Evidence,
+  Approved by, Reason accepted and Review date columns (`db_schema` ADD COLUMN IF NOT EXISTS, template and loader).
+  Older workbooks still load. Demo data covers every outcome. Ops guide "Reading the numbers" gains the policy row.
+  Touches: impact, schema, Grafana (impact dashboard only), tests.
+- **Verified:** syntax; `build_html` rendered from fake actions without a DB (headline and tiles reconcile to
+  10 items); template headings; dashboard JSON regenerated (only `secops-impact.json` changed); identifier check clean.
+- **Not verified / open:** `tests/run_e2e.py` (new "impact action log outcomes" section: the SQL rule over 10 cases,
+  plus a report render) and `tests/demo_samples.py` before/after. Both need Postgres; waiting on a container engine
+  on the Mac. On the live action log workbook, the four new column headings have to be added by hand (the
+  loader doesn't edit the workbook). Until then, existing accepted risks show as "approver or review date missing"
+  and Done items with no ticket ref as "no evidence". That's intended, but expect the first report to show more
+  attention items than before.
+
+### 2026-11-11, Codex for TK: report redesign comparison spike
+- **Status:** local only; no push or deployment. Comparison artifacts are untracked under `spikes/report-redesign-2026-11-11/`.
+- **Changed:** added static alternatives for weekly executive page 1, impact outcomes and scorecard context; no report logic changed. Claimed and released the sample/report area during this spike.
+- **Verified:** compared displayed values and dates with committed fictional `reports/sample-*` artifacts; impact statuses reconcile to 10 actions and scorecard retains nine measures. `tools/check_identifiers.py --all` is clean.
+- **Not verified / open:** browser/print rendering, snapshot-measure denominators, and whether the proposed layouts answer reviewers' needs. No DB, vendor API, generator or e2e suite used.
 
 ### 2026-11-11, Claude for TK: coordination file added
 - **Status:** pushed to `main` (docs commit "Agent rules, coordination file and report-writing rules").
