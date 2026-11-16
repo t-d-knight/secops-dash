@@ -164,7 +164,10 @@ def rollup_cohorts(conn, cfg: Dict[str, Any], today: dt.date) -> int:
 
 # -------------------------------------------------------------- action log
 ACTION_COLS = ["Found", "What was found", "How it was found", "Site", "Severity", "Action taken", "Owner team",
-               "Status", "Closed", "Ticket ref", "Notes"]
+               "Status", "Closed", "Ticket ref", "Notes",
+               # added 2026-11: evidence for Done; approver / reason / review date for Accepted risk.
+               # Columns are matched by heading, so older workbooks without them still load.
+               "Evidence", "Approved by", "Reason accepted", "Review date"]
 SOURCES = ["Weekly report", "Quarterly report", "Servers report", "Action pack", "Dashboard", "Identity digest",
            "Alert", "Other"]
 SEVERITIES = ["Critical", "High", "Medium", "Low"]
@@ -181,7 +184,7 @@ def action_log_template() -> bytes:
     ws.append(ACTION_COLS)
     for c in ws[1]:
         c.font, c.fill = HEADER_FONT, HEADER_FILL
-    for col, w in zip("ABCDEFGHIJK", (12, 60, 18, 12, 10, 50, 18, 13, 12, 14, 40)):
+    for col, w in zip("ABCDEFGHIJKLMNO", (12, 60, 18, 12, 10, 50, 18, 13, 12, 14, 40, 40, 18, 40, 12)):
         ws.column_dimensions[col].width = w
     for col, opts in (("C", SOURCES), ("E", SEVERITIES), ("H", STATUSES)):
         dv = DataValidation(type="list", formula1='"' + ",".join(opts) + '"', allow_blank=True)
@@ -191,7 +194,11 @@ def action_log_template() -> bytes:
     help_ws = wb.create_sheet("How to use")
     for line in ("One row per thing this programme surfaced that led (or should lead) to action.",
                  "Found / Closed: dates. How it was found / Severity / Status: pick from the list.",
-                 "Status Done or Accepted risk counts as resolved. Ticket ref: SDP request number, if any.",
+                 "Done counts as remediated only with a Closed date plus a Ticket ref or Evidence (how you know it's "
+                 "fixed, e.g. 'rescan clean 3 Nov'). Without them it shows as 'Done, no evidence recorded'.",
+                 "Accepted risk is not remediation. Fill in Approved by, Reason accepted and Review date; it shows as "
+                 "due for review once that date passes, or if the approver or date is missing.",
+                 "Ticket ref: SDP request number, if any.",
                  "Loaded nightly into the Impact dashboard and the monthly Impact report. Don't rename the "
                  "'Actions' sheet or the column headings."):
         help_ws.append([line])
@@ -246,13 +253,14 @@ def load_actions(conn, cfg: Dict[str, Any]) -> str:
         status = str(get("Status") or "Open").strip()
         rows.append((n, _cell_date(get("Found")), str(what).strip(), get("How it was found"), get("Site"),
                      get("Severity"), get("Action taken"), get("Owner team"), status,
-                     _cell_date(get("Closed")), get("Ticket ref"), get("Notes")))
+                     _cell_date(get("Closed")), get("Ticket ref"), get("Notes"), get("Evidence"),
+                     get("Approved by"), get("Reason accepted"), _cell_date(get("Review date"))))
     cur = conn.cursor()
     cur.execute("DELETE FROM impact_actions")
     cur.executemany("""
         INSERT INTO impact_actions (row_no, found, what, source, site_label, severity, action, owner_team, status,
-                                    closed, ticket_ref, notes)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                                    closed, ticket_ref, notes, evidence, approved_by, accept_reason, review_date)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                     [tuple(None if v is None else (v if not isinstance(v, str) else v.strip()) for v in row)
                      for row in rows])
     conn.commit()

@@ -62,3 +62,27 @@ SCORECARD: List[Tuple[str, str, str, Optional[str], str]] = [
     ("ext", "Confirmed external risks open", "ext_confirmed_open", None, "down"),
     ("leaks", "Leaked credentials (enabled accounts)", "leaked_creds", None, "down"),
 ]
+
+# Action-log outcomes. Accepted risk is not remediation, and "Done" only counts as
+# remediated with evidence: a closed date plus a ticket ref or an evidence note. An
+# accepted risk needs an approver and a review date, and is due for review once that
+# date passes. Policy set by the programme owner, 2026-11-11.
+#   (key, label, colour role) -- in display order, open first
+OUTCOMES: List[Tuple[str, str, str]] = [
+    ("open", "Open / in progress", "open"),
+    ("done_unverified", "Done, no evidence recorded", "warn"),
+    ("accepted_review", "Risk accepted: review due or details missing", "warn"),
+    ("accepted", "Risk accepted", "neutral"),
+    ("remediated", "Remediated", "good"),
+]
+OUTCOME_LABEL: Dict[str, str] = {k: label for k, label, _ in OUTCOMES}
+
+_SET = "NULLIF(btrim({}), '') IS NOT NULL"
+OUTCOME_SQL = f"""CASE
+    WHEN status = 'Done' AND closed IS NOT NULL
+         AND ({_SET.format('ticket_ref')} OR {_SET.format('evidence')}) THEN 'remediated'
+    WHEN status = 'Done' THEN 'done_unverified'
+    WHEN status = 'Accepted risk' AND review_date IS NOT NULL AND review_date >= current_date
+         AND {_SET.format('approved_by')} THEN 'accepted'
+    WHEN status = 'Accepted risk' THEN 'accepted_review'
+    ELSE 'open' END"""

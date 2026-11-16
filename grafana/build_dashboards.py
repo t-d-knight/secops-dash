@@ -1664,7 +1664,12 @@ IMPACT_HELP = {
                                "selected sites (TEST left out). Rates are worked out from the summed counts. "
                                "Better/worse follows the direction that's good for that measure.",
     "Actions logged": "Everything in the action log: findings this programme surfaced that led to (or need) action.",
-    "Resolved": "Action log entries marked Done or Accepted risk.",
+    "Remediated": "Marked Done with a closed date and a ticket ref or evidence note. Done without them is counted "
+                  "separately as 'Done, no evidence'.",
+    "Done, no evidence": "Marked Done but with no closed date, or no ticket ref or evidence note -- not counted as "
+                         "remediated until one is added.",
+    "Risk accepted": "Accepted risk is not remediation: the exposure remains. Includes acceptances past their review "
+                     "date or missing an approver or review date (shown separately in the Outcome column).",
     "Open": "Action log entries still Open or In progress.",
     "Days since Day 0": "How long the impact measures have been recorded.",
     "Servers patched within 35 days": "Share of active servers whose last confirmed patch is within 35 days.",
@@ -1716,12 +1721,14 @@ def impact():
         FROM v ORDER BY ord"""
 
     b.row("Headline")
-    b.stat("Actions logged", "SELECT count(*) FROM impact_actions", thresholds=NEUTRAL, w=6)
-    b.stat("Resolved", "SELECT count(*) FROM impact_actions WHERE status IN ('Done', 'Accepted risk')", w=6,
-           color="green")
-    b.stat("Open", "SELECT count(*) FROM impact_actions WHERE status NOT IN ('Done', 'Accepted risk') OR status IS NULL",
-           w=6, thresholds=[{"color": "text", "value": None}, {"color": "orange", "value": 1}])
-    b.stat("Days since Day 0", "SELECT current_date - min(snapshot_date) FROM daily_impact_metrics", w=6,
+    outcome = f"SELECT count(*) FROM impact_actions WHERE ({impact_spec.OUTCOME_SQL}) IN "
+    attention = [{"color": "text", "value": None}, {"color": "orange", "value": 1}]
+    b.stat("Actions logged", "SELECT count(*) FROM impact_actions", thresholds=NEUTRAL, w=4)
+    b.stat("Remediated", outcome + "('remediated')", w=4, color="green")
+    b.stat("Done, no evidence", outcome + "('done_unverified')", w=4, thresholds=attention)
+    b.stat("Risk accepted", outcome + "('accepted', 'accepted_review')", w=4, thresholds=NEUTRAL)
+    b.stat("Open", outcome + "('open')", w=4, thresholds=attention)
+    b.stat("Days since Day 0", "SELECT current_date - min(snapshot_date) FROM daily_impact_metrics", w=4,
            thresholds=NEUTRAL)
     b.table("Scorecard: Day 0 vs now", scorecard, w=24, h=14, overrides=[{
         "matcher": {"id": "byName", "options": "Direction"},
@@ -1767,18 +1774,20 @@ def impact():
             overrides=[bg(c, "continuous-RdYlGr") for c in ("Fixed in 7 days %", "14 days %", "30 days %", "60 days %", "Fixed so far %")])
 
     b.row("Action log")
-    b.table("Action log", """
+    order = " ".join(f"WHEN '{k}' THEN {i}" for i, (k, _, _) in enumerate(impact_spec.OUTCOMES))
+    colour = {"open": "red", "warn": "orange", "neutral": "blue", "good": "green"}
+    b.table("Action log", f"""
         SELECT found AS "Found", what AS "What was found", source AS "How", site_label AS "Site", severity AS "Severity",
-               action AS "Action", owner_team AS "Owner", status AS "Status", closed AS "Closed", ticket_ref AS "Ticket"
-        FROM impact_actions
-        ORDER BY CASE WHEN status IN ('Done', 'Accepted risk') THEN 1 ELSE 0 END, found DESC NULLS LAST""", h=12,
-            overrides=[{"matcher": {"id": "byName", "options": "Status"},
+               action AS "Action", owner_team AS "Owner", status AS "Status", outcome AS "Outcome",
+               closed AS "Closed", ticket_ref AS "Ticket", review_date AS "Review date"
+        FROM (SELECT *, {impact_spec.OUTCOME_SQL} AS outcome FROM impact_actions) a
+        ORDER BY CASE outcome {order} END, found DESC NULLS LAST""", h=12,
+            overrides=[{"matcher": {"id": "byName", "options": "Outcome"},
                         "properties": [{"id": "custom.cellOptions", "value": {"type": "color-text"}},
                                        {"id": "mappings", "value": [{"type": "value", "options": {
-                                           "Done": {"color": "green", "index": 0},
-                                           "Accepted risk": {"color": "blue", "index": 1},
-                                           "In progress": {"color": "orange", "index": 2},
-                                           "Open": {"color": "red", "index": 3}}}]}]}, sev_cell()])
+                                           k: {"text": label, "color": colour[role], "index": i}
+                                           for i, (k, label, role) in enumerate(impact_spec.OUTCOMES)}}]}]},
+                       sev_cell()])
     return dashboard("secops-impact", "Programme impact", "What this programme found and what changed since Day 0: "
                      "scorecard, Patch Tuesday remediation cohorts and the action log.", b, help=IMPACT_HELP,
                      time_from="now-90d")

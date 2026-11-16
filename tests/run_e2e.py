@@ -437,6 +437,41 @@ def main() -> int:
                    "Riverside_Health/Monthly/2026-11 Riverside_Health Security Scorecard.pdf"],
           f"publish files the scorecard PDF (not the HTML) next to the action pack: {dest}")
 
+    print("== impact action log outcomes")
+    import impact_spec
+    today = dt.date.today()
+    cur.execute("DELETE FROM impact_actions")
+    # (status, closed, ticket_ref, evidence, approved_by, review_date, owner_team) -> expected outcome
+    cases = [
+        (("Done", today, "SR-1", None, None, None, "Infra"), "remediated"),
+        (("Done", today, None, "rescan clean", None, None, "Infra"), "remediated"),
+        (("Done", today, "  ", None, None, None, "Infra"), "done_unverified"),       # blank ticket isn't evidence
+        (("Done", None, "SR-2", None, None, None, "Infra"), "done_unverified"),      # no closed date
+        (("Accepted risk", None, None, None, "CIO", today + dt.timedelta(days=30), "Infra"), "accepted"),
+        (("Accepted risk", None, None, None, "CIO", today - dt.timedelta(days=1), "Infra"), "accepted_review"),
+        (("Accepted risk", None, None, None, None, today + dt.timedelta(days=30), "Infra"), "accepted_review"),
+        (("In progress", None, None, None, None, None, "Infra"), "open"),
+        (("Open", None, None, None, None, None, None), "open"),
+        ((None, None, None, None, None, None, None), "open"),
+    ]
+    for i, ((st, closed, tref, ev, appr, review, team), _) in enumerate(cases):
+        cur.execute("""INSERT INTO impact_actions (row_no, found, what, severity, owner_team, status, closed,
+                                                   ticket_ref, evidence, approved_by, review_date)
+                       VALUES (%s, %s, %s, 'High', %s, %s, %s, %s, %s, %s, %s)""",
+                    (i + 2, today, f"case {i}", team, st, closed, tref, ev, appr, review))
+    got = dict(q(cur, f"SELECT row_no, {impact_spec.OUTCOME_SQL} FROM impact_actions"))
+    bad = [(i, exp, got.get(i + 2)) for i, (_, exp) in enumerate(cases) if got.get(i + 2) != exp]
+    check(not bad, f"action outcomes: Done needs a closed date + ticket/evidence, accepted risk needs an approver and "
+                   f"an unexpired review date (case, expected, got): {bad}")
+    conn.commit()
+    imp_out = os.path.join(tmp, "impact")
+    check(run("impact_report.py", "--out-dir", imp_out, "--no-pdf") == 0, "impact_report.py exited 0")
+    imp_html = "".join(open(f).read() for f in glob.glob(os.path.join(imp_out, "*.html")))
+    check("Resolved" not in imp_html and "Risk accepted" in imp_html and "Awaiting owner" in imp_html
+          and "10 issues logged: 2 remediated, 3 accepted as risk, 3 still open and 2 marked Done with no evidence"
+          in imp_html,
+          "impact report keeps outcomes separate (no combined 'Resolved') and its headline reconciles to the log")
+
     print("== dashboard SQL")
     n = 0
     for path in sorted(glob.glob(os.path.join(ROOT, "grafana", "*.json"))):

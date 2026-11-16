@@ -294,6 +294,15 @@ DDL_STATEMENTS = [
         loaded_at   TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     """,
+    # Evidence for "Done", and the approver / reason / review date for "Accepted risk"
+    # (impact_spec.OUTCOME_SQL). Older workbooks without these columns load as NULLs.
+    """
+    ALTER TABLE impact_actions
+        ADD COLUMN IF NOT EXISTS evidence      TEXT,
+        ADD COLUMN IF NOT EXISTS approved_by   TEXT,
+        ADD COLUMN IF NOT EXISTS accept_reason TEXT,
+        ADD COLUMN IF NOT EXISTS review_date   DATE;
+    """,
     # Discover system insights for servers: disk, CPU, memory, roles.
     """
     CREATE TABLE IF NOT EXISTS host_insights (

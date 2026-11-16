@@ -149,6 +149,7 @@ The open vulnerability count is the least useful number in the tool. Read rates 
 | A big "Ungrouped" site | Records the tool couldn't match to a site by tag, OU, domain, hostname or IP. | A mapping gap to fix, not a site. |
 | External risks marked "unverified" | Hadrian's "Potential" risks, not yet confirmed. | Shown separately. Only confirmed risks count towards SLA. |
 | Fewer alerts than the Falcon console | Informational alerts are left out of counts. | Counts are low severity and up. |
+| Impact action log outcomes | Each logged item is counted once: remediated, Done with no evidence, risk accepted, or open. **Policy:** "Done" counts as remediated only with a closed date plus a ticket ref or evidence note. An accepted risk needs an approver and a review date, and shows as due for review once that date passes or if either is missing. | Accepted risk is not remediation: the exposure remains. To move an item out of "no evidence" or "due for review", fill in the Evidence, Approved by, Reason accepted and Review date columns of the action log workbook. |
 | USB history is short | Falcon only keeps the raw events about 7 days. | History starts when the USB feed was enabled and builds nightly. |
 
 If a dashboard shows a feed as stale, its numbers are from the last good pull. Check data freshness on the SecOps Overview before acting on a surprising figure.

@@ -527,11 +527,28 @@ ACTIONS = [
 ]
 
 
+# Evidence / acceptance detail by ACTIONS index: shows every outcome in the sample report --
+# remediated (ticket or evidence), Done with no evidence (index 6), and an accepted risk with
+# an approver and review date (index 5). The last open item has no owner team.
+ACTION_DETAIL = {
+    0: dict(ticket_ref="SR-10412"), 1: dict(evidence="Record gone from public DNS; checked externally"),
+    2: dict(ticket_ref="SR-10437"), 3: dict(ticket_ref="SR-10455", evidence="Sensor reporting in console"),
+    4: dict(evidence="External rescan clean"),
+    5: dict(approved_by="Director of ICT", accept_reason="Replacement server due next quarter; isolated meanwhile",
+            review_days=60),
+}
+
+
 def seed_actions(cur):
-    rows = [dict(row_no=i + 2, found=TODAY - dt.timedelta(days=f), what=w, source=src, site_label=site,
-                 severity=sev, action=act, owner_team=team, status=st,
-                 closed=TODAY - dt.timedelta(days=c) if c is not None else None, ticket_ref=None, notes=None)
-            for i, (f, w, src, site, sev, act, team, st, c) in enumerate(ACTIONS)]
+    rows = []
+    for i, (f, w, src, site, sev, act, team, st, c) in enumerate(ACTIONS):
+        x = ACTION_DETAIL.get(i, {})
+        rows.append(dict(row_no=i + 2, found=TODAY - dt.timedelta(days=f), what=w, source=src, site_label=site,
+                         severity=sev, action=act, owner_team=None if i == len(ACTIONS) - 1 else team, status=st,
+                         closed=TODAY - dt.timedelta(days=c) if c is not None else None,
+                         ticket_ref=x.get("ticket_ref"), notes=None, evidence=x.get("evidence"),
+                         approved_by=x.get("approved_by"), accept_reason=x.get("accept_reason"),
+                         review_date=TODAY + dt.timedelta(days=x["review_days"]) if "review_days" in x else None))
     cur.execute("DELETE FROM impact_actions")
     insert(cur, "impact_actions", rows)
 

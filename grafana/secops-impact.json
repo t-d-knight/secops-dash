@@ -115,7 +115,7 @@
       "gridPos": {
         "x": 0,
         "y": 3,
-        "w": 6,
+        "w": 4,
         "h": 4
       },
       "datasource": {
@@ -163,11 +163,11 @@
     {
       "id": 5,
       "type": "stat",
-      "title": "Resolved",
+      "title": "Remediated",
       "gridPos": {
-        "x": 6,
+        "x": 4,
         "y": 3,
-        "w": 6,
+        "w": 4,
         "h": 4
       },
       "datasource": {
@@ -199,19 +199,19 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT count(*) FROM impact_actions WHERE status IN ('Done', 'Accepted risk')"
+          "rawSql": "SELECT count(*) FROM impact_actions WHERE (CASE WHEN status = 'Done' AND closed IS NOT NULL AND (NULLIF(btrim(ticket_ref), '') IS NOT NULL OR NULLIF(btrim(evidence), '') IS NOT NULL) THEN 'remediated' WHEN status = 'Done' THEN 'done_unverified' WHEN status = 'Accepted risk' AND review_date IS NOT NULL AND review_date >= current_date AND NULLIF(btrim(approved_by), '') IS NOT NULL THEN 'accepted' WHEN status = 'Accepted risk' THEN 'accepted_review' ELSE 'open' END) IN ('remediated')"
         }
       ],
-      "description": "Action log entries marked Done or Accepted risk."
+      "description": "Marked Done with a closed date and a ticket ref or evidence note. Done without them is counted separately as 'Done, no evidence'."
     },
     {
       "id": 6,
       "type": "stat",
-      "title": "Open",
+      "title": "Done, no evidence",
       "gridPos": {
-        "x": 12,
+        "x": 8,
         "y": 3,
-        "w": 6,
+        "w": 4,
         "h": 4
       },
       "datasource": {
@@ -255,19 +255,127 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT count(*) FROM impact_actions WHERE status NOT IN ('Done', 'Accepted risk') OR status IS NULL"
+          "rawSql": "SELECT count(*) FROM impact_actions WHERE (CASE WHEN status = 'Done' AND closed IS NOT NULL AND (NULLIF(btrim(ticket_ref), '') IS NOT NULL OR NULLIF(btrim(evidence), '') IS NOT NULL) THEN 'remediated' WHEN status = 'Done' THEN 'done_unverified' WHEN status = 'Accepted risk' AND review_date IS NOT NULL AND review_date >= current_date AND NULLIF(btrim(approved_by), '') IS NOT NULL THEN 'accepted' WHEN status = 'Accepted risk' THEN 'accepted_review' ELSE 'open' END) IN ('done_unverified')"
+        }
+      ],
+      "description": "Marked Done but with no closed date, or no ticket ref or evidence note -- not counted as remediated until one is added."
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Risk accepted",
+      "gridPos": {
+        "x": 12,
+        "y": 3,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM impact_actions WHERE (CASE WHEN status = 'Done' AND closed IS NOT NULL AND (NULLIF(btrim(ticket_ref), '') IS NOT NULL OR NULLIF(btrim(evidence), '') IS NOT NULL) THEN 'remediated' WHEN status = 'Done' THEN 'done_unverified' WHEN status = 'Accepted risk' AND review_date IS NOT NULL AND review_date >= current_date AND NULLIF(btrim(approved_by), '') IS NOT NULL THEN 'accepted' WHEN status = 'Accepted risk' THEN 'accepted_review' ELSE 'open' END) IN ('accepted', 'accepted_review')"
+        }
+      ],
+      "description": "Accepted risk is not remediation: the exposure remains. Includes acceptances past their review date or missing an approver or review date (shown separately in the Outcome column)."
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Open",
+      "gridPos": {
+        "x": 16,
+        "y": 3,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) FROM impact_actions WHERE (CASE WHEN status = 'Done' AND closed IS NOT NULL AND (NULLIF(btrim(ticket_ref), '') IS NOT NULL OR NULLIF(btrim(evidence), '') IS NOT NULL) THEN 'remediated' WHEN status = 'Done' THEN 'done_unverified' WHEN status = 'Accepted risk' AND review_date IS NOT NULL AND review_date >= current_date AND NULLIF(btrim(approved_by), '') IS NOT NULL THEN 'accepted' WHEN status = 'Accepted risk' THEN 'accepted_review' ELSE 'open' END) IN ('open')"
         }
       ],
       "description": "Action log entries still Open or In progress."
     },
     {
-      "id": 7,
+      "id": 9,
       "type": "stat",
       "title": "Days since Day 0",
       "gridPos": {
-        "x": 18,
+        "x": 20,
         "y": 3,
-        "w": 6,
+        "w": 4,
         "h": 4
       },
       "datasource": {
@@ -313,7 +421,7 @@
       "description": "How long the impact measures have been recorded."
     },
     {
-      "id": 8,
+      "id": 10,
       "type": "table",
       "title": "Scorecard: Day 0 vs now",
       "gridPos": {
@@ -385,7 +493,7 @@
       "description": "Each measure on the first day on record (Day 0) and on the latest night, for the selected sites (TEST left out). Rates are worked out from the summed counts. Better/worse follows the direction that's good for that measure."
     },
     {
-      "id": 9,
+      "id": 11,
       "type": "row",
       "title": "Trends",
       "collapsed": false,
@@ -398,7 +506,7 @@
       "panels": []
     },
     {
-      "id": 10,
+      "id": 12,
       "type": "text",
       "title": "",
       "gridPos": {
@@ -413,7 +521,7 @@
       }
     },
     {
-      "id": 11,
+      "id": 13,
       "type": "timeseries",
       "title": "Servers patched within 35 days",
       "gridPos": {
@@ -471,7 +579,7 @@
       "description": "Share of active servers whose last confirmed patch is within 35 days."
     },
     {
-      "id": 12,
+      "id": 14,
       "type": "timeseries",
       "title": "Devices with a known-exploited vulnerability",
       "gridPos": {
@@ -529,7 +637,7 @@
       "description": "Share of active devices with at least one open CISA KEV finding."
     },
     {
-      "id": 13,
+      "id": 15,
       "type": "timeseries",
       "title": "Open critical / high past SLA",
       "gridPos": {
@@ -602,7 +710,7 @@
       "description": "Share of open critical and of open high findings past the remediation SLA."
     },
     {
-      "id": 14,
+      "id": 16,
       "type": "timeseries",
       "title": "Enabled accounts that are stale",
       "gridPos": {
@@ -660,7 +768,7 @@
       "description": "Share of enabled accounts Falcon Identity flags stale."
     },
     {
-      "id": 15,
+      "id": 17,
       "type": "timeseries",
       "title": "Backlogs",
       "gridPos": {
@@ -700,7 +808,7 @@
       "description": "Counts that should fall: servers not patched in 90+ days, identity detections awaiting triage, confirmed external risks, machines missing a sensor."
     },
     {
-      "id": 16,
+      "id": 18,
       "type": "row",
       "title": "Patch Tuesday cohorts",
       "collapsed": false,
@@ -713,7 +821,7 @@
       "panels": []
     },
     {
-      "id": 17,
+      "id": 19,
       "type": "text",
       "title": "",
       "gridPos": {
@@ -728,7 +836,7 @@
       }
     },
     {
-      "id": 18,
+      "id": 20,
       "type": "table",
       "title": "Patch Tuesday cohorts",
       "gridPos": {
@@ -864,7 +972,7 @@
       "description": "Each month's Microsoft findings that appeared in the week after Patch Tuesday on hosts already being assessed, and the share fixed within 7 / 14 / 30 / 60 days (blank until that many days have passed). The comparable, month-on-month measure of time to patch."
     },
     {
-      "id": 19,
+      "id": 21,
       "type": "row",
       "title": "Action log",
       "collapsed": false,
@@ -877,7 +985,7 @@
       "panels": []
     },
     {
-      "id": 20,
+      "id": 22,
       "type": "table",
       "title": "Action log",
       "gridPos": {
@@ -896,7 +1004,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Status"
+              "options": "Outcome"
             },
             "properties": [
               {
@@ -911,21 +1019,30 @@
                   {
                     "type": "value",
                     "options": {
-                      "Done": {
-                        "color": "green",
+                      "open": {
+                        "text": "Open / in progress",
+                        "color": "red",
                         "index": 0
                       },
-                      "Accepted risk": {
-                        "color": "blue",
+                      "done_unverified": {
+                        "text": "Done, no evidence recorded",
+                        "color": "orange",
                         "index": 1
                       },
-                      "In progress": {
+                      "accepted_review": {
+                        "text": "Risk accepted: review due or details missing",
                         "color": "orange",
                         "index": 2
                       },
-                      "Open": {
-                        "color": "red",
+                      "accepted": {
+                        "text": "Risk accepted",
+                        "color": "blue",
                         "index": 3
+                      },
+                      "remediated": {
+                        "text": "Remediated",
+                        "color": "green",
+                        "index": 4
                       }
                     }
                   }
@@ -1007,7 +1124,7 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT found AS \"Found\", what AS \"What was found\", source AS \"How\", site_label AS \"Site\", severity AS \"Severity\", action AS \"Action\", owner_team AS \"Owner\", status AS \"Status\", closed AS \"Closed\", ticket_ref AS \"Ticket\" FROM impact_actions ORDER BY CASE WHEN status IN ('Done', 'Accepted risk') THEN 1 ELSE 0 END, found DESC NULLS LAST"
+          "rawSql": "SELECT found AS \"Found\", what AS \"What was found\", source AS \"How\", site_label AS \"Site\", severity AS \"Severity\", action AS \"Action\", owner_team AS \"Owner\", status AS \"Status\", outcome AS \"Outcome\", closed AS \"Closed\", ticket_ref AS \"Ticket\", review_date AS \"Review date\" FROM (SELECT *, CASE WHEN status = 'Done' AND closed IS NOT NULL AND (NULLIF(btrim(ticket_ref), '') IS NOT NULL OR NULLIF(btrim(evidence), '') IS NOT NULL) THEN 'remediated' WHEN status = 'Done' THEN 'done_unverified' WHEN status = 'Accepted risk' AND review_date IS NOT NULL AND review_date >= current_date AND NULLIF(btrim(approved_by), '') IS NOT NULL THEN 'accepted' WHEN status = 'Accepted risk' THEN 'accepted_review' ELSE 'open' END AS outcome FROM impact_actions) a ORDER BY CASE outcome WHEN 'open' THEN 0 WHEN 'done_unverified' THEN 1 WHEN 'accepted_review' THEN 2 WHEN 'accepted' THEN 3 WHEN 'remediated' THEN 4 END, found DESC NULLS LAST"
         }
       ],
       "description": "From the Impact action log workbook on SharePoint (Metrics > Impact), loaded nightly."
