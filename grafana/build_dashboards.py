@@ -1866,24 +1866,24 @@ def patch_compliance():
            "AND c.status = 'Patched, reboot pending'", thresholds=BAD_UP)
     b.stat("No patch group", f"SELECT count(*) FROM {PC_BASE} WHERE {PC_WHERE} AND c.schedule_state = 'No patch group'",
            thresholds=NEUTRAL)
-    b.bars("Status", f"""
-        SELECT c.status AS "Status", count(*) AS "Servers" FROM {PC_BASE} WHERE {PC_WHERE}
-        GROUP BY c.status, st.sort_order ORDER BY st.sort_order""", w=12, h=8, thresholds=[{"color": "orange", "value": None}])
     b.stat("Not in LogicMonitor", f"SELECT count(*) FROM {PC_BASE} WHERE {PC_WHERE} "
            "AND c.schedule_state = 'Not in LogicMonitor'", w=4, h=8, thresholds=NEUTRAL)
+    b.bars("Status", f"""
+        SELECT c.status AS "Status", count(*) AS "Servers" FROM {PC_BASE} WHERE {PC_WHERE}
+        GROUP BY c.status, st.sort_order ORDER BY st.sort_order""", w=6, h=8, thresholds=[{"color": "orange", "value": None}])
     b.table("By patch group", f"""
         SELECT c.schedule AS "Patch group",
-               (mode() WITHIN GROUP (ORDER BY c.window_start))::date AS "Window opens",
-               max(c.deadline) FILTER (WHERE c.schedule_state <> 'Stale deployment')::date AS "Deadline",
+               to_char(mode() WITHIN GROUP (ORDER BY c.window_start), 'YYYY-MM-DD') AS "Opens",
+               to_char(max(c.deadline) FILTER (WHERE c.schedule_state <> 'Stale deployment'), 'YYYY-MM-DD') AS "Deadline",
                mode() WITHIN GROUP (ORDER BY c.schedule_state) AS "State", count(*) AS "Servers",
-               count(*) FILTER (WHERE c.last_patch_confirmed >= c.window_start) AS "Patched since window",
-               count(*) FILTER (WHERE c.status LIKE 'Patched, reboot pending%%') AS "Reboot pending",
+               count(*) FILTER (WHERE c.last_patch_confirmed >= c.window_start) AS "Patched",
+               count(*) FILTER (WHERE c.status LIKE 'Patched, reboot pending%%') AS "Reboot",
                count(*) FILTER (WHERE c.status = 'Overdue: past deadline') AS "Overdue",
                round(100.0 * count(*) FILTER (WHERE c.last_patch_confirmed >= c.window_start) / count(*))::int
                  AS "Patched %%",
-               percentile_disc(0.5) WITHIN GROUP (ORDER BY c.days_since_patched) AS "Median days since patched"
+               percentile_disc(0.5) WITHIN GROUP (ORDER BY c.days_since_patched) AS "Median days"
         FROM {PC_BASE} WHERE {PC_WHERE} AND c.patch_group IS NOT NULL
-        GROUP BY c.schedule ORDER BY min(c.patch_tier) NULLS LAST, c.schedule""".replace("%%", "%"), w=8, h=8,
+        GROUP BY c.schedule ORDER BY min(c.patch_tier) NULLS LAST, c.schedule""".replace("%%", "%"), w=14, h=8,
             overrides=[thresh_bg("Overdue", [{"color": "transparent", "value": None}, {"color": "red", "value": 1}])])
 
     b.row("By team", note="Teams come from LogicMonitor; a server several teams manage counts under each, so team "
@@ -1915,7 +1915,7 @@ def patch_compliance():
     b.row("Biggest problems")
     b.table("Overdue servers", f"""
         SELECT c.hostname AS "Server", c.team AS "Team", c.site_label AS "Site", c.schedule AS "Patch group",
-               c.deadline::date AS "Deadline", c.last_patch_confirmed::date AS "Last patch confirmed",
+               to_char(c.deadline, 'YYYY-MM-DD') AS "Deadline", to_char(c.last_patch_confirmed, 'YYYY-MM-DD') AS "Last patch confirmed",
                c.days_since_patched AS "Days since patched", c.reboot_required AS "Reboot pending",
                c.days_up AS "Days up", r.open_kev_count AS "KEV", r.open_critical AS "Crit", r.open_high AS "High",
                c.os_version AS "OS"
@@ -1926,7 +1926,7 @@ def patch_compliance():
                        thresh_bg("KEV", [{"color": "transparent", "value": None}, {"color": "red", "value": 1}])])
     b.table("Behind with no current window", f"""
         SELECT c.hostname AS "Server", c.team AS "Team", c.site_label AS "Site", c.schedule_state AS "Why no window",
-               c.last_patch_confirmed::date AS "Last patch confirmed", c.days_since_patched AS "Days since patched",
+               to_char(c.last_patch_confirmed, 'YYYY-MM-DD') AS "Last patch confirmed", c.days_since_patched AS "Days since patched",
                r.open_kev_count AS "KEV", r.open_critical AS "Crit", c.os_version AS "OS"
         FROM {PC_BASE} WHERE {PC_WHERE} AND c.status = 'Behind: 35+ days'
         ORDER BY c.days_since_patched DESC NULLS FIRST, r.open_kev_count DESC NULLS LAST LIMIT 500""", w=12, h=10,
@@ -1948,7 +1948,7 @@ def patch_compliance():
     b.table("Schedule problems", f"""
         SELECT * FROM (
           SELECT c.hostname AS "Server", c.team AS "Team", c.schedule AS "Patch group",
-                 CASE c.schedule_state WHEN 'Stale deployment' THEN 'Window opened ' || c.window_start::date
+                 CASE c.schedule_state WHEN 'Stale deployment' THEN 'Window opened ' || to_char(c.window_start, 'YYYY-MM-DD')
                                        || ': not this month''s deployment' ELSE 'Group has no window dates' END AS "Problem"
           FROM {PC_BASE} WHERE {PC_WHERE} AND c.schedule_state IN ('Stale deployment', 'Group has no dates')
           UNION ALL
@@ -1962,8 +1962,8 @@ def patch_compliance():
     b.row("All servers")
     b.table("All servers", f"""
         SELECT c.hostname AS "Server", c.status AS "Status", c.team AS "Team", c.site_label AS "Site",
-               c.schedule AS "Patch group", c.schedule_state AS "Schedule", c.window_start::date AS "Window opens",
-               c.deadline::date AS "Deadline", c.last_patch_confirmed::date AS "Last patch confirmed",
+               c.schedule AS "Patch group", c.schedule_state AS "Schedule", to_char(c.window_start, 'YYYY-MM-DD') AS "Window opens",
+               to_char(c.deadline, 'YYYY-MM-DD') AS "Deadline", to_char(c.last_patch_confirmed, 'YYYY-MM-DD') AS "Last patch confirmed",
                c.days_since_patched AS "Days since patched", c.reboot_required AS "Reboot pending",
                c.pending_patches AS "Pending patches", c.days_up AS "Days up",
                r.open_kev_count AS "KEV", r.open_critical AS "Crit", r.open_high AS "High", c.os_version AS "OS"

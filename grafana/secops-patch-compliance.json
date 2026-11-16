@@ -480,63 +480,10 @@
     },
     {
       "id": 11,
-      "type": "bargauge",
-      "title": "Status",
-      "gridPos": {
-        "x": 0,
-        "y": 10,
-        "w": 12,
-        "h": 8
-      },
-      "datasource": {
-        "type": "postgres",
-        "uid": "${DS_POSTGRESQL}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "orange",
-                "value": null
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "displayMode": "gradient",
-        "orientation": "horizontal",
-        "showUnfilled": true,
-        "reduceOptions": {
-          "values": true,
-          "calcs": [],
-          "fields": ""
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "format": "table",
-          "rawQuery": true,
-          "editorMode": "code",
-          "rawSql": "SELECT c.status AS \"Status\", count(*) AS \"Servers\" FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) GROUP BY c.status, st.sort_order ORDER BY st.sort_order"
-        }
-      ],
-      "description": "Every server in scope by status (the rule is in the panel descriptions and the ops guide)."
-    },
-    {
-      "id": 12,
       "type": "stat",
       "title": "Not in LogicMonitor",
       "gridPos": {
-        "x": 12,
+        "x": 0,
         "y": 10,
         "w": 4,
         "h": 8
@@ -584,13 +531,66 @@
       "description": "Servers with a Falcon sensor that LogicMonitor doesn't know, so there's no schedule or team for them."
     },
     {
+      "id": 12,
+      "type": "bargauge",
+      "title": "Status",
+      "gridPos": {
+        "x": 4,
+        "y": 10,
+        "w": 6,
+        "h": 8
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "showUnfilled": true,
+        "reduceOptions": {
+          "values": true,
+          "calcs": [],
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT c.status AS \"Status\", count(*) AS \"Servers\" FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) GROUP BY c.status, st.sort_order ORDER BY st.sort_order"
+        }
+      ],
+      "description": "Every server in scope by status (the rule is in the panel descriptions and the ops guide)."
+    },
+    {
       "id": 13,
       "type": "table",
       "title": "By patch group",
       "gridPos": {
-        "x": 16,
+        "x": 10,
         "y": 10,
-        "w": 8,
+        "w": 14,
         "h": 8
       },
       "datasource": {
@@ -650,7 +650,7 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT c.schedule AS \"Patch group\", (mode() WITHIN GROUP (ORDER BY c.window_start))::date AS \"Window opens\", max(c.deadline) FILTER (WHERE c.schedule_state <> 'Stale deployment')::date AS \"Deadline\", mode() WITHIN GROUP (ORDER BY c.schedule_state) AS \"State\", count(*) AS \"Servers\", count(*) FILTER (WHERE c.last_patch_confirmed >= c.window_start) AS \"Patched since window\", count(*) FILTER (WHERE c.status LIKE 'Patched, reboot pending%') AS \"Reboot pending\", count(*) FILTER (WHERE c.status = 'Overdue: past deadline') AS \"Overdue\", round(100.0 * count(*) FILTER (WHERE c.last_patch_confirmed >= c.window_start) / count(*))::int AS \"Patched %\", percentile_disc(0.5) WITHIN GROUP (ORDER BY c.days_since_patched) AS \"Median days since patched\" FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) AND c.patch_group IS NOT NULL GROUP BY c.schedule ORDER BY min(c.patch_tier) NULLS LAST, c.schedule"
+          "rawSql": "SELECT c.schedule AS \"Patch group\", to_char(mode() WITHIN GROUP (ORDER BY c.window_start), 'YYYY-MM-DD') AS \"Opens\", to_char(max(c.deadline) FILTER (WHERE c.schedule_state <> 'Stale deployment'), 'YYYY-MM-DD') AS \"Deadline\", mode() WITHIN GROUP (ORDER BY c.schedule_state) AS \"State\", count(*) AS \"Servers\", count(*) FILTER (WHERE c.last_patch_confirmed >= c.window_start) AS \"Patched\", count(*) FILTER (WHERE c.status LIKE 'Patched, reboot pending%') AS \"Reboot\", count(*) FILTER (WHERE c.status = 'Overdue: past deadline') AS \"Overdue\", round(100.0 * count(*) FILTER (WHERE c.last_patch_confirmed >= c.window_start) / count(*))::int AS \"Patched %\", percentile_disc(0.5) WITHIN GROUP (ORDER BY c.days_since_patched) AS \"Median days\" FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) AND c.patch_group IS NOT NULL GROUP BY c.schedule ORDER BY min(c.patch_tier) NULLS LAST, c.schedule"
         }
       ],
       "description": "Each SCCM group's current deployment: the most common window start and state among its servers, the latest deadline (one tier/group can span several SCCM collections), and how many of its servers Falcon has confirmed patched since their window opened."
@@ -987,7 +987,7 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT c.hostname AS \"Server\", c.team AS \"Team\", c.site_label AS \"Site\", c.schedule AS \"Patch group\", c.deadline::date AS \"Deadline\", c.last_patch_confirmed::date AS \"Last patch confirmed\", c.days_since_patched AS \"Days since patched\", c.reboot_required AS \"Reboot pending\", c.days_up AS \"Days up\", r.open_kev_count AS \"KEV\", r.open_critical AS \"Crit\", r.open_high AS \"High\", c.os_version AS \"OS\" FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) AND c.status = 'Overdue: past deadline' ORDER BY r.open_kev_count DESC NULLS LAST, r.open_critical DESC NULLS LAST, c.days_since_patched DESC NULLS FIRST LIMIT 500"
+          "rawSql": "SELECT c.hostname AS \"Server\", c.team AS \"Team\", c.site_label AS \"Site\", c.schedule AS \"Patch group\", to_char(c.deadline, 'YYYY-MM-DD') AS \"Deadline\", to_char(c.last_patch_confirmed, 'YYYY-MM-DD') AS \"Last patch confirmed\", c.days_since_patched AS \"Days since patched\", c.reboot_required AS \"Reboot pending\", c.days_up AS \"Days up\", r.open_kev_count AS \"KEV\", r.open_critical AS \"Crit\", r.open_high AS \"High\", c.os_version AS \"OS\" FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) AND c.status = 'Overdue: past deadline' ORDER BY r.open_kev_count DESC NULLS LAST, r.open_critical DESC NULLS LAST, c.days_since_patched DESC NULLS FIRST LIMIT 500"
         }
       ],
       "description": "Past their group's deadline and not confirmed patched since the window opened, most exposed first (known-exploited, then critical vulnerabilities)."
@@ -1099,7 +1099,7 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT c.hostname AS \"Server\", c.team AS \"Team\", c.site_label AS \"Site\", c.schedule_state AS \"Why no window\", c.last_patch_confirmed::date AS \"Last patch confirmed\", c.days_since_patched AS \"Days since patched\", r.open_kev_count AS \"KEV\", r.open_critical AS \"Crit\", c.os_version AS \"OS\" FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) AND c.status = 'Behind: 35+ days' ORDER BY c.days_since_patched DESC NULLS FIRST, r.open_kev_count DESC NULLS LAST LIMIT 500"
+          "rawSql": "SELECT c.hostname AS \"Server\", c.team AS \"Team\", c.site_label AS \"Site\", c.schedule_state AS \"Why no window\", to_char(c.last_patch_confirmed, 'YYYY-MM-DD') AS \"Last patch confirmed\", c.days_since_patched AS \"Days since patched\", r.open_kev_count AS \"KEV\", r.open_critical AS \"Crit\", c.os_version AS \"OS\" FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) AND c.status = 'Behind: 35+ days' ORDER BY c.days_since_patched DESC NULLS FIRST, r.open_kev_count DESC NULLS LAST LIMIT 500"
         }
       ],
       "description": "No patch in 35+ days and no current window to judge against, longest first. Mostly servers in no patch group."
@@ -1190,7 +1190,7 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT * FROM ( SELECT c.hostname AS \"Server\", c.team AS \"Team\", c.schedule AS \"Patch group\", CASE c.schedule_state WHEN 'Stale deployment' THEN 'Window opened ' || c.window_start::date || ': not this month''s deployment' ELSE 'Group has no window dates' END AS \"Problem\" FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) AND c.schedule_state IN ('Stale deployment', 'Group has no dates') UNION ALL SELECT l.display_name, coalesce(d.team, '(no team)'), l.patch_group, 'In an SCCM group but no Falcon sensor' FROM lm_device_patch l JOIN lm_devices d USING (device_id) WHERE l.in_patch_group AND l.falcon_aid IS NULL AND l.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(coalesce(d.team, '(no team)'), ',')) t WHERE trim(t) IN ($team)) ) x ORDER BY \"Problem\", \"Server\""
+          "rawSql": "SELECT * FROM ( SELECT c.hostname AS \"Server\", c.team AS \"Team\", c.schedule AS \"Patch group\", CASE c.schedule_state WHEN 'Stale deployment' THEN 'Window opened ' || to_char(c.window_start, 'YYYY-MM-DD') || ': not this month''s deployment' ELSE 'Group has no window dates' END AS \"Problem\" FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) AND c.schedule_state IN ('Stale deployment', 'Group has no dates') UNION ALL SELECT l.display_name, coalesce(d.team, '(no team)'), l.patch_group, 'In an SCCM group but no Falcon sensor' FROM lm_device_patch l JOIN lm_devices d USING (device_id) WHERE l.in_patch_group AND l.falcon_aid IS NULL AND l.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(coalesce(d.team, '(no team)'), ',')) t WHERE trim(t) IN ($team)) ) x ORDER BY \"Problem\", \"Server\""
         }
       ],
       "description": "Schedules that can't be judged properly: deployments that started 45+ days ago (not this month's), groups with no dates, and servers in an SCCM group that have no Falcon sensor."
@@ -1371,7 +1371,7 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT c.hostname AS \"Server\", c.status AS \"Status\", c.team AS \"Team\", c.site_label AS \"Site\", c.schedule AS \"Patch group\", c.schedule_state AS \"Schedule\", c.window_start::date AS \"Window opens\", c.deadline::date AS \"Deadline\", c.last_patch_confirmed::date AS \"Last patch confirmed\", c.days_since_patched AS \"Days since patched\", c.reboot_required AS \"Reboot pending\", c.pending_patches AS \"Pending patches\", c.days_up AS \"Days up\", r.open_kev_count AS \"KEV\", r.open_critical AS \"Crit\", r.open_high AS \"High\", c.os_version AS \"OS\" FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) ORDER BY st.sort_order, c.days_since_patched DESC NULLS FIRST LIMIT 3000"
+          "rawSql": "SELECT c.hostname AS \"Server\", c.status AS \"Status\", c.team AS \"Team\", c.site_label AS \"Site\", c.schedule AS \"Patch group\", c.schedule_state AS \"Schedule\", to_char(c.window_start, 'YYYY-MM-DD') AS \"Window opens\", to_char(c.deadline, 'YYYY-MM-DD') AS \"Deadline\", to_char(c.last_patch_confirmed, 'YYYY-MM-DD') AS \"Last patch confirmed\", c.days_since_patched AS \"Days since patched\", c.reboot_required AS \"Reboot pending\", c.pending_patches AS \"Pending patches\", c.days_up AS \"Days up\", r.open_kev_count AS \"KEV\", r.open_critical AS \"Crit\", r.open_high AS \"High\", c.os_version AS \"OS\" FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) ORDER BY st.sort_order, c.days_since_patched DESC NULLS FIRST LIMIT 3000"
         }
       ],
       "description": "Every server in scope with its schedule and status. Use the column filters to cut further."
