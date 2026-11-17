@@ -11,10 +11,22 @@ The key's creation screen shows its Authentication URL -- that host is the
 Site = the recipient's email domain. HEC events don't carry a clean
 recipient field across all event types, so every address found in the
 event (minus the sender) is checked against the sites' email_domains.
+
+Edge blocks: if Check Point's CDN (CloudFront, in front of the API) refuses a
+request with an HTML 403, the API never saw it -- retrying only adds to
+whatever got this IP blocked. The first one writes a marker file
+(logs/.hec-blocked: the local date and the CloudFront request ID to quote to
+Check Point support); both HEC collectors then skip without calling the API
+for the rest of that local day, including the 10:00 catch-up, and try again
+on the next night's run. Delete the marker to retry sooner.
 """
+import datetime as dt
+import os
 import re
 import uuid
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+
+import requests
 
 from collectors.base import RunContext, as_list, jdump, norm_severity, parse_ts, upsert_rows
 from http_client import TokenCache, make_session, raise_for_status
@@ -25,6 +37,28 @@ _EMAIL_RX = re.compile(r"[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 _NUM_SEV = {"5": "critical", "4": "high", "3": "medium", "2": "low", "1": "info", "0": "info"}
 
 
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_CF_ID_RX = re.compile(r"Request ID:\s*([A-Za-z0-9_=-]+)")
+
+
+class EdgeBlocked(RuntimeError):
+    """Check Point's CDN refused the request (HTML 403), or did earlier today."""
+
+
+def edge_request_id(r: requests.Response) -> Optional[str]:
+    """CloudFront's ID for a refused request: the header, else the error page's footer."""
+    m = _CF_ID_RX.search(r.text or "")
+    return r.headers.get("x-amz-cf-id") or (m.group(1) if m else None)
+
+
+def is_edge_block(r: requests.Response) -> bool:
+    """A 403 page from the CDN in front of the API. The API's own errors are JSON."""
+    if r.status_code != 403:
+        return False
+    ctype = (r.headers.get("content-type") or "").lower()
+    return "html" in ctype or (r.text or "").lstrip().startswith("<")
+
+
 class HecClient:
     def __init__(self, ccfg: Dict[str, Any]):
         self.gw = ccfg.get("gateway", "https://cloudinfra-gw.portal.checkpoint.com").rstrip("/")
@@ -32,11 +66,42 @@ class HecClient:
         self.key = ccfg.get("access_key")
         if not self.cid or not self.key:
             raise RuntimeError("collectors.checkpoint_hec.client_id / access_key missing from secrets.yaml")
+        self.marker = os.path.join(_REPO, ccfg.get("block_marker") or os.path.join("logs", ".hec-blocked"))
+        self.blocked: Optional[str] = None   # set by the first edge block; stops every other thread
+        self._check_marker()
         self.s = make_session(timeout=120)
         self.tok = TokenCache(self._auth)
 
+    def _check_marker(self) -> None:
+        try:
+            lines = open(self.marker).read().splitlines()
+        except FileNotFoundError:
+            return
+        if lines and lines[0].strip() == dt.date.today().isoformat():
+            raise EdgeBlocked(f"Check Point blocked this IP earlier today, so not calling the API again until "
+                              f"tomorrow's run ({' '.join(lines[1:2])}). Delete {self.marker} to retry sooner.")
+        os.remove(self.marker)   # from an earlier day: try again
+
+    def post(self, url: str, **kw) -> requests.Response:
+        """Session POST that stops at the first edge block: records it in the
+        marker, and refuses every later call from this client (any thread)."""
+        if self.blocked:
+            raise EdgeBlocked(self.blocked)
+        r = self.s.post(url, **kw)
+        if is_edge_block(r):
+            now = dt.datetime.now().astimezone()
+            detail = (f"HTML 403 from Check Point's CDN at {now:%H:%M %Z} on "
+                      f"{url.replace(self.gw, '') or '/'}, CloudFront request ID {edge_request_id(r) or 'unknown'}")
+            self.blocked = (f"Check Point blocked this IP: {detail}. Skipping the HEC collectors until "
+                            f"tomorrow's run (marker {self.marker}).")
+            os.makedirs(os.path.dirname(self.marker), exist_ok=True)
+            with open(self.marker, "w") as f:
+                f.write(f"{now.date().isoformat()}\n{detail}\n")
+            raise EdgeBlocked(self.blocked)
+        return r
+
     def _auth(self):
-        r = self.s.post(f"{self.gw}/auth/external", json={"clientId": self.cid, "accessKey": self.key})
+        r = self.post(f"{self.gw}/auth/external", json={"clientId": self.cid, "accessKey": self.key})
         raise_for_status(r, "HEC auth")
         d = (r.json() or {}).get("data") or {}
         if not d.get("token"):
@@ -50,11 +115,11 @@ class HecClient:
             body = {"requestData": dict(request_data, **({"scrollId": scroll} if scroll else {}))}
             headers = {"Authorization": f"Bearer {self.tok.get()}", "x-av-req-id": str(uuid.uuid4()),
                        "Content-Type": "application/json"}
-            r = self.s.post(url, json=body, headers=headers)
+            r = self.post(url, json=body, headers=headers)
             if r.status_code == 401:
                 self.tok.invalidate()
                 headers["Authorization"] = f"Bearer {self.tok.get()}"
-                r = self.s.post(url, json=body, headers=headers)
+                r = self.post(url, json=body, headers=headers)
             raise_for_status(r, "HEC event query")
             j = r.json() or {}
             data = j.get("responseData") or []

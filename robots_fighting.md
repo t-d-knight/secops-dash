@@ -65,6 +65,21 @@ Each entry heading is `### YYYY-MM-DD, <who> for <whom>: <what>`. In the entry:
 Keep entries short and link to the commit for detail. When the log passes about 300 lines, move entries
 older than a month to `docs/robots_fighting-archive.md`.
 
+### 2026-11-17, Claude for TK: HEC collectors stop for the day on a CDN block
+- **Status:** local, not pushed or deployed.
+- **Changed:** collectors (`checkpoint_hec`, `checkpoint_hec_flow`), tests. An HTML 403 from Check Point's CDN
+  (CloudFront in front of the API) now writes `logs/.hec-blocked` (local date + CloudFront request ID).
+  The flow collector's other worker threads stop at once, and both collectors skip without calling the API
+  for the rest of that local day, so the 10:00 catch-up doesn't add to the block. The next night's run tries
+  again and clears the marker. Config `checkpoint_hec.block_marker` overrides the path.
+- **Verified:** `tests/run_e2e.py` all passed, with a new edge-block section against the mock (marker
+  contents, one request before stopping, flow workers stop, same-day skip sends nothing, next day recovers).
+  Identifier check clean.
+- **Not verified / open:** the real block page's request ID line is matched from a truncated paste
+  (`Request ID: ...`; the `x-amz-cf-id` header is tried first). Skipped runs still record `error`, so the
+  catch-up's Pushover alert repeats the reason; intended, but say if it's noise. Request volume (the likely
+  cause) is unchanged: throttling `checkpoint_hec_flow` is still to do.
+
 ### 2026-11-16, Claude for TK: server patch compliance dashboard
 - **Status:** pushed to `main`. Not deployed (owner pulls and deploys on the separate network).
 - **Changed:** `lm_devices.team` from new `collectors.logicmonitor.team_property` (normalised "A, B"); tag sync reads

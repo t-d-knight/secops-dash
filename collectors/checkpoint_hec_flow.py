@@ -105,7 +105,7 @@ class _Search:
         for attempt in (1, 2):
             hd = {"Authorization": f"Bearer {self.h.tok.get()}", "x-av-req-id": str(uuid.uuid4()),
                   "Content-Type": "application/json"}
-            r = self.h.s.post(self.url, json={"requestData": rd}, headers=hd)
+            r = self.h.post(self.url, json={"requestData": rd}, headers=hd)   # stops all threads on an edge block
             self.queries += 1
             if r.status_code == 401 and attempt == 1:
                 self.h.tok.invalidate()

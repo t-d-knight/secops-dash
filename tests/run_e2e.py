@@ -79,7 +79,7 @@ collectors:
     patch_timezone: "Asia/Tokyo"
     team_property: org.managedBy
     keep_properties: ["org.class", "org.managedBy", "snmp.community"]
-  checkpoint_hec: {{enabled: true, gateway: "{M}/hec"}}
+  checkpoint_hec: {{enabled: true, gateway: "{M}/hec", block_marker: "BLOCK_MARKER"}}
   checkpoint_hec_flow: {{enabled: true, lookback_days: 1}}
   entra:
     enabled: true
@@ -128,7 +128,8 @@ def main() -> int:
     admin.cursor().execute(f"CREATE DATABASE {DB}")
 
     tmp = tempfile.mkdtemp()
-    open(os.path.join(tmp, "config.yaml"), "w").write(CONFIG)
+    marker = os.path.join(tmp, "hec-blocked")
+    open(os.path.join(tmp, "config.yaml"), "w").write(CONFIG.replace("BLOCK_MARKER", marker))
     open(os.path.join(tmp, "secrets.yaml"), "w").write(SECRETS)
     cfgp = os.path.join(tmp, "config.yaml")
     srv = mock_vendors.start(PORT)
@@ -302,6 +303,43 @@ def main() -> int:
     check(run("collect.py", "--only", "logicmonitor") == 0, "logicmonitor re-run exited 0")
     ret = dict(q(cur, "SELECT device_id, retired FROM lm_devices WHERE device_id IN (101, 999)"))
     check(ret == {101: False, 999: True}, f"device gone from LogicMonitor is retired: {ret}")
+
+    print("== Check Point edge block")
+    def hec_calls():
+        return [c[1] for c in mock_vendors.CALLS if c[1].startswith("/hec/")]
+    def last_errors():
+        r = dict(q(cur, """SELECT DISTINCT ON (collector) collector, COALESCE(error, status) FROM collector_runs
+                           WHERE collector LIKE 'checkpoint_hec%%' ORDER BY collector, started_at DESC"""))
+        conn.commit()
+        return r
+    conn.commit()   # end this connection's read transaction: collect.py's schema step needs the locks
+    mock_vendors.HEC_EDGE_BLOCK = True
+    del mock_vendors.CALLS[:]
+    rc = run("collect.py", "--only", "checkpoint_hec,checkpoint_hec_flow")
+    conn.commit()
+    lines = open(marker).read().splitlines() if os.path.exists(marker) else []
+    errs = last_errors()
+    check(rc == 1 and lines[:1] == [dt.date.today().isoformat()] and "mockCfId123==" in " ".join(lines),
+          f"HTML 403: both collectors fail, marker has today's date and the CloudFront request ID ({rc}, {lines})")
+    check(hec_calls() == ["/hec/auth/external", "/hec/app/hec-api/v1.0/event/query"],
+          f"first block stops it: one event query, flow collector sends nothing ({hec_calls()})")
+    check(all(e.startswith("EdgeBlocked: Check Point blocked this IP") for e in errs.values()),
+          f"error says it was blocked, short enough for the alert's first line: {errs}")
+    os.remove(marker)
+    del mock_vendors.CALLS[:]
+    run("collect.py", "--only", "checkpoint_hec_flow")
+    queries = [c for c in hec_calls() if c.startswith("/hec/app/")]
+    check(1 <= len(queries) <= 4 and os.path.exists(marker),
+          f"flow collector: other workers stop at the first block (queries sent: {len(queries)} of 4 workers)")
+    del mock_vendors.CALLS[:]
+    mock_vendors.HEC_EDGE_BLOCK = False
+    rc = run("collect.py", "--only", "checkpoint_hec,checkpoint_hec_flow")
+    check(rc == 1 and not hec_calls(), f"same day, block lifted: still nothing sent (catch-up stays quiet) ({hec_calls()})")
+    open(marker, "w").write(f"{dt.date.today() - dt.timedelta(days=1)}\nyesterday\n")
+    rc = run("collect.py", "--only", "checkpoint_hec,checkpoint_hec_flow")
+    conn.commit()
+    check(rc == 0 and hec_calls() and not os.path.exists(marker) and set(last_errors().values()) == {"ok"},
+          f"next day: tries again, works, clears the marker (rc {rc}, {last_errors()})")
 
     print("== falcon tag sync")
     def tag_calls():

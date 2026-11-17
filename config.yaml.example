@@ -247,6 +247,11 @@ collectors:
     lookback_days: 14
     # event_types: ["phishing", "suspicious_phishing", "malware", "suspicious_malware", "dlp", "anomaly"]
     # client_id / access_key -> secrets.yaml
+    # If Check Point's CDN blocks this IP (an HTML 403, not the API's JSON), both HEC
+    # collectors stop at once and skip the rest of that day (catch-up included), then
+    # try again on the next night's run. The marker holds the CloudFront request ID
+    # for a support ticket; delete it to retry sooner.
+    # block_marker: logs/.hec-blocked
 
   # Check Point HEC mail-flow funnel (collectors/checkpoint_hec_flow.py):
   # daily counts of inbound mail through Microsoft (inbox/junk/quarantine) and
