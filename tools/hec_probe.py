@@ -15,6 +15,11 @@ as "Bearer <redacted>". Output is safe to paste into a support ticket, but
 it does include this host's public IP and the gateway URL.
 
   venv/bin/python3 tools/hec_probe.py --config config.yaml
+  venv/bin/python3 tools/hec_probe.py --config config.yaml --hours 130 --like-collector
+
+--hours sets the query's time range (default 1). --like-collector also adds
+the collector's configured event_types / saas filters, so the request body
+matches what checkpoint_hec.py sends for that range.
 """
 import argparse
 import datetime as dt
@@ -58,6 +63,9 @@ def show_exchange(r: requests.Response) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
     ap.add_argument("--config", default="config.yaml")
+    ap.add_argument("--hours", type=float, default=1, help="event/query time range in hours (default 1)")
+    ap.add_argument("--like-collector", action="store_true",
+                    help="add the collector's event_types / saas filters from config")
     args = ap.parse_args()
 
     c = collector_cfg(load_config(args.config), "checkpoint_hec")
@@ -94,13 +102,18 @@ def main() -> int:
 
     now = dt.datetime.now(dt.timezone.utc)
     fmt = "%Y-%m-%dT%H:%M:%SZ"
-    body = {"requestData": {"startDate": (now - dt.timedelta(hours=1)).strftime(fmt),
-                            "endDate": now.strftime(fmt)}}
+    rd = {"startDate": (now - dt.timedelta(hours=args.hours)).strftime(fmt), "endDate": now.strftime(fmt)}
+    if args.like_collector:
+        if c.get("event_types"):
+            rd["eventTypes"] = c["event_types"]
+        if c.get("saas"):
+            rd["saas"] = c["saas"]
+    body = {"requestData": rd}
     r = s.post(gw + "/app/hec-api/v1.0/event/query", json=body,
                headers={"Authorization": "Bearer " + tok, "x-av-req-id": str(uuid.uuid4()),
                         "Content-Type": "application/json"})
     ctype = r.headers.get("content-type") or ""
-    print("\n[2] event/query:", r.status_code, ctype)
+    print("\n[2] event/query:", r.status_code, ctype, f"({args.hours:g} h{', collector filters' if args.like_collector else ''})")
 
     if r.ok:
         print("\n=> OK: credentials and API both fine; re-run the collector")
