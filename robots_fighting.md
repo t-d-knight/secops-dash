@@ -65,6 +65,22 @@ Each entry heading is `### YYYY-MM-DD, <who> for <whom>: <what>`. In the entry:
 Keep entries short and link to the commit for detail. When the log passes about 300 lines, move entries
 older than a month to `docs/robots_fighting-archive.md`.
 
+### 2026-11-18, Claude for TK: Servers report per owner team
+- **Status:** pushed, not deployed.
+- **Changed:** Servers report (`server_report.py`), publishing (`publish.py`), tests, docs. After the region set,
+  the weekly run writes one copy per `FalconGroupingTags/Team-<Name>` tag found on active servers, plus
+  `Unassigned` (no Team- tag), to `reports/servers-<date>/owners/<Name>/`. Pages 1-3 and the workbook are cut
+  to that team; page 4 (No sensor) stays region-only because unmanaged machines carry no tags. A server with
+  two teams is in both. `publish.py` sends them to `Servers/Owners/<Name>/<date> <Name> Servers Report.*`; the
+  region copy stays in `Servers/Weekly/`. `--no-teams` gives the old behaviour.
+- **Verified:** `tests/run_e2e.py` all passed (new section: folders per tag, two-team server in both, untagged DC
+  in Unassigned, region unchanged, publish paths and `--sets servers` dry run). `tests/demo_samples.py` before
+  and after on the same day: the region Servers sample differs only in its title ("Whole region" added); no
+  numbers moved. Identifier check clean.
+- **Not verified / open:** PDF rendering per team (e2e runs `--no-pdf`); run time with many teams on the live
+  install (one Chromium render each). Teams come from Falcon tags, so they're as current as the last tag
+  sync plus the next `falcon_hosts` pull.
+
 ### 2026-11-17, Claude for TK: HEC collectors stop for the day on a CDN block
 - **Status:** pushed (c05c95c), not deployed. Includes `tools/hec_probe.py`, the support-ready probe.
 - **Changed:** collectors (`checkpoint_hec`, `checkpoint_hec_flow`), tests. An HTML 403 from Check Point's CDN

@@ -8,6 +8,9 @@ permissions:
   <base_path>/<Site>/Quarterly/2026-Q4 <Site> Security Report.html
   <base_path>/<Site>/Monthly/2026-10 <Site> Action Pack.xlsx
   (the whole-of-region report goes under "Region")
+  <base_path>/Servers/Weekly/2026-11-16 Servers Report.pdf
+  <base_path>/Servers/Owners/<Team>/2026-11-16 <Team> Servers Report.pdf
+  (one folder per server owner team, plus Unassigned -- server_report.py)
 
 Publishes every finished weekly / quarterly / monthly set under reports/ that
 the destination doesn't have yet (tracked in logs/publish-manifest.json by
@@ -43,6 +46,7 @@ import notify
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 MANIFEST = os.path.join(ROOT, "logs", "publish-manifest.json")
+OWNERS = "Owners"   # Servers/Owners/<Team>/: per-team copies of the Servers report
 # reports/<kind>-<period>/<file> -> (cadence folder, title suffix)
 SETS = {
     "week": ("Weekly", "Security Report"),
@@ -81,6 +85,22 @@ def candidates(reports_dir: str, formats: Optional[List[str]] = None) -> Iterato
             m = MONTHLY_FILE.search(stem) if kind == "monthly" else None
             name = MONTHLY_TITLES[m.group(1)] if m else title
             yield os.path.join(full, f), "/".join([site, folder, f"{period} {site} {name}{ext}"])
+        if kind == "servers":
+            yield from _owner_candidates(os.path.join(full, "owners"), period, formats)
+
+
+def _owner_candidates(owners: str, period: str, formats: Optional[List[str]]) -> Iterator[Tuple[str, str]]:
+    """reports/servers-<date>/owners/<Team>/Servers.pdf -> Servers/Owners/<Team>/<date> <Team> Servers Report.pdf"""
+    if not os.path.isdir(owners):
+        return
+    for team in sorted(os.listdir(owners)):
+        tdir = os.path.join(owners, team)
+        if not os.path.isdir(tdir):
+            continue
+        for f in sorted(os.listdir(tdir)):
+            stem, ext = os.path.splitext(f)
+            if stem == "Servers" and ext.lower().lstrip(".") in (formats or ["pdf", "xlsx"]):
+                yield os.path.join(tdir, f), f"Servers/{OWNERS}/{team}/{period} {team} Servers Report{ext}"
 
 
 def _sha256(path: str) -> str:
@@ -193,7 +213,7 @@ def main() -> int:
         with open(MANIFEST) as fh:
             manifest = json.load(fh)
     kinds = {k.strip() for k in args.sets.split(",")} if args.sets else set(SETS)
-    folders = {SETS[k][0] for k in kinds if k in SETS}
+    folders = {SETS[k][0] for k in kinds if k in SETS} | ({OWNERS} if "servers" in kinds else set())
     formats = [f.lower().lstrip(".") for f in pub.get("formats") or ["pdf", "xlsx"]]
     todo = [(src, rel, h) for src, rel in candidates(reports_dir, formats) if rel.split("/")[1] in folders
             for h in [_sha256(src)] if manifest.get(rel) != h]

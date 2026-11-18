@@ -415,6 +415,43 @@ def main() -> int:
     known = {r[0] for r in q(cur, "SELECT DISTINCT status FROM server_patch_compliance")}
     check(known <= set(judged), f"every status has a sort order / on-track entry: {known - set(judged)}")
 
+    print("== servers report per owner team")
+    cur.execute("UPDATE assets SET tags = tags || ARRAY['FalconGroupingTags/Team-Cyber', 'FalconGroupingTags/Team-PowerBI'] "
+                "WHERE source = 'falcon' AND source_asset_id = 'aid2'")
+    conn.commit()
+    srv_out = os.path.join(tmp, "reports", "servers-2026-11-16")
+    check(run("server_report.py", "--out-dir", srv_out, "--no-pdf") == 0, "server_report.py exited 0")
+    import openpyxl
+    def listed(folder):
+        wb = openpyxl.load_workbook(os.path.join(folder, "Servers.xlsx"), read_only=True)
+        return sorted(r[0] for r in wb["All servers"].iter_rows(min_row=2, values_only=True) if r[0]), wb.sheetnames
+    owners = os.path.join(srv_out, "owners")
+    got = {t: listed(os.path.join(owners, t))[0] for t in sorted(os.listdir(owners))}
+    check(got == {"Cyber": ["LKH-SRV01"], "PowerBI": ["LKH-SRV01"], "Unassigned": ["MYSTERY"]},
+          f"one folder per Team- tag + Unassigned; a two-team server in both; untagged DC unassigned: {got}")
+    region, region_tabs = listed(srv_out)
+    team_tabs = listed(os.path.join(owners, "Cyber"))[1]
+    team_html = open(os.path.join(owners, "Cyber", "Servers.html")).read()
+    check(region == ["LKH-SRV01", "MYSTERY"] and "No sensor" in region_tabs and "No sensor" not in team_tabs,
+          f"region report unchanged (both servers, No sensor tab); team copies have no No sensor tab: {region}, {team_tabs}")
+    check("Team Cyber" in team_html and "3 of 3" in team_html and "4 of" not in team_html
+          and "Team-Cyber" in team_html, "team PDF: titled for the team, three pages, footer names the tag")
+    import publish
+    for t in ("Cyber", "Unassigned"):
+        open(os.path.join(owners, t, "Servers.pdf"), "w").close()
+    dest = sorted(d for _, d in publish.candidates(os.path.join(tmp, "reports")))
+    check(dest == ["Servers/Owners/Cyber/2026-11-16 Cyber Servers Report.pdf",
+                   "Servers/Owners/Cyber/2026-11-16 Cyber Servers Report.xlsx",
+                   "Servers/Owners/PowerBI/2026-11-16 PowerBI Servers Report.xlsx",
+                   "Servers/Owners/Unassigned/2026-11-16 Unassigned Servers Report.pdf",
+                   "Servers/Owners/Unassigned/2026-11-16 Unassigned Servers Report.xlsx",
+                   "Servers/Weekly/2026-11-16 Servers Report.xlsx"],
+          f"publish: Servers/Owners/<Team>/ beside the region report, no HTML: {dest}")
+    r = subprocess.run([sys.executable, "publish.py", "--config", cfgp, "--dry-run", "--sets", "servers"],
+                       cwd=ROOT, capture_output=True, text=True)
+    check(r.returncode == 0 and "would publish Servers/Owners/PowerBI/" in r.stdout and "6 file(s)" in r.stdout,
+          f"publish --sets servers includes the owner folders: {r.stdout[-300:]}")
+
     print("== other domains")
     check(q(cur, "SELECT count(*) FROM security_alerts")[0][0] == 3, "3 alerts")
     al2 = q(cur, "SELECT site_label, closed_at IS NOT NULL FROM security_alerts WHERE alert_id='al2'")[0]

@@ -182,7 +182,7 @@ sed "s#/opt/secops-dashboard#$PWD#g" crontab.example | crontab -
 | 01:00 daily | `run_collector.sh`: KEV/EPSS, all enabled collectors, NVD backfill, rollups | `logs/collector.log` |
 | 03:30 Mondays | Weekly exec reports, region + every site (HTML + PDF) | `logs/report.log` |
 | 03:30, 1 Jan/Apr/Jul/Oct | Quarterly exec reports | `logs/report.log` |
-| 03:45 Mondays | `server_report.py`: Servers report (PDF + Excel, whole region) for the infrastructure, applications and database teams -> `Servers/Weekly/` | `logs/report.log` |
+| 03:45 Mondays | `server_report.py`: Servers report (PDF + Excel, whole region) for the infrastructure, applications and database teams -> `Servers/Weekly/`, plus a copy per owner team (Falcon `Team-` tag) and one for unowned servers -> `Servers/Owners/<Team>/` | `logs/report.log` |
 | 04:30, 1st of the month | `impact_report.py`: programme impact report (PDF) -> `Impact/Monthly/`; also run on demand | `logs/report.log` |
 | 04:00, 1st of the month | Monthly action packs (Excel) | `logs/report.log` |
 | 04:15, 1st of the month | `scorecard.py`: monthly security scorecards (PDF) next to the action packs | `logs/report.log` |

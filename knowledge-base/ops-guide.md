@@ -76,7 +76,7 @@ The tool produces three kinds of output: live dashboards for the cyber team, sch
 | --- | --- | --- | --- | --- |
 | Weekly security report | Cyber team, cyber management, each site | Mondays | PDF, region plus one per site | Six pages: endpoint vulnerabilities, external attack surface, email, alerts and identity, estate, removable media, with trends against last week |
 | Quarterly security report | Cyber management, executives | 1 Jan, Apr, Jul, Oct | PDF, region plus one per site | The same six pages over the last quarter |
-| Servers report | Infrastructure, applications and database teams | Mondays | PDF plus Excel workbook | Patching and reboots, longest-unpatched servers, domain controllers, top missing fixes, disk, and servers with no sensor |
+| Servers report | Infrastructure, applications and database teams; each server owner team | Mondays | PDF plus Excel workbook: region, plus one per owner team and one for servers with no owner (`Servers/Owners/<Team>/`) | Patching and reboots, longest-unpatched servers, domain controllers, top missing fixes, disk, and (region only) servers with no sensor |
 | Action pack | Each site's ICT contacts | 1st of the month | Excel, one per site | Named lists to work through: stale and weak-password accounts, no MFA, sensors not reporting, missing sensors, external risks, USB activity |
 | Programme impact report | Cyber management, leadership | 1st of the month, or on demand | PDF | What has changed since the programme started: Day 0 against now, Patch Tuesday fix rates, the action log |
 
@@ -134,7 +134,7 @@ Start each day on the Worklist, each week with the reports, and each quarter wit
 
 **Infrastructure, applications and database teams**
 
-- **Servers report**, Mondays. Use the workbook's filters (Site, OU, product) to cut it to your own servers. The "No sensor" page lists servers to bring under Falcon, or to record why they can't be.
+- **Servers report**, Mondays. Each owner team also gets its own copy under `Servers/Owners/<Team>/`, cut to the servers carrying its Falcon `Team-` tag (from LogicMonitor); servers with no owner are in `Servers/Owners/Unassigned/`. A server with two owner teams is in both. In the region copy, use the workbook's filters (Site, OU, product) to cut it to your own servers. The "No sensor" page lists servers to bring under Falcon, or to record why they can't be.
 
 ## Reading the numbers
 
