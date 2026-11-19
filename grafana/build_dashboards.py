@@ -251,7 +251,8 @@ def site_links(panel, cols):
                                                       "url": f"/d/{uid}/?var-site={fld('Site')}&${{__url_time_range}}"}]}]})
 
 
-def dashboard(uid, title, description, b: Builder, help=None, tags=(), time_from="now-30d", extra_vars=()):
+def dashboard(uid, title, description, b: Builder, help=None, tags=(), time_from="now-30d", extra_vars=(),
+              annotations=()):
     """`help`: panel title -> description, for panels that don't set their own -- kept
     together per dashboard so the definitions read as one glossary."""
     def walk(ps):
@@ -271,7 +272,7 @@ def dashboard(uid, title, description, b: Builder, help=None, tags=(), time_from
         "tags": ["secops", *tags], "timezone": "browser", "schemaVersion": 39, "version": 1,
         "editable": True, "graphTooltip": 1, "refresh": "1h",
         "time": {"from": time_from, "to": "now"}, "timepicker": {},
-        "annotations": {"list": []},
+        "annotations": {"list": list(annotations)},
         "links": [{"type": "dashboards", "tags": ["secops"], "asDropdown": False, "title": "SecOps",
                    "includeVars": True, "keepTime": True}],
         "templating": {"list": [{
@@ -2216,8 +2217,144 @@ def patch_compliance():
                      "schedule gaps.", b, help=PC_HELP, extra_vars=[team_var, *drill_vars])
 
 
+# =====================================================================
+#  Preview: new visual types, to try out before they move into the
+#  dashboards above (status history, stacked bars, annotations)
+# =====================================================================
+PREVIEW_HELP = {
+    "Feed health by night": "One row per collector, one cell per day: how that collector's last run of the day "
+                            "ended. Blocked = the vendor refused us (e.g. a CDN block), not a bug here. Didn't run "
+                            "= no run that day (the 10:00 catch-up counts).",
+    "Patch status by team": "Servers per team (from LogicMonitor) split by patch status, the same statuses as the "
+                            "Server patch compliance dashboard. A server several teams manage counts under each.",
+    "Critical + high: opened vs fixed per week": "Endpoint and external findings first seen vs fixed, per week "
+                                                 "(weeks start Monday). Fixed above opened = the backlog shrank.",
+    "Open critical + high by site": "Open critical and high findings per site from the nightly snapshot. The "
+                                    "markers are explained above the chart.",
+}
+FEED_STATES = [("OK", "green"), ("Partial", "orange"), ("Blocked by vendor", "purple"), ("Failed", "red"),
+               ("Didn't run", "transparent"), ("Still running", "blue")]
+PATCH_BANDS = [  # (column, statuses, colour), in stacking order
+    ("On track", ("Patched this cycle", "Patched within 35 days"), "green"),
+    ("In window", ("Not patched yet (in window)", "Patched, reboot pending (in window)"), "blue"),
+    ("Reboot pending", ("Patched, reboot pending",), "yellow"),
+    ("Behind 35+ days", ("Behind: 35+ days",), "orange"),
+    ("Overdue", ("Overdue: past deadline",), "red"),
+    ("No patch data", ("No patch data",), "gray"),
+]
+
+
+def fixed_colors(cols):
+    return [{"matcher": {"id": "byName", "options": n},
+             "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": c}}]} for n, c in cols]
+
+
+def anno(name, color, sql):
+    return {"name": name, "enable": True, "iconColor": color, "datasource": DS,
+            "target": {"refId": "Anno", "format": "table", "rawQuery": True, "editorMode": "code",
+                       "rawSql": " ".join(sql.split())}}
+
+
+PREVIEW_ANNOTATIONS = [
+    # second Tuesday of each month
+    anno("Patch Tuesday", "blue", """
+        SELECT t AS time, 'Patch Tuesday' AS text, 'patch-tuesday' AS tags FROM (
+          SELECT m + (((2 - extract(dow FROM m)::int + 7) % 7) + 7) * interval '1 day' AS t
+          FROM generate_series(date_trunc('month', $__timeFrom()::timestamptz), $__timeTo()::timestamptz,
+                               interval '1 month') m) x
+        WHERE $__timeFilter(t)"""),
+    anno("New data feed", "green", """
+        SELECT min(started_at) AS time, 'First data from ' || collector AS text, 'feed' AS tags
+        FROM collector_runs WHERE status IN ('ok', 'partial') GROUP BY collector
+        HAVING $__timeFilter(min(started_at))"""),
+    anno("Action logged", "orange", """
+        SELECT found::timestamptz AS time,
+               what || coalesce(' (' || site_label || ')', '') || coalesce(': ' || status, '') AS text,
+               'action-log' AS tags
+        FROM impact_actions
+        WHERE found IS NOT NULL AND $__timeFilter(found::timestamptz)
+          AND (site_label IS NULL OR site_label IN ($site))"""),
+]
+
+
+def preview():
+    b = Builder()
+    b.text("**Preview** of three display ideas for the existing dashboards: a feed-health grid, stacked bars "
+           "and chart annotations. Same data as the other dashboards; nothing here is new data. Once one is "
+           f"agreed it moves into its dashboard and this one goes. {HOVER}", h=2)
+
+    b.row("Feed health (status history)", note="Did each collector's data land, night by night? A vendor block or "
+          "a credential that expired shows as a run of red or purple cells.")
+    codes = {name: i for i, (name, _) in enumerate(FEED_STATES)}
+    feed = b._panel("status-history", "Feed health by night", f"""
+        WITH days AS (SELECT generate_series('${{__from:date}}'::date, '${{__to:date}}'::date,
+                                             interval '1 day')::timestamptz AS d),
+             c AS (SELECT DISTINCT collector FROM collector_runs WHERE {rng_ts('started_at')}),
+             last AS (SELECT DISTINCT ON (collector, date_trunc('day', started_at))
+                             collector, date_trunc('day', started_at) AS d, status, error
+                      FROM collector_runs WHERE {rng_ts('started_at')}
+                      ORDER BY collector, date_trunc('day', started_at), started_at DESC)
+        SELECT days.d AS time, c.collector AS metric,
+               CASE WHEN l.status IS NULL THEN {codes["Didn't run"]}
+                    WHEN l.status = 'ok' THEN {codes["OK"]}
+                    WHEN l.status = 'partial' THEN {codes["Partial"]}
+                    WHEN l.error LIKE 'EdgeBlocked%%' THEN {codes["Blocked by vendor"]}
+                    WHEN l.status = 'running' THEN {codes["Still running"]}
+                    ELSE {codes["Failed"]} END AS value
+        FROM days CROSS JOIN c LEFT JOIN last l ON l.collector = c.collector AND l.d = days.d
+        ORDER BY 1, 2""".replace("%%", "%"), 24, 10, fmt="time_series",
+        defaults={"color": {"mode": "thresholds"},
+                  "mappings": [{"type": "value", "options": {str(i): {"text": n, "color": c, "index": i}
+                                                             for i, (n, c) in enumerate(FEED_STATES)}}],
+                  "custom": {"lineWidth": 1, "fillOpacity": 80}},
+        options={"showValue": "never", "rowHeight": 0.85, "colWidth": 0.9,
+                 "legend": {"showLegend": True, "displayMode": "list", "placement": "bottom"},
+                 "tooltip": {"mode": "single"}})
+
+    b.row("Stacked bars", note="The same counts as the tables on the other dashboards, drawn so the worst team or "
+          "week stands out without reading every column.")
+    cols = ",\n".join(
+        "count(*) FILTER (WHERE x.status IN (%s)) AS \"%s\"" % (", ".join("'%s'" % v for v in st), name)
+        for name, st, _ in PATCH_BANDS)
+    b._panel("barchart", "Patch status by team", f"""
+        SELECT x.team AS "Team", {cols}
+        FROM (SELECT trim(t) AS team, c.status FROM server_patch_compliance c
+              CROSS JOIN LATERAL unnest(string_to_array(c.team, ',')) t WHERE c.site_label IN ($site)) x
+        GROUP BY x.team
+        ORDER BY count(*) FILTER (WHERE x.status = 'Overdue: past deadline') DESC, count(*) DESC""", 12, 10,
+        defaults={"custom": {"fillOpacity": 85, "lineWidth": 0}},
+        overrides=fixed_colors([(n, c) for n, _, c in PATCH_BANDS]),
+        options={"orientation": "horizontal", "stacking": "normal", "xField": "Team", "showValue": "never",
+                 "barWidth": 0.8, "legend": {"showLegend": True, "displayMode": "list", "placement": "bottom"},
+                 "tooltip": {"mode": "multi"}})
+    b._panel("barchart", "Critical + high: opened vs fixed per week", f"""
+        SELECT to_char(date_trunc('week', snapshot_date), 'DD Mon') AS "Week of",
+               sum(opened) AS "Opened", sum(fixed) AS "Fixed"
+        FROM daily_vuln_flow_metrics
+        WHERE severity IN ('critical', 'high') AND site_label IN ($site)
+          AND {rng_d('snapshot_date')}
+        GROUP BY date_trunc('week', snapshot_date) ORDER BY date_trunc('week', snapshot_date)""", 12, 10,
+        defaults={"custom": {"fillOpacity": 85, "lineWidth": 0}},
+        overrides=fixed_colors([("Opened", "red"), ("Fixed", "green")]),
+        options={"orientation": "vertical", "stacking": "none", "xField": "Week of", "showValue": "auto",
+                 "barWidth": 0.8, "groupWidth": 0.7,
+                 "legend": {"showLegend": True, "displayMode": "list", "placement": "bottom"},
+                 "tooltip": {"mode": "multi"}})
+
+    b.row("Annotations", note="Markers on the time axis of every chart on this dashboard: **blue** = Patch "
+          "Tuesday, **green** = first data from a feed, **orange** = an action from the impact action log. Hover a "
+          "marker for detail; toggle each kind at the top of the page. They explain jumps where they happen.")
+    b.ts("Open critical + high by site", f"""
+        SELECT snapshot_date::timestamp AS time, site_label AS metric, sum(crit + high) AS value
+        FROM daily_site_metrics WHERE site_label IN ($site) AND {rng_d('snapshot_date::date')}
+        GROUP BY 1, 2 ORDER BY 1""", w=24, h=10)
+    return dashboard("secops-preview", "SecOps preview: new visuals",
+                     "Trial of status history, stacked bars and annotations before they move into the main "
+                     "dashboards.", b, help=PREVIEW_HELP, annotations=PREVIEW_ANNOTATIONS)
+
+
 def main():
-    for fname, fn in (("secops-overview.json", overview),
+    for fname, fn in (("secops-preview.json", preview),("secops-overview.json", overview),
                       ("secops-endpoint-identity.json", endpoint_identity),
                       ("secops-email-external.json", email_external),
                       ("secops-worklist.json", worklist),

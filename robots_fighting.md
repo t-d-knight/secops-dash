@@ -65,8 +65,24 @@ Each entry heading is `### YYYY-MM-DD, <who> for <whom>: <what>`. In the entry:
 Keep entries short and link to the commit for detail. When the log passes about 300 lines, move entries
 older than a month to `docs/robots_fighting-archive.md`.
 
+### 2026-11-19, Claude for TK: Preview dashboard; Grafana access design for remediation teams
+- **Status:** local commit, not pushed or deployed. Once pushed, `deploy.sh` pushes the new dashboard with the
+  rest.
+- **Changed:** Grafana dashboards. New `secops-preview` ("SecOps preview: new visuals"): feed health as a
+  status-history grid (last run per collector per day; an `EdgeBlocked` error shows as "Blocked by vendor"),
+  patch status by team as stacked bars, critical+high opened vs fixed per week as bars, and annotations (Patch
+  Tuesday, first data per feed, impact action log) on an open critical+high trend. `dashboard()` takes
+  `annotations`. Docs: `knowledge-base/grafana-access.md`, a design for Entra SSO with a separate Remediation
+  org and a restricted Postgres login. Nothing is built for that yet; the decisions are listed in the doc.
+- **Verified:** every preview query and annotation runs on the demo DB; the team bands sum to each team's
+  server count. e2e passes, 234 dashboard queries. The grant list in the doc is generated from the Servers,
+  Patch compliance and Vulnerability Management dashboard SQL.
+- **Not verified / open:** rendering in Grafana 10.2.6 (status-history and barchart options). The demo has one
+  night of collector runs and almost no team data, so the preview only means much on prod. Annotation queries
+  aren't covered by e2e (they're dashboard-level, not panels).
+
 ### 2026-11-19, Claude for TK: Drill-downs on four more dashboards
-- **Status:** local commit, not pushed or deployed.
+- **Status:** pushed (7a2bfcb), not deployed.
 - **Changed:** Grafana dashboards, e2e. Generic helpers in `build_dashboards.py` (`drill_links`, `focus_case`,
   `textbox_var`, `site_links`); patch compliance moved onto them, and its "Top missing fixes" counts now drill
   too (new hidden `pfix`). New "behind a number" panels: Servers (OS-version counts, top missing fixes,

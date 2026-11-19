@@ -1,0 +1,580 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_POSTGRESQL",
+      "label": "PostgreSQL",
+      "description": "Postgres datasource pointing at the secops_dashboard database",
+      "type": "datasource",
+      "pluginId": "postgres",
+      "pluginName": "PostgreSQL"
+    }
+  ],
+  "__requires": [
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "10.0.0"
+    },
+    {
+      "type": "datasource",
+      "id": "postgres",
+      "name": "PostgreSQL",
+      "version": "1.0.0"
+    }
+  ],
+  "id": null,
+  "uid": "secops-preview",
+  "title": "SecOps preview: new visuals",
+  "description": "Trial of status history, stacked bars and annotations before they move into the main dashboards.",
+  "tags": [
+    "secops"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "1h",
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "annotations": {
+    "list": [
+      {
+        "name": "Patch Tuesday",
+        "enable": true,
+        "iconColor": "blue",
+        "datasource": {
+          "type": "postgres",
+          "uid": "${DS_POSTGRESQL}"
+        },
+        "target": {
+          "refId": "Anno",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT t AS time, 'Patch Tuesday' AS text, 'patch-tuesday' AS tags FROM ( SELECT m + (((2 - extract(dow FROM m)::int + 7) % 7) + 7) * interval '1 day' AS t FROM generate_series(date_trunc('month', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, interval '1 month') m) x WHERE $__timeFilter(t)"
+        }
+      },
+      {
+        "name": "New data feed",
+        "enable": true,
+        "iconColor": "green",
+        "datasource": {
+          "type": "postgres",
+          "uid": "${DS_POSTGRESQL}"
+        },
+        "target": {
+          "refId": "Anno",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT min(started_at) AS time, 'First data from ' || collector AS text, 'feed' AS tags FROM collector_runs WHERE status IN ('ok', 'partial') GROUP BY collector HAVING $__timeFilter(min(started_at))"
+        }
+      },
+      {
+        "name": "Action logged",
+        "enable": true,
+        "iconColor": "orange",
+        "datasource": {
+          "type": "postgres",
+          "uid": "${DS_POSTGRESQL}"
+        },
+        "target": {
+          "refId": "Anno",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT found::timestamptz AS time, what || coalesce(' (' || site_label || ')', '') || coalesce(': ' || status, '') AS text, 'action-log' AS tags FROM impact_actions WHERE found IS NOT NULL AND $__timeFilter(found::timestamptz) AND (site_label IS NULL OR site_label IN ($site))"
+        }
+      }
+    ]
+  },
+  "links": [
+    {
+      "type": "dashboards",
+      "tags": [
+        "secops"
+      ],
+      "asDropdown": false,
+      "title": "SecOps",
+      "includeVars": true,
+      "keepTime": true
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "site",
+        "type": "query",
+        "label": "Site",
+        "datasource": {
+          "type": "postgres",
+          "uid": "${DS_POSTGRESQL}"
+        },
+        "query": "SELECT site_label FROM dim_site ORDER BY site_label = 'Ungrouped', site_label",
+        "definition": "SELECT site_label FROM dim_site",
+        "refresh": 1,
+        "sort": 0,
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 2,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**Preview** of three display ideas for the existing dashboards: a feed-health grid, stacked bars and chart annotations. Same data as the other dashboards; nothing here is new data. Once one is agreed it moves into its dashboard and this one goes. Hover the **i** on any panel for exactly what it counts."
+      }
+    },
+    {
+      "id": 3,
+      "type": "row",
+      "title": "Feed health (status history)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 2,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 4,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Did each collector's data land, night by night? A vendor block or a credential that expired shows as a run of red or purple cells."
+      }
+    },
+    {
+      "id": 5,
+      "type": "status-history",
+      "title": "Feed health by night",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "OK",
+                  "color": "green",
+                  "index": 0
+                },
+                "1": {
+                  "text": "Partial",
+                  "color": "orange",
+                  "index": 1
+                },
+                "2": {
+                  "text": "Blocked by vendor",
+                  "color": "purple",
+                  "index": 2
+                },
+                "3": {
+                  "text": "Failed",
+                  "color": "red",
+                  "index": 3
+                },
+                "4": {
+                  "text": "Didn't run",
+                  "color": "transparent",
+                  "index": 4
+                },
+                "5": {
+                  "text": "Still running",
+                  "color": "blue",
+                  "index": 5
+                }
+              }
+            }
+          ],
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 80
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showValue": "never",
+        "rowHeight": 0.85,
+        "colWidth": 0.9,
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "WITH days AS (SELECT generate_series('${__from:date}'::date, '${__to:date}'::date, interval '1 day')::timestamptz AS d), c AS (SELECT DISTINCT collector FROM collector_runs WHERE started_at >= '${__from:date}'::date AND started_at < '${__to:date}'::date + 1), last AS (SELECT DISTINCT ON (collector, date_trunc('day', started_at)) collector, date_trunc('day', started_at) AS d, status, error FROM collector_runs WHERE started_at >= '${__from:date}'::date AND started_at < '${__to:date}'::date + 1 ORDER BY collector, date_trunc('day', started_at), started_at DESC) SELECT days.d AS time, c.collector AS metric, CASE WHEN l.status IS NULL THEN 4 WHEN l.status = 'ok' THEN 0 WHEN l.status = 'partial' THEN 1 WHEN l.error LIKE 'EdgeBlocked%' THEN 2 WHEN l.status = 'running' THEN 5 ELSE 3 END AS value FROM days CROSS JOIN c LEFT JOIN last l ON l.collector = c.collector AND l.d = days.d ORDER BY 1, 2"
+        }
+      ],
+      "description": "One row per collector, one cell per day: how that collector's last run of the day ended. Blocked = the vendor refused us (e.g. a CDN block), not a bug here. Didn't run = no run that day (the 10:00 catch-up counts)."
+    },
+    {
+      "id": 6,
+      "type": "row",
+      "title": "Stacked bars",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 7,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "The same counts as the tables on the other dashboards, drawn so the worst team or week stands out without reading every column."
+      }
+    },
+    {
+      "id": 8,
+      "type": "barchart",
+      "title": "Patch status by team",
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 12,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "On track"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "In window"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Reboot pending"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "yellow"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Behind 35+ days"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Overdue"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "No patch data"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "gray"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "orientation": "horizontal",
+        "stacking": "normal",
+        "xField": "Team",
+        "showValue": "never",
+        "barWidth": 0.8,
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT x.team AS \"Team\", count(*) FILTER (WHERE x.status IN ('Patched this cycle', 'Patched within 35 days')) AS \"On track\", count(*) FILTER (WHERE x.status IN ('Not patched yet (in window)', 'Patched, reboot pending (in window)')) AS \"In window\", count(*) FILTER (WHERE x.status IN ('Patched, reboot pending')) AS \"Reboot pending\", count(*) FILTER (WHERE x.status IN ('Behind: 35+ days')) AS \"Behind 35+ days\", count(*) FILTER (WHERE x.status IN ('Overdue: past deadline')) AS \"Overdue\", count(*) FILTER (WHERE x.status IN ('No patch data')) AS \"No patch data\" FROM (SELECT trim(t) AS team, c.status FROM server_patch_compliance c CROSS JOIN LATERAL unnest(string_to_array(c.team, ',')) t WHERE c.site_label IN ($site)) x GROUP BY x.team ORDER BY count(*) FILTER (WHERE x.status = 'Overdue: past deadline') DESC, count(*) DESC"
+        }
+      ],
+      "description": "Servers per team (from LogicMonitor) split by patch status, the same statuses as the Server patch compliance dashboard. A server several teams manage counts under each."
+    },
+    {
+      "id": 9,
+      "type": "barchart",
+      "title": "Critical + high: opened vs fixed per week",
+      "gridPos": {
+        "x": 12,
+        "y": 18,
+        "w": 12,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Opened"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Fixed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "orientation": "vertical",
+        "stacking": "none",
+        "xField": "Week of",
+        "showValue": "auto",
+        "barWidth": 0.8,
+        "groupWidth": 0.7,
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT to_char(date_trunc('week', snapshot_date), 'DD Mon') AS \"Week of\", sum(opened) AS \"Opened\", sum(fixed) AS \"Fixed\" FROM daily_vuln_flow_metrics WHERE severity IN ('critical', 'high') AND site_label IN ($site) AND snapshot_date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY date_trunc('week', snapshot_date) ORDER BY date_trunc('week', snapshot_date)"
+        }
+      ],
+      "description": "Endpoint and external findings first seen vs fixed, per week (weeks start Monday). Fixed above opened = the backlog shrank."
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Annotations",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 11,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 29,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Markers on the time axis of every chart on this dashboard: **blue** = Patch Tuesday, **green** = first data from a feed, **orange** = an action from the impact action log. Hover a marker for detail; toggle each kind at the top of the page. They explain jumps where they happen."
+      }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Open critical + high by site",
+      "gridPos": {
+        "x": 0,
+        "y": 31,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 15
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT snapshot_date::timestamp AS time, site_label AS metric, sum(crit + high) AS value FROM daily_site_metrics WHERE site_label IN ($site) AND snapshot_date::date BETWEEN '${__from:date}'::date AND '${__to:date}'::date GROUP BY 1, 2 ORDER BY 1"
+        }
+      ],
+      "description": "Open critical and high findings per site from the nightly snapshot. The markers are explained above the chart."
+    }
+  ]
+}
