@@ -108,6 +108,17 @@
         }
       },
       {
+        "name": "pfix",
+        "type": "textbox",
+        "label": "Fix",
+        "hide": 2,
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        }
+      },
+      {
         "name": "focus",
         "type": "textbox",
         "label": "Showing",
@@ -669,7 +680,7 @@
                 "value": [
                   {
                     "title": "List these servers (all)",
-                    "url": "/d/secops-patch-compliance/?${site:queryparam}&${team:queryparam}&var-pgroup=${__data.fields[\"Patch group\"]:percentencode}&var-focus=All&viewPanel=24"
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&${team:queryparam}&var-pgroup=${__data.fields[\"Patch group\"]:percentencode}&var-pfix=&var-focus=All&viewPanel=24"
                   }
                 ]
               }
@@ -686,7 +697,7 @@
                 "value": [
                   {
                     "title": "List these servers (patched this window)",
-                    "url": "/d/secops-patch-compliance/?${site:queryparam}&${team:queryparam}&var-pgroup=${__data.fields[\"Patch group\"]:percentencode}&var-focus=Patched%20this%20window&viewPanel=24"
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&${team:queryparam}&var-pgroup=${__data.fields[\"Patch group\"]:percentencode}&var-pfix=&var-focus=Patched%20this%20window&viewPanel=24"
                   }
                 ]
               }
@@ -703,7 +714,7 @@
                 "value": [
                   {
                     "title": "List these servers (reboot pending (any))",
-                    "url": "/d/secops-patch-compliance/?${site:queryparam}&${team:queryparam}&var-pgroup=${__data.fields[\"Patch group\"]:percentencode}&var-focus=Reboot%20pending%20%28any%29&viewPanel=24"
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&${team:queryparam}&var-pgroup=${__data.fields[\"Patch group\"]:percentencode}&var-pfix=&var-focus=Reboot%20pending%20%28any%29&viewPanel=24"
                   }
                 ]
               }
@@ -720,7 +731,7 @@
                 "value": [
                   {
                     "title": "List these servers (overdue)",
-                    "url": "/d/secops-patch-compliance/?${site:queryparam}&${team:queryparam}&var-pgroup=${__data.fields[\"Patch group\"]:percentencode}&var-focus=Overdue&viewPanel=24"
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&${team:queryparam}&var-pgroup=${__data.fields[\"Patch group\"]:percentencode}&var-pfix=&var-focus=Overdue&viewPanel=24"
                   }
                 ]
               }
@@ -949,7 +960,7 @@
                 "value": [
                   {
                     "title": "List these servers (all)",
-                    "url": "/d/secops-patch-compliance/?${site:queryparam}&var-team=${__data.fields.Team:percentencode}&var-pgroup=&var-focus=All&viewPanel=24"
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&var-team=${__data.fields[\"Team\"]:percentencode}&var-pgroup=&var-pfix=&var-focus=All&viewPanel=24"
                   }
                 ]
               }
@@ -966,7 +977,7 @@
                 "value": [
                   {
                     "title": "List these servers (overdue)",
-                    "url": "/d/secops-patch-compliance/?${site:queryparam}&var-team=${__data.fields.Team:percentencode}&var-pgroup=&var-focus=Overdue&viewPanel=24"
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&var-team=${__data.fields[\"Team\"]:percentencode}&var-pgroup=&var-pfix=&var-focus=Overdue&viewPanel=24"
                   }
                 ]
               }
@@ -983,7 +994,7 @@
                 "value": [
                   {
                     "title": "List these servers (behind 35+ days)",
-                    "url": "/d/secops-patch-compliance/?${site:queryparam}&var-team=${__data.fields.Team:percentencode}&var-pgroup=&var-focus=Behind%2035%2B%20days&viewPanel=24"
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&var-team=${__data.fields[\"Team\"]:percentencode}&var-pgroup=&var-pfix=&var-focus=Behind%2035%2B%20days&viewPanel=24"
                   }
                 ]
               }
@@ -1000,7 +1011,7 @@
                 "value": [
                   {
                     "title": "List these servers (reboot pending after deadline)",
-                    "url": "/d/secops-patch-compliance/?${site:queryparam}&var-team=${__data.fields.Team:percentencode}&var-pgroup=&var-focus=Reboot%20pending%20after%20deadline&viewPanel=24"
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&var-team=${__data.fields[\"Team\"]:percentencode}&var-pgroup=&var-pfix=&var-focus=Reboot%20pending%20after%20deadline&viewPanel=24"
                   }
                 ]
               }
@@ -1017,7 +1028,7 @@
                 "value": [
                   {
                     "title": "List these servers (in window now)",
-                    "url": "/d/secops-patch-compliance/?${site:queryparam}&var-team=${__data.fields.Team:percentencode}&var-pgroup=&var-focus=In%20window%20now&viewPanel=24"
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&var-team=${__data.fields[\"Team\"]:percentencode}&var-pgroup=&var-pfix=&var-focus=In%20window%20now&viewPanel=24"
                   }
                 ]
               }
@@ -1034,7 +1045,7 @@
                 "value": [
                   {
                     "title": "List these servers (no patch group)",
-                    "url": "/d/secops-patch-compliance/?${site:queryparam}&var-team=${__data.fields.Team:percentencode}&var-pgroup=&var-focus=No%20patch%20group&viewPanel=24"
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&var-team=${__data.fields[\"Team\"]:percentencode}&var-pgroup=&var-pfix=&var-focus=No%20patch%20group&viewPanel=24"
                   }
                 ]
               }
@@ -1051,7 +1062,7 @@
                 "value": [
                   {
                     "title": "List these servers (with kev)",
-                    "url": "/d/secops-patch-compliance/?${site:queryparam}&var-team=${__data.fields.Team:percentencode}&var-pgroup=&var-focus=With%20KEV&viewPanel=24"
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&var-team=${__data.fields[\"Team\"]:percentencode}&var-pgroup=&var-pfix=&var-focus=With%20KEV&viewPanel=24"
                   }
                 ]
               }
@@ -1068,7 +1079,7 @@
                 "value": [
                   {
                     "title": "List these servers (off track)",
-                    "url": "/d/secops-patch-compliance/?${site:queryparam}&var-team=${__data.fields.Team:percentencode}&var-pgroup=&var-focus=Off%20track&viewPanel=24"
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&var-team=${__data.fields[\"Team\"]:percentencode}&var-pgroup=&var-pfix=&var-focus=Off%20track&viewPanel=24"
                   }
                 ]
               }
@@ -1366,6 +1377,57 @@
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Servers"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (missing this fix, not on track)",
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&${team:queryparam}&var-pgroup=&var-pfix=${__data.fields[\"Fix\"]:percentencode}&var-focus=Missing%20this%20fix%2C%20not%20on%20track&viewPanel=24"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Crit/high findings"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (missing this fix, not on track)",
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&${team:queryparam}&var-pgroup=&var-pfix=${__data.fields[\"Fix\"]:percentencode}&var-focus=Missing%20this%20fix%2C%20not%20on%20track&viewPanel=24"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Critical"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (missing this fix, not on track)",
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&${team:queryparam}&var-pgroup=&var-pfix=${__data.fields[\"Fix\"]:percentencode}&var-focus=Missing%20this%20fix%2C%20not%20on%20track&viewPanel=24"
+                  }
+                ]
+              }
+            ]
           }
         ]
       },
@@ -1446,13 +1508,13 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "Click a count in **By patch group** or **By team** to list the servers it counts here, full screen. Esc goes back."
+        "content": "Click a count in **By patch group**, **By team** or **Top missing fixes** to list the servers it counts here, full screen. Esc goes back. Export: panel menu (\u22ee) \u2192 Inspect \u2192 Data \u2192 Download CSV."
       }
     },
     {
       "id": 24,
       "type": "table",
-      "title": "Servers behind a number: ${focus} ${pgroup}",
+      "title": "Servers behind a number: ${focus} ${pgroup}${pfix}",
       "gridPos": {
         "x": 0,
         "y": 55,
@@ -1612,10 +1674,10 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT c.hostname AS \"Server\", c.status AS \"Status\", c.team AS \"Team\", c.site_label AS \"Site\", c.schedule AS \"Patch group\", to_char(c.window_start, 'YYYY-MM-DD') AS \"Window opens\", to_char(c.deadline, 'YYYY-MM-DD') AS \"Deadline\", to_char(c.last_patch_confirmed, 'YYYY-MM-DD') AS \"Last patch confirmed\", c.days_since_patched AS \"Days since patched\", c.reboot_required AS \"Reboot pending\", c.days_up AS \"Days up\", r.open_kev_count AS \"KEV\", r.open_critical AS \"Crit\", r.open_high AS \"High\", c.os_version AS \"OS\" FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) AND (${pgroup:sqlstring} = '' OR c.schedule = ${pgroup:sqlstring}) AND CASE ${focus:sqlstring} WHEN 'All' THEN true WHEN 'Overdue' THEN c.status = 'Overdue: past deadline' WHEN 'Patched this window' THEN c.last_patch_confirmed >= c.window_start WHEN 'Reboot pending (any)' THEN c.status LIKE 'Patched, reboot pending%' WHEN 'Reboot pending after deadline' THEN c.status = 'Patched, reboot pending' WHEN 'Behind 35+ days' THEN c.status = 'Behind: 35+ days' WHEN 'In window now' THEN c.schedule_state = 'In window' WHEN 'No patch group' THEN c.schedule_state = 'No patch group' WHEN 'With KEV' THEN r.open_kev_count > 0 WHEN 'Off track' THEN st.judged AND NOT st.on_track ELSE false END ORDER BY r.open_kev_count DESC NULLS LAST, r.open_critical DESC NULLS LAST, c.days_since_patched DESC NULLS FIRST LIMIT 3000"
+          "rawSql": "SELECT c.hostname AS \"Server\", c.status AS \"Status\", c.team AS \"Team\", c.site_label AS \"Site\", c.schedule AS \"Patch group\", to_char(c.window_start, 'YYYY-MM-DD') AS \"Window opens\", to_char(c.deadline, 'YYYY-MM-DD') AS \"Deadline\", to_char(c.last_patch_confirmed, 'YYYY-MM-DD') AS \"Last patch confirmed\", c.days_since_patched AS \"Days since patched\", c.reboot_required AS \"Reboot pending\", c.days_up AS \"Days up\", r.open_kev_count AS \"KEV\", r.open_critical AS \"Crit\", r.open_high AS \"High\", c.os_version AS \"OS\" FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) AND (${pgroup:sqlstring} = '' OR c.schedule = ${pgroup:sqlstring}) AND CASE ${focus:sqlstring} WHEN 'All' THEN true WHEN 'Overdue' THEN c.status = 'Overdue: past deadline' WHEN 'Patched this window' THEN c.last_patch_confirmed >= c.window_start WHEN 'Reboot pending (any)' THEN c.status LIKE 'Patched, reboot pending%' WHEN 'Reboot pending after deadline' THEN c.status = 'Patched, reboot pending' WHEN 'Behind 35+ days' THEN c.status = 'Behind: 35+ days' WHEN 'In window now' THEN c.schedule_state = 'In window' WHEN 'No patch group' THEN c.schedule_state = 'No patch group' WHEN 'With KEV' THEN r.open_kev_count > 0 WHEN 'Off track' THEN st.judged AND NOT st.on_track WHEN 'Missing this fix, not on track' THEN st.judged AND NOT st.on_track AND EXISTS (SELECT 1 FROM vuln_findings vf WHERE vf.source = 'falcon_spotlight' AND vf.source_asset_id = c.aid AND vf.state IN ('OPEN','REOPENED') AND vf.severity IN ('critical','high') AND vf.fix_title = ${pfix:sqlstring}) ELSE false END ORDER BY r.open_kev_count DESC NULLS LAST, r.open_critical DESC NULLS LAST, c.days_since_patched DESC NULLS FIRST LIMIT 3000"
         }
       ],
-      "description": "The servers counted in a cell you clicked in 'By patch group' or 'By team' (numbers there are links). Press Esc to go back. Opened directly, it lists every server in scope."
+      "description": "The servers counted in a cell you clicked in 'By patch group' or 'By team' (numbers there are links). Press Esc to go back. Opened directly, it lists every server in scope. Export: panel menu (\u22ee) \u2192 Inspect \u2192 Data \u2192 Download CSV."
     },
     {
       "id": 25,

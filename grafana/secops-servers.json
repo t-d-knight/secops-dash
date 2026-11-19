@@ -76,6 +76,28 @@
           "text": "All",
           "value": "$__all"
         }
+      },
+      {
+        "name": "dkey",
+        "type": "textbox",
+        "label": "Key",
+        "hide": 2,
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        }
+      },
+      {
+        "name": "focus",
+        "type": "textbox",
+        "label": "Showing",
+        "hide": 2,
+        "query": "All",
+        "current": {
+          "text": "All",
+          "value": "All"
+        }
       }
     ]
   },
@@ -564,6 +586,108 @@
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Servers"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (on this os)",
+                    "url": "/d/secops-servers/?${site:queryparam}&var-dkey=${__data.fields[\"OS\"]:percentencode}&var-focus=On%20this%20OS&viewPanel=23"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Not patched 35+ d"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (on this os, not patched 35+ days)",
+                    "url": "/d/secops-servers/?${site:queryparam}&var-dkey=${__data.fields[\"OS\"]:percentencode}&var-focus=On%20this%20OS%2C%20not%20patched%2035%2B%20days&viewPanel=23"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "90+ d"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (on this os, not patched 90+ days)",
+                    "url": "/d/secops-servers/?${site:queryparam}&var-dkey=${__data.fields[\"OS\"]:percentencode}&var-focus=On%20this%20OS%2C%20not%20patched%2090%2B%20days&viewPanel=23"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Reboot pending"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (on this os, reboot pending)",
+                    "url": "/d/secops-servers/?${site:queryparam}&var-dkey=${__data.fields[\"OS\"]:percentencode}&var-focus=On%20this%20OS%2C%20reboot%20pending&viewPanel=23"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Up 35+ d"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (on this os, up 35+ days)",
+                    "url": "/d/secops-servers/?${site:queryparam}&var-dkey=${__data.fields[\"OS\"]:percentencode}&var-focus=On%20this%20OS%2C%20up%2035%2B%20days&viewPanel=23"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "No patch data"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (on this os, no patch data)",
+                    "url": "/d/secops-servers/?${site:queryparam}&var-dkey=${__data.fields[\"OS\"]:percentencode}&var-focus=On%20this%20OS%2C%20no%20patch%20data&viewPanel=23"
+                  }
+                ]
+              }
+            ]
           }
         ]
       },
@@ -868,6 +992,57 @@
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Servers"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (missing this fix)",
+                    "url": "/d/secops-servers/?${site:queryparam}&var-dkey=${__data.fields[\"Fix\"]:percentencode}&var-focus=Missing%20this%20fix&viewPanel=23"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Crit/high findings"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (missing this fix)",
+                    "url": "/d/secops-servers/?${site:queryparam}&var-dkey=${__data.fields[\"Fix\"]:percentencode}&var-focus=Missing%20this%20fix&viewPanel=23"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Critical"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (missing this fix)",
+                    "url": "/d/secops-servers/?${site:queryparam}&var-dkey=${__data.fields[\"Fix\"]:percentencode}&var-focus=Missing%20this%20fix&viewPanel=23"
+                  }
+                ]
+              }
+            ]
           }
         ]
       },
@@ -922,6 +1097,57 @@
                 "value": {
                   "mode": "continuous-GrYlRd"
                 }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Servers"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (running this product)",
+                    "url": "/d/secops-servers/?${site:queryparam}&var-dkey=${__data.fields[\"Product family\"]:percentencode}&var-focus=Running%20this%20product&viewPanel=23"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Critical"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (running this product)",
+                    "url": "/d/secops-servers/?${site:queryparam}&var-dkey=${__data.fields[\"Product family\"]:percentencode}&var-focus=Running%20this%20product&viewPanel=23"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "High"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (running this product)",
+                    "url": "/d/secops-servers/?${site:queryparam}&var-dkey=${__data.fields[\"Product family\"]:percentencode}&var-focus=Running%20this%20product&viewPanel=23"
+                  }
+                ]
               }
             ]
           }
@@ -1003,7 +1229,7 @@
     {
       "id": 21,
       "type": "row",
-      "title": "Capacity and health",
+      "title": "Servers behind a number",
       "collapsed": false,
       "gridPos": {
         "x": 0,
@@ -1025,16 +1251,156 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "From Falcon's system insights (refreshed nightly): disk is the fullest reported volume, CPU and memory are Falcon's recent averages."
+        "content": "Click a count in **Patching by OS version**, **Top missing fixes** or **Applications on servers** to list the servers it counts here, full screen. Esc goes back. Export: panel menu (\u22ee) \u2192 Inspect \u2192 Data \u2192 Download CSV."
       }
     },
     {
       "id": 23,
       "type": "table",
-      "title": "Disk 85%+ full",
+      "title": "Servers behind a number: ${focus} ${dkey}",
       "gridPos": {
         "x": 0,
         "y": 59,
+        "w": 24,
+        "h": 12
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Days since patched"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 36
+                    },
+                    {
+                      "color": "red",
+                      "value": 91
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "KEV"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT a.hostname AS \"Server\", a.site_label AS \"Site\", a.os_version AS \"OS\", floor(EXTRACT(EPOCH FROM now() - p.last_patch_confirmed) / 86400)::int AS \"Days since patched\", p.reboot_required AS \"Reboot pending\", p.pending_patches AS \"Pending patches\", floor(EXTRACT(EPOCH FROM now() - a.last_reboot) / 86400)::int AS \"Days up\", r.open_critical AS \"Crit\", r.open_high AS \"High\", r.open_kev_count AS \"KEV\", CASE WHEN a.product_type = 'domain_controller' THEN 'DC' ELSE i.form_factor END AS \"Type\", a.last_seen::date AS \"Last seen\", a.ous[1] AS \"OU\" FROM assets a LEFT JOIN host_patch_status p ON p.aid = a.source_asset_id LEFT JOIN host_insights i ON i.aid = a.source_asset_id LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = a.source_asset_id WHERE a.source = 'falcon' AND NOT a.retired AND a.product_type IN ('server','domain_controller') AND a.site_label IN ($site) AND CASE ${focus:sqlstring} WHEN 'On this OS' THEN (a.last_seen > now() - interval '7 days' AND coalesce(a.os_version, '') = ${dkey:sqlstring}) WHEN 'On this OS, not patched 35+ days' THEN (a.last_seen > now() - interval '7 days' AND coalesce(a.os_version, '') = ${dkey:sqlstring} AND p.last_patch_confirmed < now() - interval '35 days') WHEN 'On this OS, not patched 90+ days' THEN (a.last_seen > now() - interval '7 days' AND coalesce(a.os_version, '') = ${dkey:sqlstring} AND p.last_patch_confirmed < now() - interval '90 days') WHEN 'On this OS, reboot pending' THEN (a.last_seen > now() - interval '7 days' AND coalesce(a.os_version, '') = ${dkey:sqlstring} AND p.reboot_required) WHEN 'On this OS, up 35+ days' THEN (a.last_seen > now() - interval '7 days' AND coalesce(a.os_version, '') = ${dkey:sqlstring} AND a.last_reboot < now() - interval '35 days') WHEN 'On this OS, no patch data' THEN (a.last_seen > now() - interval '7 days' AND coalesce(a.os_version, '') = ${dkey:sqlstring} AND p.last_patch_confirmed IS NULL) WHEN 'Missing this fix' THEN (EXISTS (SELECT 1 FROM vuln_findings vf WHERE vf.source = 'falcon_spotlight' AND vf.source_asset_id = a.source_asset_id AND vf.state IN ('OPEN','REOPENED') AND vf.severity IN ('critical','high') AND vf.fix_title = ${dkey:sqlstring})) WHEN 'Running this product' THEN (EXISTS (SELECT 1 FROM vuln_findings vf WHERE vf.source = 'falcon_spotlight' AND vf.source_asset_id = a.source_asset_id AND vf.state IN ('OPEN','REOPENED') AND vf.severity IN ('critical','high') AND vf.product_family = ${dkey:sqlstring})) ELSE false END ORDER BY r.open_kev_count DESC NULLS LAST, r.open_critical DESC NULLS LAST, p.last_patch_confirmed NULLS FIRST LIMIT 3000"
+        }
+      ],
+      "description": "The servers counted in the cell you clicked. Opened directly it's empty: click a count above. Export: panel menu (\u22ee) \u2192 Inspect \u2192 Data \u2192 Download CSV."
+    },
+    {
+      "id": 24,
+      "type": "row",
+      "title": "Capacity and health",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 71,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 25,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 72,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "From Falcon's system insights (refreshed nightly): disk is the fullest reported volume, CPU and memory are Falcon's recent averages."
+      }
+    },
+    {
+      "id": 26,
+      "type": "table",
+      "title": "Disk 85%+ full",
+      "gridPos": {
+        "x": 0,
+        "y": 74,
         "w": 11,
         "h": 9
       },
@@ -1105,12 +1471,12 @@
       "description": "Servers with a disk 85% or more used, per Falcon's latest system insights."
     },
     {
-      "id": 24,
+      "id": 27,
       "type": "table",
       "title": "Busy servers",
       "gridPos": {
         "x": 11,
-        "y": 59,
+        "y": 74,
         "w": 13,
         "h": 9
       },
@@ -1221,25 +1587,25 @@
       "description": "Highest average CPU or memory use, per Falcon's system insights."
     },
     {
-      "id": 25,
+      "id": 28,
       "type": "row",
       "title": "Domain controllers",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 68,
+        "y": 83,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 26,
+      "id": 29,
       "type": "table",
       "title": "Domain controllers",
       "gridPos": {
         "x": 0,
-        "y": 69,
+        "y": 84,
         "w": 24,
         "h": 10
       },
@@ -1346,25 +1712,25 @@
       "description": "Every domain controller: the servers whose compromise is everyone's compromise."
     },
     {
-      "id": 27,
+      "id": 30,
       "type": "row",
       "title": "No sensor",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 79,
+        "y": 94,
         "w": 24,
         "h": 1
       },
       "panels": []
     },
     {
-      "id": 28,
+      "id": 31,
       "type": "text",
       "title": "",
       "gridPos": {
         "x": 0,
-        "y": 80,
+        "y": 95,
         "w": 24,
         "h": 2
       },
@@ -1374,12 +1740,12 @@
       }
     },
     {
-      "id": 29,
+      "id": 32,
       "type": "table",
       "title": "Servers with no sensor",
       "gridPos": {
         "x": 0,
-        "y": 82,
+        "y": 97,
         "w": 24,
         "h": 10
       },

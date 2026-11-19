@@ -65,6 +65,21 @@ Each entry heading is `### YYYY-MM-DD, <who> for <whom>: <what>`. In the entry:
 Keep entries short and link to the commit for detail. When the log passes about 300 lines, move entries
 older than a month to `docs/robots_fighting-archive.md`.
 
+### 2026-11-19, Claude for TK: Drill-downs on four more dashboards
+- **Status:** local commit, not pushed or deployed.
+- **Changed:** Grafana dashboards, e2e. Generic helpers in `build_dashboards.py` (`drill_links`, `focus_case`,
+  `textbox_var`, `site_links`); patch compliance moved onto them, and its "Top missing fixes" counts now drill
+  too (new hidden `pfix`). New "behind a number" panels: Servers (OS-version counts, top missing fixes,
+  applications), Vulnerability Management (KEV CVE -> hosts; top products -> hosts, live, 30-day last-seen
+  window = `reporting.days_last_seen` default), Worklist (sensors not reporting / missing a sensor by site;
+  Hadrian triage title -> assets). Overview site scorecard: the site and its counts open the matching dashboard
+  filtered to that site. Every drill panel says how to export CSV (Inspect -> Data).
+- **Verified:** demo DB: 210 linked cells, 0 mismatches where the cell is a server/host/asset count, and no
+  non-zero cell opens an empty list. e2e passes, 229 dashboard queries.
+- **Not verified / open:** clicking in Grafana 10.2.6 (as for the patch compliance drill). If prod's
+  `reporting.days_last_seen` isn't 30, the product drill's window should follow it. Product drill is live,
+  the table is last night's snapshot, so totals can differ by a day's churn.
+
 ### 2026-11-19, Claude for TK: Patch compliance drill-down
 - **Status:** pushed, not deployed (needs the rebuilt dashboard imported into Grafana).
 - **Changed:** Grafana dashboards (`build_dashboards.py`, `secops-patch-compliance.json`), e2e. Counts in

@@ -860,6 +860,193 @@
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Site"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open for this site",
+                    "url": "/d/secops-overview/?var-site=${__data.fields[\"Site\"]:percentencode}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Endpoint C+H"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open for this site",
+                    "url": "/d/vuln-mgmt-core/?var-site=${__data.fields[\"Site\"]:percentencode}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "External C+H"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open for this site",
+                    "url": "/d/vuln-mgmt-core/?var-site=${__data.fields[\"Site\"]:percentencode}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "KEV"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open for this site",
+                    "url": "/d/vuln-mgmt-core/?var-site=${__data.fields[\"Site\"]:percentencode}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "SLA breaches"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open for this site",
+                    "url": "/d/vuln-mgmt-core/?var-site=${__data.fields[\"Site\"]:percentencode}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Open C+H alerts"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open for this site",
+                    "url": "/d/secops-endpoint-identity/?var-site=${__data.fields[\"Site\"]:percentencode}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "High-risk IDs"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open for this site",
+                    "url": "/d/secops-endpoint-identity/?var-site=${__data.fields[\"Site\"]:percentencode}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Email threats"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open for this site",
+                    "url": "/d/secops-email-external/?var-site=${__data.fields[\"Site\"]:percentencode}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "DMARC pass %"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open for this site",
+                    "url": "/d/secops-email-external/?var-site=${__data.fields[\"Site\"]:percentencode}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Sensors not reporting"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open for this site",
+                    "url": "/d/secops-worklist/?var-site=${__data.fields[\"Site\"]:percentencode}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Unmanaged"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open for this site",
+                    "url": "/d/secops-worklist/?var-site=${__data.fields[\"Site\"]:percentencode}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
           }
         ]
       },

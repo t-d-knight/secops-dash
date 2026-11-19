@@ -76,6 +76,28 @@
           "text": "All",
           "value": "$__all"
         }
+      },
+      {
+        "name": "dkey",
+        "type": "textbox",
+        "label": "Key",
+        "hide": 2,
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        }
+      },
+      {
+        "name": "focus",
+        "type": "textbox",
+        "label": "Showing",
+        "hide": 2,
+        "query": "All",
+        "current": {
+          "text": "All",
+          "value": "All"
+        }
       }
     ]
   },
@@ -1068,6 +1090,40 @@
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Sensors not reporting"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List the machines (sensors not reporting)",
+                    "url": "/d/secops-worklist/?${site:queryparam}&var-dkey=${__data.fields[\"Site\"]:percentencode}&var-focus=Sensors%20not%20reporting&viewPanel=60"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Missing a sensor"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List the machines (missing a sensor)",
+                    "url": "/d/secops-worklist/?${site:queryparam}&var-dkey=${__data.fields[\"Site\"]:percentencode}&var-focus=Missing%20a%20sensor&viewPanel=60"
+                  }
+                ]
+              }
+            ]
           }
         ]
       },
@@ -1871,6 +1927,23 @@
                 ]
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Open"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List the assets (potential risk)",
+                    "url": "/d/secops-worklist/?${site:queryparam}&var-dkey=${__data.fields[\"Risk\"]:percentencode}&var-focus=Potential%20risk&viewPanel=60"
+                  }
+                ]
+              }
+            ]
           }
         ]
       },
@@ -2482,6 +2555,69 @@
           "description": "Legitimate senders failing here need SPF/DKIM set up; unknown ones are spoofing."
         }
       ]
+    },
+    {
+      "id": 58,
+      "type": "row",
+      "title": "Behind a number",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 160,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 59,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 161,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Click **Sensors not reporting** or **Missing a sensor** in Coverage by site, or **Open** in the Hadrian triage queue, to list what it counts here, full screen. Esc goes back. Export: panel menu (\u22ee) \u2192 Inspect \u2192 Data \u2192 Download CSV."
+      }
+    },
+    {
+      "id": 60,
+      "type": "table",
+      "title": "Behind a number: ${focus} ${dkey}",
+      "gridPos": {
+        "x": 0,
+        "y": 163,
+        "w": 24,
+        "h": 12
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT * FROM ( SELECT x.hostname AS \"Name\", x.site_label AS \"Site\", x.product_type AS \"Detail\", x.os_version AS \"OS\", x.last_seen::date AS \"Last seen / first found\", array_to_string(x.groups, ', ') AS \"Host groups / asset\" FROM assets x WHERE ${focus:sqlstring} = 'Sensors not reporting' AND x.source = 'falcon' AND NOT x.retired AND x.site_label = ${dkey:sqlstring} AND (((x.product_type = 'workstation' AND x.last_seen < now() - interval '30 days') OR (x.product_type = 'server' AND x.last_seen < now() - interval '7 days') OR (x.product_type = 'domain_controller' AND x.last_seen < now() - interval '2 days') OR (COALESCE(x.product_type, '') NOT IN ('workstation', 'server', 'domain_controller') AND x.last_seen < now() - interval '7 days')) OR (x.last_seen < now() - interval '3 days' AND EXISTS (SELECT 1 FROM assets tw WHERE tw.source = 'falcon_unmanaged' AND NOT tw.retired AND tw.discovery_class = 'duplicate_of_managed' AND tw.managed_twin = upper(x.hostname) AND tw.last_seen > x.last_seen + interval '3 days'))) UNION ALL SELECT coalesce(x.hostname, '(no hostname)'), x.site_label, CASE x.discovery_class WHEN 'domain_controller_no_sensor' THEN 'Domain controller, no sensor' WHEN 'server_no_sensor' THEN 'Windows server, no sensor' WHEN 'workstation_no_sensor' THEN 'Windows workstation, no sensor' WHEN 'cloud_no_sensor' THEN 'Cloud instance, no sensor' WHEN 'vmware_nic' THEN 'VMware NIC seen on network' WHEN 'network_device' THEN 'Device seen on network' WHEN 'appliance_ad_account' THEN 'Appliance with an AD account' WHEN 'duplicate_of_managed' THEN 'Same name as a managed host' WHEN 'secondary_ip_of_managed' THEN 'Extra IP of a managed host' WHEN 'service_account' THEN 'Service account (gMSA/MSA)' WHEN 'cluster_name' THEN 'Cluster / listener name' WHEN 'out_of_scope' THEN 'Outside this Falcon tenant' WHEN 'disabled_ad_account' THEN 'Disabled AD computer account' WHEN 'stale_ad_account' THEN 'AD account, no logon in 60+ days' ELSE COALESCE(x.discovery_class, 'unclassified') END, x.os_version, x.last_seen::date, x.description FROM assets x WHERE ${focus:sqlstring} = 'Missing a sensor' AND x.source = 'falcon_unmanaged' AND NOT x.retired AND x.site_label = ${dkey:sqlstring} AND x.discovery_class IN ('domain_controller_no_sensor', 'server_no_sensor', 'workstation_no_sensor', 'cloud_no_sensor') UNION ALL SELECT coalesce(v.hostname, '(no hostname)'), v.site_label, v.vendor_priority, NULL, v.first_found::date, v.title FROM vuln_findings v WHERE ${focus:sqlstring} = 'Potential risk' AND v.source = 'hadrian' AND v.state IN ('OPEN','REOPENED') AND v.risk_type = 'Potential' AND v.title = ${dkey:sqlstring} AND v.site_label IN ($site) ) d ORDER BY \"Site\", \"Name\" LIMIT 3000"
+        }
+      ],
+      "description": "What the cell you clicked counts. Opened directly it's empty. Export: panel menu (\u22ee) \u2192 Inspect \u2192 Data \u2192 Download CSV."
     }
   ]
 }

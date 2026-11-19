@@ -79,6 +79,28 @@
           "text": "All",
           "value": "$__all"
         }
+      },
+      {
+        "name": "dkey",
+        "type": "textbox",
+        "label": "Key",
+        "hide": 2,
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        }
+      },
+      {
+        "name": "focus",
+        "type": "textbox",
+        "label": "Showing",
+        "hide": 2,
+        "query": "All",
+        "current": {
+          "text": "All",
+          "value": "All"
+        }
       }
     ]
   },
@@ -1739,6 +1761,40 @@
                     ]
                   }
                 ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Findings"
+                },
+                "properties": [
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "List the hosts (carrying this kev cve)",
+                        "url": "/d/vuln-mgmt-core/?${site:queryparam}&var-dkey=${__data.fields[\"CVE\"]:percentencode}&var-focus=Carrying%20this%20KEV%20CVE&viewPanel=57"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Assets"
+                },
+                "properties": [
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "List the hosts (carrying this kev cve)",
+                        "url": "/d/vuln-mgmt-core/?${site:queryparam}&var-dkey=${__data.fields[\"CVE\"]:percentencode}&var-focus=Carrying%20this%20KEV%20CVE&viewPanel=57"
+                      }
+                    ]
+                  }
+                ]
               }
             ]
           },
@@ -2431,7 +2487,93 @@
           },
           "fieldConfig": {
             "defaults": {},
-            "overrides": []
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Crit"
+                },
+                "properties": [
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "List the hosts (with open findings in this product)",
+                        "url": "/d/vuln-mgmt-core/?${site:queryparam}&var-dkey=${__data.fields[\"Product\"]:percentencode}&var-focus=With%20open%20findings%20in%20this%20product&viewPanel=57"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "High"
+                },
+                "properties": [
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "List the hosts (with open findings in this product)",
+                        "url": "/d/vuln-mgmt-core/?${site:queryparam}&var-dkey=${__data.fields[\"Product\"]:percentencode}&var-focus=With%20open%20findings%20in%20this%20product&viewPanel=57"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Med"
+                },
+                "properties": [
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "List the hosts (with open findings in this product)",
+                        "url": "/d/vuln-mgmt-core/?${site:queryparam}&var-dkey=${__data.fields[\"Product\"]:percentencode}&var-focus=With%20open%20findings%20in%20this%20product&viewPanel=57"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Low"
+                },
+                "properties": [
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "List the hosts (with open findings in this product)",
+                        "url": "/d/vuln-mgmt-core/?${site:queryparam}&var-dkey=${__data.fields[\"Product\"]:percentencode}&var-focus=With%20open%20findings%20in%20this%20product&viewPanel=57"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Total"
+                },
+                "properties": [
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "List the hosts (with open findings in this product)",
+                        "url": "/d/vuln-mgmt-core/?${site:queryparam}&var-dkey=${__data.fields[\"Product\"]:percentencode}&var-focus=With%20open%20findings%20in%20this%20product&viewPanel=57"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
           },
           "options": {
             "showHeader": true,
@@ -2451,6 +2593,90 @@
           "description": "Open findings per product, by severity."
         }
       ]
+    },
+    {
+      "id": 55,
+      "type": "row",
+      "title": "Hosts behind a number",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 154,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 56,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 155,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Click **Findings** or **Assets** in the KEV table, or a count in **Top products**, to list the hosts here, full screen. Esc goes back. Products are listed live, so they can differ slightly from last night's snapshot. Export: panel menu (\u22ee) \u2192 Inspect \u2192 Data \u2192 Download CSV."
+      }
+    },
+    {
+      "id": 57,
+      "type": "table",
+      "title": "Hosts behind a number: ${focus} ${dkey}",
+      "gridPos": {
+        "x": 0,
+        "y": 157,
+        "w": 24,
+        "h": 12
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Crit"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT coalesce(h.hostname, x.source_asset_id) AS \"Host\", x.site_label AS \"Site\", h.os_version AS \"OS\", x.findings AS \"Findings\", x.crit AS \"Crit\", x.high AS \"High\", x.med AS \"Med\", x.low AS \"Low\", x.oldest AS \"Oldest (days)\", h.last_seen::date AS \"Last seen\" FROM ( SELECT source_asset_id, site_label, count(*) AS findings, count(*) FILTER (WHERE severity = 'critical') AS crit, count(*) FILTER (WHERE severity = 'high') AS high, count(*) FILTER (WHERE severity = 'medium') AS med, count(*) FILTER (WHERE severity = 'low') AS low, round(max(age_days)::numeric, 1) AS oldest FROM dash_vuln_kev_epss WHERE ${focus:sqlstring} = 'Carrying this KEV CVE' AND has_kev AND kev_cve_id = ${dkey:sqlstring} AND site_label IN ($site) GROUP BY 1, 2 UNION ALL SELECT source_asset_id, site_label, count(*), count(*) FILTER (WHERE severity = 'critical') AS crit, count(*) FILTER (WHERE severity = 'high') AS high, count(*) FILTER (WHERE severity = 'medium') AS med, count(*) FILTER (WHERE severity = 'low') AS low, round(max(EXTRACT(EPOCH FROM now() - first_found) / 86400)::numeric, 1) FROM vuln_findings WHERE ${focus:sqlstring} = 'With open findings in this product' AND state IN ('OPEN','REOPENED') AND last_found >= now() - interval '30 days' AND coalesce(product_key, 'Unknown') = ${dkey:sqlstring} AND site_label IN ($site) GROUP BY 1, 2) x LEFT JOIN LATERAL (SELECT hostname, os_version, last_seen FROM assets WHERE source_asset_id = x.source_asset_id ORDER BY retired, last_seen DESC NULLS LAST LIMIT 1) h ON true ORDER BY x.crit DESC, x.high DESC, x.findings DESC LIMIT 3000"
+        }
+      ],
+      "description": "The hosts behind the cell you clicked: for a KEV CVE, hosts carrying it; for a product, hosts with open findings in it (seen in the last 30 days, as the snapshot counts them). Opened directly it's empty. Export: panel menu (\u22ee) \u2192 Inspect \u2192 Data \u2192 Download CSV."
     }
   ]
 }

@@ -196,6 +196,61 @@ STALE_PCT = [{"color": "green", "value": None}, {"color": "orange", "value": 10}
 HOVER = "Hover the **i** on any panel for exactly what it counts."
 
 
+# ---------------------------------------------------------------------
+#  Drill-down: click a count, get the list behind it
+# ---------------------------------------------------------------------
+# A count cell links back to its own dashboard with hidden textbox variables set
+# (`focus` = which count, plus a key such as the patch group, OS or CVE) and the
+# drill panel opened full screen (`viewPanel`; Grafana 10.x takes the numeric id).
+# The drill panel's WHERE is `focus_case()`: for each focus, the same condition the
+# clicked column counts, so the list always matches the number.
+# reporting.days_last_seen's default: the nightly product snapshot counts open findings seen this recently
+DAYS_LAST_SEEN = 30
+EXPORT_HINT = "Export: panel menu (⋮) → Inspect → Data → Download CSV."
+
+
+def fld(name):
+    """A data-link reference to the clicked row's value in column `name`, URL-encoded."""
+    return '${__data.fields["%s"]:percentencode}' % name
+
+
+def textbox_var(name, label, default=""):
+    """Hidden variable a drill link sets (textbox, so any value from the URL is accepted)."""
+    return {"name": name, "type": "textbox", "label": label, "hide": 2, "query": default,
+            "current": {"text": default, "value": default}}
+
+
+def focus_case(focus_map, key_var="dkey"):
+    """SQL condition: the entry of `focus_map` named by $focus. `$KEY` in an entry is the
+    quoted value of `key_var`. Values arrive via :sqlstring, so quotes are escaped."""
+    whens = " ".join("WHEN '%s' THEN (%s)" % (k.replace("'", "''"), v.replace("$KEY", "${%s:sqlstring}" % key_var))
+                     for k, v in focus_map.items())
+    return "CASE ${focus:sqlstring} %s ELSE false END" % whens
+
+
+def drill_links(panel, uid, drill_id, cols, set_vars, keep=("site",), noun="these"):
+    """Make each column in `cols` (column -> focus) a link that opens the drill panel.
+    `set_vars`: variable -> value expression (fld(...) or a literal) for the link to set.
+    `keep`: multi-value variables carried over as they are."""
+    for col, focus in cols.items():
+        parts = ["${%s:queryparam}" % v for v in keep]
+        parts += ["var-%s=%s" % (k, v) for k, v in set_vars.items()]
+        parts += ["var-focus=" + quote(focus), "viewPanel=%d" % drill_id]
+        panel["fieldConfig"]["overrides"].append({
+            "matcher": {"id": "byName", "options": col},
+            "properties": [{"id": "links", "value": [{"title": f"List {noun} ({focus.lower()})",
+                                                      "url": f"/d/{uid}/?" + "&".join(parts)}]}]})
+
+
+def site_links(panel, cols):
+    """Overview-style links: column -> dashboard uid, opened filtered to the clicked row's site."""
+    for col, uid in cols.items():
+        panel["fieldConfig"]["overrides"].append({
+            "matcher": {"id": "byName", "options": col},
+            "properties": [{"id": "links", "value": [{"title": "Open for this site",
+                                                      "url": f"/d/{uid}/?var-site={fld('Site')}&${{__url_time_range}}"}]}]})
+
+
 def dashboard(uid, title, description, b: Builder, help=None, tags=(), time_from="now-30d", extra_vars=()):
     """`help`: panel title -> description, for panels that don't set their own -- kept
     together per dashboard so the definitions read as one glossary."""
@@ -287,7 +342,7 @@ def overview():
 
     b.row("Site scorecard", note="One row per site, worst KEV exposure first. Vulnerability columns are as at the "
           "last nightly run; email and DMARC follow the time picker; the rest are live.")
-    b.table("Site scorecard", """
+    scorecard = b.table("Site scorecard", """
         WITH v AS (
             SELECT site_label,
                    sum(n) FILTER (WHERE severity IN ('critical','high') AND source <> 'hadrian') AS ep_ch,
@@ -417,6 +472,11 @@ def overview():
             (SELECT 'external asset', name, 'ips=' || array_to_string(ips, ',')
              FROM external_assets WHERE NOT retired AND site_matched_by = 'none' LIMIT 25)
         ) x""", h=9)
+    site_links(scorecard, {"Site": "secops-overview", "Endpoint C+H": "vuln-mgmt-core",
+                           "External C+H": "vuln-mgmt-core", "KEV": "vuln-mgmt-core", "SLA breaches": "vuln-mgmt-core",
+                           "Open C+H alerts": "secops-endpoint-identity", "High-risk IDs": "secops-endpoint-identity",
+                           "Email threats": "secops-email-external", "DMARC pass %": "secops-email-external",
+                           "Sensors not reporting": "secops-worklist", "Unmanaged": "secops-worklist"})
     return dashboard("secops-overview", "SecOps Overview",
                      "Cross-feed security posture per site: vulns, detections, identity, email, DMARC, coverage.", b,
                      help=OVERVIEW_HELP)
@@ -1008,7 +1068,7 @@ def worklist():
         SELECT count(*) FROM assets WHERE NOT retired AND site_label = 'Ungrouped'""", thresholds=BAD_UP,
            description="Managed + unmanaged hosts no site rule matched (ignores the Site filter). Fix with "
                        "falcon_groups / ou_contains / hostname_regex in config.yaml.")
-    b.table("Coverage by site", f"""
+    coverage = b.table("Coverage by site", f"""
         SELECT s.site_label AS "Site", COALESCE(a.active,0) AS "Active hosts",
                COALESCE(a.assessed,0) AS "Assessed",
                round(100.0 * COALESCE(a.assessed,0) / NULLIF(a.active,0), 1) AS "% assessed",
@@ -1127,7 +1187,7 @@ def worklist():
         SELECT count(*) FROM vuln_findings WHERE source = 'hadrian' AND state = 'REOPENED'
           AND site_label IN ($site)""", thresholds=BAD_UP,
            description="Risks marked fixed that Hadrian found again -- the fix didn't hold.")
-    b.table("Triage queue: potential risks by title", """
+    triage = b.table("Triage queue: potential risks by title", """
         SELECT title AS "Risk", max(plugin_family) AS "Category", max(vendor_priority) AS "Severity",
                count(*) AS "Open", count(DISTINCT site_label) AS "Sites", min(first_found)::date AS "Oldest"
         FROM vuln_findings WHERE source = 'hadrian' AND state IN ('OPEN','REOPENED') AND risk_type = 'Potential'
@@ -1221,8 +1281,37 @@ def worklist():
         GROUP BY 1, 2, 3 HAVING sum(messages - dmarc_pass) > 0 ORDER BY 4 DESC LIMIT 50""", w=12, h=9,
             description="Legitimate senders failing here need SPF/DKIM set up; unknown ones are spoofing.")
 
+    b.row("Behind a number", note="Click **Sensors not reporting** or **Missing a sensor** in Coverage by site, "
+          "or **Open** in the Hadrian triage queue, to list what it counts here, full screen. Esc goes back. "
+          + EXPORT_HINT)
+    drill = b.table("Behind a number", f"""
+        SELECT * FROM (
+          SELECT x.hostname AS "Name", x.site_label AS "Site", x.product_type AS "Detail", x.os_version AS "OS",
+                 x.last_seen::date AS "Last seen / first found", array_to_string(x.groups, ', ') AS "Host groups / asset"
+          FROM assets x WHERE ${{focus:sqlstring}} = 'Sensors not reporting' AND x.source = 'falcon'
+            AND NOT x.retired AND x.site_label = ${{dkey:sqlstring}} AND {sh.not_reporting_sql("x")}
+          UNION ALL
+          SELECT coalesce(x.hostname, '(no hostname)'), x.site_label, {dc.sql_case("x.discovery_class")}, x.os_version,
+                 x.last_seen::date, x.description
+          FROM assets x WHERE ${{focus:sqlstring}} = 'Missing a sensor' AND x.source = 'falcon_unmanaged'
+            AND NOT x.retired AND x.site_label = ${{dkey:sqlstring}}
+            AND x.discovery_class IN {dc.sql_in(dc.NAMED_MACHINES)}
+          UNION ALL
+          SELECT coalesce(v.hostname, '(no hostname)'), v.site_label, v.vendor_priority, NULL, v.first_found::date,
+                 v.title
+          FROM vuln_findings v WHERE ${{focus:sqlstring}} = 'Potential risk' AND v.source = 'hadrian'
+            AND v.state IN ('OPEN','REOPENED') AND v.risk_type = 'Potential' AND v.title = ${{dkey:sqlstring}}
+            AND v.site_label IN ($site)
+        ) d ORDER BY "Site", "Name" LIMIT 3000""", h=12)
+    drill["title"] = "Behind a number: ${focus} ${dkey}"
+    drill["description"] = "What the cell you clicked counts. Opened directly it's empty. " + EXPORT_HINT
+    drill_links(coverage, "secops-worklist", drill["id"], {"Sensors not reporting": "Sensors not reporting",
+                "Missing a sensor": "Missing a sensor"}, {"dkey": fld("Site")}, noun="the machines")
+    drill_links(triage, "secops-worklist", drill["id"], {"Open": "Potential risk"}, {"dkey": fld("Risk")},
+                noun="the assets")
     return dashboard("secops-worklist", "SecOps Cyber Team Worklist",
-                     "Coverage gaps, data quality and triage queues for the cyber team", b, help=WORKLIST_HELP)
+                     "Coverage gaps, data quality and triage queues for the cyber team", b, help=WORKLIST_HELP,
+                     extra_vars=[textbox_var("dkey", "Key"), textbox_var("focus", "Showing", "All")])
 
 # =====================================================================
 #  5. Vulnerability Management
@@ -1387,7 +1476,7 @@ def vuln():
                sum(kev_ransomware_total) AS "Ransomware-Flagged"
         FROM daily_kev_metrics WHERE site_label IN ($site) AND {rng_d('snapshot_date::date')}
         GROUP BY snapshot_date ORDER BY time""", w=24, colors={"Open KEV": "red", "Ransomware-Flagged": "dark-red"})
-    b.table("Open KEV findings by CVE (soonest due first)", """
+    kev_cves = b.table("Open KEV findings by CVE (soonest due first)", """
         SELECT kev_cve_id AS "CVE",
                mode() WITHIN GROUP (ORDER BY product_family) FILTER (WHERE product_family IS NOT NULL) AS "Application",
                round(max(cvss_score)::numeric,1) AS "CVSS", max(kev_due_date) AS "KEV Due",
@@ -1470,16 +1559,53 @@ def vuln():
 
     b.row("Products", collapsed=True, note="Open findings by product from the latest snapshot -- where the backlog "
           "actually sits.")
-    b.table("Top products by open findings (latest snapshot)", """
+    products = b.table("Top products by open findings (latest snapshot)", """
         SELECT product AS "Product", vendor AS "Vendor", product_family AS "Family", sum(open_crit) AS "Crit",
                sum(open_high) AS "High", sum(open_medium) AS "Med", sum(open_low) AS "Low", sum(open_total) AS "Total"
         FROM daily_product_metrics WHERE site_label IN ($site)
           AND snapshot_date = (SELECT max(snapshot_date) FROM daily_product_metrics)
         GROUP BY product, vendor, product_family ORDER BY "Total" DESC LIMIT 15""", h=10)
+
+    b.row("Hosts behind a number", note="Click **Findings** or **Assets** in the KEV table, or a count in **Top "
+          "products**, to list the hosts here, full screen. Esc goes back. Products are listed live, so they can "
+          "differ slightly from last night's snapshot. " + EXPORT_HINT)
+    sev = ("count(*) FILTER (WHERE severity = 'critical') AS crit, count(*) FILTER (WHERE severity = 'high') AS high, "
+           "count(*) FILTER (WHERE severity = 'medium') AS med, count(*) FILTER (WHERE severity = 'low') AS low")
+    drill = b.table("Hosts behind a number", f"""
+        SELECT coalesce(h.hostname, x.source_asset_id) AS "Host", x.site_label AS "Site", h.os_version AS "OS",
+               x.findings AS "Findings", x.crit AS "Crit", x.high AS "High", x.med AS "Med", x.low AS "Low",
+               x.oldest AS "Oldest (days)", h.last_seen::date AS "Last seen"
+        FROM (
+          SELECT source_asset_id, site_label, count(*) AS findings, {sev}, round(max(age_days)::numeric, 1) AS oldest
+          FROM dash_vuln_kev_epss
+          WHERE ${{focus:sqlstring}} = 'Carrying this KEV CVE' AND has_kev AND kev_cve_id = ${{dkey:sqlstring}}
+            AND site_label IN ($site)
+          GROUP BY 1, 2
+          UNION ALL
+          SELECT source_asset_id, site_label, count(*), {sev},
+                 round(max(EXTRACT(EPOCH FROM now() - first_found) / 86400)::numeric, 1)
+          FROM vuln_findings
+          WHERE ${{focus:sqlstring}} = 'With open findings in this product' AND state IN ('OPEN','REOPENED')
+            AND last_found >= now() - interval '{DAYS_LAST_SEEN} days'
+            AND coalesce(product_key, 'Unknown') = ${{dkey:sqlstring}} AND site_label IN ($site)
+          GROUP BY 1, 2) x
+        LEFT JOIN LATERAL (SELECT hostname, os_version, last_seen FROM assets
+                           WHERE source_asset_id = x.source_asset_id ORDER BY retired, last_seen DESC NULLS LAST
+                           LIMIT 1) h ON true
+        ORDER BY x.crit DESC, x.high DESC, x.findings DESC LIMIT 3000""", h=12, overrides=[bg("Crit")])
+    drill["title"] = "Hosts behind a number: ${focus} ${dkey}"
+    drill["description"] = ("The hosts behind the cell you clicked: for a KEV CVE, hosts carrying it; for a "
+                            "product, hosts with open findings in it (seen in the last %d days, as the snapshot "
+                            "counts them). Opened directly it's empty. %s" % (DAYS_LAST_SEEN, EXPORT_HINT))
+    drill_links(kev_cves, "vuln-mgmt-core", drill["id"], {"Findings": "Carrying this KEV CVE",
+                "Assets": "Carrying this KEV CVE"}, {"dkey": fld("CVE")}, noun="the hosts")
+    drill_links(products, "vuln-mgmt-core", drill["id"], {c: "With open findings in this product" for c in
+                ("Crit", "High", "Med", "Low", "Total")}, {"dkey": fld("Product")}, noun="the hosts")
     return dashboard("vuln-mgmt-core", "Vulnerability Management",
                      "Site/severity trending, SLA compliance, CISA KEV exposure, worst-devices hit list and MTTR across "
                      "every vulnerability source in vuln_findings (Falcon Exposure Management endpoints + Hadrian "
-                     "external).", b, help=VULN_HELP, tags=("kev", "mttr", "vuln-management"), time_from="now-90d")
+                     "external).", b, help=VULN_HELP, tags=("kev", "mttr", "vuln-management"), time_from="now-90d",
+                     extra_vars=[textbox_var("dkey", "Key"), textbox_var("focus", "Showing", "All")])
 
 
 # =====================================================================
@@ -1520,6 +1646,27 @@ SRV_BASE = ("assets a LEFT JOIN host_patch_status p ON p.aid = a.source_asset_id
 SRV_WHERE = ("a.source = 'falcon' AND NOT a.retired AND a.product_type IN ('server','domain_controller') "
              "AND a.last_seen > now() - interval '7 days' AND a.site_label IN ($site)")
 DAYS_PATCHED = "floor(EXTRACT(EPOCH FROM now() - p.last_patch_confirmed) / 86400)::int"
+# Drill-down (servers()). SRV_ANY drops the 7-day activity test because "What to fix" counts every
+# non-retired server; the OS counts are active-only, so their focuses add it back.
+SRV_ANY = ("a.source = 'falcon' AND NOT a.retired AND a.product_type IN ('server','domain_controller') "
+           "AND a.site_label IN ($site)")
+_OS = "a.last_seen > now() - interval '7 days' AND coalesce(a.os_version, '') = $KEY"
+_SRV_FINDING = ("EXISTS (SELECT 1 FROM vuln_findings vf WHERE vf.source = 'falcon_spotlight' "
+                "AND vf.source_asset_id = a.source_asset_id AND vf.state IN ('OPEN','REOPENED') "
+                "AND vf.severity IN ('critical','high') AND %s)")
+SRV_FOCUS = {
+    "On this OS": _OS,
+    "On this OS, not patched 35+ days": _OS + " AND p.last_patch_confirmed < now() - interval '35 days'",
+    "On this OS, not patched 90+ days": _OS + " AND p.last_patch_confirmed < now() - interval '90 days'",
+    "On this OS, reboot pending": _OS + " AND p.reboot_required",
+    "On this OS, up 35+ days": _OS + " AND a.last_reboot < now() - interval '35 days'",
+    "On this OS, no patch data": _OS + " AND p.last_patch_confirmed IS NULL",
+    "Missing this fix": _SRV_FINDING % "vf.fix_title = $KEY",
+    "Running this product": _SRV_FINDING % "vf.product_family = $KEY",
+}
+SRV_OS_DRILL = {"Servers": "On this OS", "Not patched 35+ d": "On this OS, not patched 35+ days",
+                "90+ d": "On this OS, not patched 90+ days", "Reboot pending": "On this OS, reboot pending",
+                "Up 35+ d": "On this OS, up 35+ days", "No patch data": "On this OS, no patch data"}
 DAYS_UP = "floor(EXTRACT(EPOCH FROM now() - a.last_reboot) / 86400)::int"
 DB_FAMILIES = ("'Microsoft SQL & Data Platform', 'PostgreSQL', 'MySQL / MariaDB', 'Oracle Database', "
                "'Java Runtime (JRE/JDK)', 'Apache Tomcat', 'Microsoft .NET Core / ASP.NET', 'Java / Middleware - Log4j', "
@@ -1555,7 +1702,7 @@ def servers():
                       ELSE '5 over 180 days' END AS band
           FROM {SRV_BASE} WHERE {SRV_WHERE}) x
         GROUP BY band ORDER BY band""", w=8, h=8, thresholds=[{"color": "orange", "value": None}])
-    b.table("Patching by OS version", f"""
+    by_os = b.table("Patching by OS version", f"""
         SELECT a.os_version AS "OS", count(*) AS "Servers",
                percentile_disc(0.5) WITHIN GROUP (ORDER BY {DAYS_PATCHED}) AS "Median days since patched",
                count(*) FILTER (WHERE p.last_patch_confirmed < now() - interval '35 days') AS "Not patched 35+ d",
@@ -1591,13 +1738,13 @@ def servers():
                     "AND a.product_type IN ('server','domain_controller') AND NOT a.retired "
                     "WHERE vf.source = 'falcon_spotlight' AND vf.state IN ('OPEN','REOPENED') "
                     "AND vf.severity IN ('critical','high') AND a.site_label IN ($site)")
-    b.table("Top missing fixes on servers", f"""
+    srv_fixes = b.table("Top missing fixes on servers", f"""
         SELECT vf.fix_title AS "Fix", max(vf.product_family) AS "Product",
                count(DISTINCT vf.source_asset_id) AS "Servers", count(*) AS "Crit/high findings",
                count(*) FILTER (WHERE vf.severity = 'critical') AS "Critical"
         FROM {srv_findings} AND vf.fix_title IS NOT NULL
         GROUP BY 1 ORDER BY 3 DESC, 4 DESC LIMIT 25""", w=12, h=10, overrides=[bg("Servers")])
-    b.table("Applications on servers", f"""
+    srv_apps = b.table("Applications on servers", f"""
         SELECT vf.product_family AS "Product family", count(DISTINCT vf.source_asset_id) AS "Servers",
                count(*) FILTER (WHERE vf.severity = 'critical') AS "Critical", count(*) FILTER (WHERE vf.severity = 'high') AS "High"
         FROM {srv_findings} AND vf.product_family NOT LIKE 'Microsoft Windows OS%%'
@@ -1612,6 +1759,31 @@ def servers():
               GROUP BY 1, 2, 3) x
         LEFT JOIN host_patch_status p ON p.aid = x.source_asset_id
         ORDER BY x.crit DESC, x.high DESC LIMIT 300""", h=9, overrides=[bg("Critical")])
+
+    b.row("Servers behind a number", note="Click a count in **Patching by OS version**, **Top missing fixes** "
+          "or **Applications on servers** to list the servers it counts here, full screen. Esc goes back. "
+          + EXPORT_HINT)
+    drill = b.table("Servers behind a number", f"""
+        SELECT a.hostname AS "Server", a.site_label AS "Site", a.os_version AS "OS",
+               {DAYS_PATCHED} AS "Days since patched", p.reboot_required AS "Reboot pending",
+               p.pending_patches AS "Pending patches", {DAYS_UP} AS "Days up",
+               r.open_critical AS "Crit", r.open_high AS "High", r.open_kev_count AS "KEV",
+               CASE WHEN a.product_type = 'domain_controller' THEN 'DC' ELSE i.form_factor END AS "Type",
+               a.last_seen::date AS "Last seen", a.ous[1] AS "OU"
+        FROM {SRV_BASE} WHERE {SRV_ANY} AND {focus_case(SRV_FOCUS)}
+        ORDER BY r.open_kev_count DESC NULLS LAST, r.open_critical DESC NULLS LAST, p.last_patch_confirmed NULLS FIRST
+        LIMIT 3000""", h=12,
+            overrides=[thresh_bg("Days since patched", [{"color": "transparent", "value": None},
+                                                        {"color": "orange", "value": 36}, {"color": "red", "value": 91}]),
+                       thresh_bg("KEV", [{"color": "transparent", "value": None}, {"color": "red", "value": 1}])])
+    drill["title"] = "Servers behind a number: ${focus} ${dkey}"
+    drill["description"] = ("The servers counted in the cell you clicked. Opened directly it's empty: click a "
+                            "count above. " + EXPORT_HINT)
+    drill_links(by_os, "secops-servers", drill["id"], SRV_OS_DRILL, {"dkey": fld("OS")}, noun="these servers")
+    drill_links(srv_fixes, "secops-servers", drill["id"], {c: "Missing this fix" for c in
+                ("Servers", "Crit/high findings", "Critical")}, {"dkey": fld("Fix")}, noun="these servers")
+    drill_links(srv_apps, "secops-servers", drill["id"], {c: "Running this product" for c in
+                ("Servers", "Critical", "High")}, {"dkey": fld("Product family")}, noun="these servers")
 
     b.row("Capacity and health", note="From Falcon's system insights (refreshed nightly): disk is the fullest "
           "reported volume, CPU and memory are Falcon's recent averages.")
@@ -1654,7 +1826,8 @@ def servers():
         ORDER BY CASE discovery_class WHEN 'domain_controller_no_sensor' THEN 1 WHEN 'server_no_sensor' THEN 2
                                       ELSE 3 END, site_label, hostname""", h=10)
     return dashboard("secops-servers", "Servers", "Server patching, reboots, risk, applications and capacity for the "
-                     "infrastructure, applications and database teams.", b, help=SERVERS_HELP)
+                     "infrastructure, applications and database teams.", b, help=SERVERS_HELP,
+                     extra_vars=[textbox_var("dkey", "Key"), textbox_var("focus", "Showing", "All")])
 
 
 # =====================================================================
@@ -1853,18 +2026,14 @@ PC_TEAM_DRILL = {"Servers": "All", "Overdue": "Overdue", "Behind 35+ d": "Behind
                  "Reboot pending": "Reboot pending after deadline", "In window now": "In window now",
                  "No patch group": "No patch group", "Servers with KEV": "With KEV",
                  "Critical on off-track servers": "Off track"}
-
-
-def pc_drill_links(panel, drill_id, cols, by_team):
-    """Turn the count columns of `panel` into links that open the drill panel for that cell."""
-    for col, focus in cols.items():
-        scope = ("var-team=${__data.fields.Team:percentencode}&var-pgroup=" if by_team else
-                 '${team:queryparam}&var-pgroup=${__data.fields["Patch group"]:percentencode}')
-        url = (f"/d/secops-patch-compliance/?${{site:queryparam}}&{scope}&var-focus={quote(focus)}"
-               f"&viewPanel={drill_id}")
-        panel["fieldConfig"]["overrides"].append({
-            "matcher": {"id": "byName", "options": col},
-            "properties": [{"id": "links", "value": [{"title": f"List these servers ({focus.lower()})", "url": url}]}]})
+# same filter as "Top missing fixes on servers not on track" (crit/high, open, Falcon)
+PC_FOCUS["Missing this fix, not on track"] = (
+    "st.judged AND NOT st.on_track AND EXISTS (SELECT 1 FROM vuln_findings vf WHERE vf.source = 'falcon_spotlight' "
+    "AND vf.source_asset_id = c.aid AND vf.state IN ('OPEN','REOPENED') AND vf.severity IN ('critical','high') "
+    "AND vf.fix_title = ${pfix:sqlstring})")
+PC_FIX_DRILL = {"Servers": "Missing this fix, not on track", "Crit/high findings": "Missing this fix, not on track",
+                "Critical": "Missing this fix, not on track"}
+PC_UID = "secops-patch-compliance"
 PC_BASE = ("server_patch_compliance c JOIN server_patch_compliance_status st USING (status) "
            "LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid")
 PC_TEAM = "EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team))"
@@ -1969,7 +2138,7 @@ def patch_compliance():
         ORDER BY c.days_since_patched DESC NULLS FIRST, r.open_kev_count DESC NULLS LAST LIMIT 500""", w=12, h=10,
             overrides=[thresh_bg("Days since patched", PC_DAYS),
                        thresh_bg("KEV", [{"color": "transparent", "value": None}, {"color": "red", "value": 1}])])
-    b.table("Top missing fixes on servers not on track", f"""
+    top_fixes = b.table("Top missing fixes on servers not on track", f"""
         SELECT vf.fix_title AS "Fix", max(vf.product_family) AS "Product",
                count(DISTINCT vf.source_asset_id) AS "Servers", count(*) AS "Crit/high findings",
                count(*) FILTER (WHERE vf.severity = 'critical') AS "Critical",
@@ -1996,8 +2165,8 @@ def patch_compliance():
                         WHERE trim(t) IN ($team))
         ) x ORDER BY "Problem", "Server" """, w=10, h=10)
 
-    b.row("Servers behind a number", note="Click a count in **By patch group** or **By team** to list the servers "
-          "it counts here, full screen. Esc goes back.")
+    b.row("Servers behind a number", note="Click a count in **By patch group**, **By team** or **Top missing "
+          "fixes** to list the servers it counts here, full screen. Esc goes back. " + EXPORT_HINT)
     focus_sql = " ".join(f"WHEN '{k}' THEN {v}" for k, v in PC_FOCUS.items())
     drill = b.table("Servers behind a number", f"""
         SELECT c.hostname AS "Server", c.status AS "Status", c.team AS "Team", c.site_label AS "Site",
@@ -2013,10 +2182,14 @@ def patch_compliance():
         LIMIT 3000""", h=12,
             overrides=[status_cell(), thresh_bg("Days since patched", PC_DAYS),
                        thresh_bg("KEV", [{"color": "transparent", "value": None}, {"color": "red", "value": 1}])])
-    drill["title"] = "Servers behind a number: ${focus} ${pgroup}"
-    drill["description"] = PC_HELP["Servers behind a number"]
-    pc_drill_links(by_group, drill["id"], PC_GROUP_DRILL, by_team=False)
-    pc_drill_links(by_team, drill["id"], PC_TEAM_DRILL, by_team=True)
+    drill["title"] = "Servers behind a number: ${focus} ${pgroup}${pfix}"
+    drill["description"] = PC_HELP["Servers behind a number"] + " " + EXPORT_HINT
+    drill_links(by_group, PC_UID, drill["id"], PC_GROUP_DRILL, keep=("site", "team"), noun="these servers",
+                set_vars={"pgroup": fld("Patch group"), "pfix": ""})
+    drill_links(by_team, PC_UID, drill["id"], PC_TEAM_DRILL, noun="these servers",
+                set_vars={"team": fld("Team"), "pgroup": "", "pfix": ""})
+    drill_links(top_fixes, PC_UID, drill["id"], PC_FIX_DRILL, keep=("site", "team"), noun="these servers",
+                set_vars={"pgroup": "", "pfix": fld("Fix")})
 
     b.row("All servers")
     b.table("All servers", f"""
@@ -2036,10 +2209,8 @@ def patch_compliance():
                 "definition": "teams from server_patch_compliance", "refresh": 1, "sort": 0,
                 "multi": True, "includeAll": True, "current": {"text": "All", "value": "$__all"}}
     # hidden, set by the drill links (textbox so any value from the URL is accepted; quoted with :sqlstring)
-    drill_vars = [{"name": "pgroup", "type": "textbox", "label": "Patch group", "hide": 2, "query": "",
-                   "current": {"text": "", "value": ""}},
-                  {"name": "focus", "type": "textbox", "label": "Showing", "hide": 2, "query": "All",
-                   "current": {"text": "All", "value": "All"}}]
+    drill_vars = [textbox_var("pgroup", "Patch group"), textbox_var("pfix", "Fix"),
+                  textbox_var("focus", "Showing", "All")]
     return dashboard("secops-patch-compliance", "Server patch compliance",
                      "Servers patched in line with their SCCM schedule, per team: overdue servers, missed cycles, "
                      "schedule gaps.", b, help=PC_HELP, extra_vars=[team_var, *drill_vars])
