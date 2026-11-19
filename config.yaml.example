@@ -411,5 +411,10 @@ database:
 
 grafana:
   url: "http://127.0.0.1:3000"
+  # api_token -> secrets.yaml (service account, Editor, in the main org): grafana/push_dashboards.py
+  # Remediation org for technician teams (knowledge-base/grafana-access.md). Name of a Postgres
+  # role a DBA has created; the schema code then gives it read access to the `remediation` views
+  # only. Leave unset until that role exists. remediation_api_token -> secrets.yaml.
+  # remediation_role: "grafana_remediation"
 
 secrets_file: "secrets.yaml"

@@ -110,6 +110,26 @@ falcon_tag_sync: {client_id: tcid, client_secret: tsec}
 failures = []
 
 
+SITE_VALS = "'Riverside Health','Lakeside Health','Ungrouped'"
+
+
+def dash_sql(sql):
+    """Dashboard SQL with Grafana's variables and macros substituted, runnable in plain Postgres."""
+    sql = (sql.replace("$site", SITE_VALS).replace("${site:sqlstring}", SITE_VALS)
+           .replace("$team", "'Systems','Cyber','Power BI','(no team)'")
+           .replace("$source", "'falcon_spotlight','hadrian'")
+           .replace("$__timeFilter(", "TRUE OR (").replace("$__timeFrom()", "now()-interval '30 days'")
+           .replace("$__timeTo()", "now()")
+           .replace("${__from:date}", (dt.date.today() - dt.timedelta(days=30)).isoformat())
+           .replace("${__to:date}", dt.date.today().isoformat())
+           # patch compliance drill-down variables (textbox, quoted by Grafana's :sqlstring)
+           .replace("${pgroup:sqlstring}", "'Tier 1'").replace("${focus:sqlstring}", "'Overdue'")
+           .replace("${pfix:sqlstring}", "''").replace("${dkey:sqlstring}", "'x'"))
+    sql = re.sub(r"\$__timeGroupAlias\(([^,]+),[^)]+\)", r"date_trunc('day', \1) AS time", sql)
+    sql = re.sub(r"\$__timeGroup\(([^,]+),[^)]+\)", r"date_trunc('day', \1)", sql)
+    return sql
+
+
 def check(cond, msg):
     print(("  PASS " if cond else "  FAIL ") + msg)
     if not cond:
@@ -669,7 +689,6 @@ def main() -> int:
             for p in ps:
                 yield p
                 yield from walk(p.get("panels", []))
-        site_vals = "'Riverside Health','Lakeside Health','Ungrouped'"
         for v in d.get("templating", {}).get("list", []):
             if v.get("type") == "query" and v.get("query"):
                 try:
@@ -684,18 +703,7 @@ def main() -> int:
                 sql = t.get("rawSql")
                 if not sql:
                     continue
-                sql = (sql.replace("$site", site_vals).replace("${site:sqlstring}", site_vals)
-                       .replace("$team", "'Systems','Cyber','Power BI','(no team)'")
-                       .replace("$source", "'falcon_spotlight','hadrian'")
-                       .replace("$__timeFilter(", "TRUE OR (").replace("$__timeFrom()", "now()-interval '30 days'")
-                       .replace("$__timeTo()", "now()")
-                       .replace("${__from:date}", (dt.date.today() - dt.timedelta(days=30)).isoformat())
-                       .replace("${__to:date}", dt.date.today().isoformat())
-                       # patch compliance drill-down variables (textbox, quoted by Grafana's :sqlstring)
-                       .replace("${pgroup:sqlstring}", "'Tier 1'").replace("${focus:sqlstring}", "'Overdue'")
-                       .replace("${pfix:sqlstring}", "''").replace("${dkey:sqlstring}", "'x'"))
-                sql = re.sub(r"\$__timeGroupAlias\(([^,]+),[^)]+\)", r"date_trunc('day', \1) AS time", sql)
-                sql = re.sub(r"\$__timeGroup\(([^,]+),[^)]+\)", r"date_trunc('day', \1)", sql)
+                sql = dash_sql(sql)
                 try:
                     cur.execute(sql)
                     cur.fetchall()
@@ -704,6 +712,70 @@ def main() -> int:
                     conn.rollback()
                     check(False, f"{os.path.basename(path)} :: {p.get('title')} :: {e}".splitlines()[0])
     check(n > 0, f"{n} dashboard queries executed cleanly")
+
+    print("== remediation access (restricted Grafana login)")
+    import remediation_access as ra
+    conn.rollback()
+    cur.execute("DROP SCHEMA IF EXISTS remediation CASCADE")
+    cur.execute("DROP ROLE IF EXISTS e2e_remediation")
+    cur.execute("CREATE ROLE e2e_remediation NOLOGIN")
+    status = ra.ensure_views(cur, {"grafana": {"remediation_role": "e2e_remediation"}})
+    conn.commit()
+    check("views in schema remediation" in status, f"views created: {status}")
+    # every script start runs ensure_schema, whose DDL drops views underneath; access must come back
+    import db_schema as dbs
+    dbs.ensure_schema(cfg)
+    check("e2e_remediation" in ra.grantees(cur, "server_patch_compliance"),
+          "ensure_schema keeps the restricted views and grants (set aside and rebuilt)")
+    # the nightly dash_* swap must survive the views that depend on those tables, and keep the grants
+    check(run("rollup_daily_metrics.py", "--dashboard-tables-only") == 0, "dash_* rebuild runs with remediation views in place")
+    check("e2e_remediation" in ra.grantees(cur, "dash_asset_risk"), "rebuilt dash_* views keep the role's grant")
+    conn.commit()
+
+    def as_role(stmt):
+        cur.execute("SET ROLE e2e_remediation")
+        cur.execute("SET search_path = remediation, public")
+        try:
+            cur.execute(stmt)
+            return cur.fetchall()
+        finally:
+            conn.rollback()
+            cur.execute("RESET ROLE")
+            cur.execute("RESET search_path")
+    bad, ran = [], 0
+    for name in ra.DASHBOARDS:
+        d = json.load(open(os.path.join(ROOT, "grafana", name + ".json")))
+
+        def walk2(ps):
+            for p in ps:
+                yield p
+                yield from walk2(p.get("panels", []))
+        stmts = [(v.get("name"), v["query"]) for v in d.get("templating", {}).get("list", [])
+                 if v.get("type") == "query" and v.get("query")]
+        stmts += [(p.get("title"), dash_sql(t["rawSql"])) for p in walk2(d.get("panels", []))
+                  for t in p.get("targets", []) if t.get("rawSql")]
+        for title, stmt in stmts:
+            try:
+                as_role(stmt)
+                ran += 1
+            except Exception as e:
+                bad.append(f"{name} :: {title} :: {str(e).splitlines()[0]}")
+    for b in bad[:5]:
+        print("   ", b)
+    check(ran > 0 and not bad, f"remediation dashboards run as the restricted role ({ran} queries, {len(bad)} failed)")
+    for table in ("identity_entities", "security_alerts", "email_events", "impact_actions", "public.assets"):
+        try:
+            as_role(f"SELECT 1 FROM {table} LIMIT 1")
+            check(False, f"restricted role can't read {table}")
+        except Exception as e:
+            check("permission denied" in str(e), f"restricted role can't read {table}")
+    ws = as_role("SELECT count(*) FILTER (WHERE source = 'falcon' AND product_type = 'workstation'), "
+                 "count(*) FILTER (WHERE source = 'falcon_unmanaged'), "
+                 "count(*) FILTER (WHERE product_type IN ('server', 'domain_controller')) FROM assets")[0]
+    check(ws[0] == 0 and ws[2] > 0, f"restricted assets: no managed workstations, servers kept {ws}")
+    cur.execute("DROP SCHEMA remediation CASCADE")
+    cur.execute("DROP ROLE e2e_remediation")
+    conn.commit()
 
     print(f"\n{'ALL PASSED' if not failures else f'{len(failures)} FAILURE(S)'}")
     return 1 if failures else 0

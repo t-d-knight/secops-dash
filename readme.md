@@ -276,17 +276,11 @@ All `daily_*` history is kept, so trend lines show an honest step at cutover. Di
 * **`cvss.is_remote_no_auth`** no longer treats a missing exploitability field as "exploit available". The old repo has that bug; it only stayed hidden because Tenable always sent the field.
 * **Power BI:** `daily_site_metrics`, `daily_sla_metrics`, `daily_product_metrics` and the views keep their names and columns; the asset page that compared `cs_assets_raw` with `tn_assets_raw` should point at `assets` instead.
 
-## 9. Per-site access for site contacts
+## 9. Grafana access beyond the cyber team
 
-Sites get **reports, not Grafana**: the weekly/quarterly reports and monthly action packs and scorecards, published to each site's folder. Grafana stays with the cyber team, because Grafana OSS can't filter rows per user -- any viewer can send arbitrary SQL to the data source, and a locked dashboard variable can be edited out of the URL.
+Sites get **reports, not Grafana**. Grafana OSS can't filter rows per user: any viewer can send arbitrary SQL to the data source, and a locked dashboard variable can be edited out of the URL.
 
-If per-site dashboards are ever needed, the data is shaped for it (every table has `site_label`, `sites.contacts` holds each site's contacts) and the design would be **Postgres row-level security**:
-
-1. One login role per site (or one role plus `SET app.site = …`), and an RLS policy per table: `USING (site_label = current_setting('app.site'))` / `site_tag IN (SELECT … role mapping)`.
-2. One Grafana datasource per site using that role, and one Grafana **team + folder** per site with dashboards bound to that datasource.
-3. Site contacts sign in via Entra SSO, mapped to their team by group claim.
-
-The views (`fact_vuln_findings_current` etc.) need `security_invoker = true` so RLS applies through them (PG 15+).
+Remediation teams (infrastructure, applications, database) can get a separate **Remediation** Grafana org with the Servers, Server patch compliance and Vulnerability Management dashboards. Its data source logs in as a Postgres role that can only read a `remediation` schema of views (no identity, USB, email, alerts or managed workstations). That schema is maintained by `remediation_access.py` once `grafana.remediation_role` is set. Entra SSO and the rollout steps are in [knowledge-base/grafana-access.md](knowledge-base/grafana-access.md).
 
 ## 10. Testing
 

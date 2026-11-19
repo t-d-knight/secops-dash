@@ -65,6 +65,24 @@ Each entry heading is `### YYYY-MM-DD, <who> for <whom>: <what>`. In the entry:
 Keep entries short and link to the commit for detail. When the log passes about 300 lines, move entries
 older than a month to `docs/robots_fighting-archive.md`.
 
+### 2026-11-19, Claude for TK: Remediation org access (restricted DB views, two-org dashboard push)
+- **Status:** local commit, not pushed or deployed. Inactive until `grafana.remediation_role` is set and the
+  role exists.
+- **Changed:** Schema (`db_schema.py`: sets the `remediation` schema aside before the DDL and rebuilds it last,
+  in the same transaction), rollups (`rollup_daily_metrics.py`: the `dash_*` swap drops and recreates its
+  remediation views), new `remediation_access.py`, `grafana/push_dashboards.py` (pushes the three remediation
+  dashboards to a second org with `grafana.remediation_api_token`), e2e, example configs, readme section 9,
+  ops guide access table, `knowledge-base/grafana-access.md` (decisions, rollout, nested groups).
+  Decisions (TK): one Remediation org; servers, cloud, external and unsensored machines, not managed
+  workstations; upgrade Grafana first.
+- **Verified:** e2e, all passed, 154 checks. As a restricted role: 72 queries from the three dashboards run;
+  identity, alerts, email, action log and `public.assets` are refused; no managed workstation is visible;
+  access survives `ensure_schema` and the `dash_*` rebuild. Two-org push tested against a local fake Grafana
+  (main got 9 dashboards, remediation 3, each with its own data source).
+- **Not verified / open:** a real Grafana with two orgs; prod's Postgres version (the `REVOKE CREATE ON
+  SCHEMA public` step matters below 15); Entra setup. The `set_aside` / rebuild runs on every script start:
+  cheap (22 views), but it does mean DDL on every collector run while the role is configured.
+
 ### 2026-11-19, Claude for TK: Preview dashboard; Grafana access design for remediation teams
 - **Status:** local commit, not pushed or deployed. Once pushed, `deploy.sh` pushes the new dashboard with the
   rest.

@@ -40,6 +40,7 @@ import config as config_mod
 import db_schema
 import identity_categories as ic
 import os_lifecycle
+import remediation_access
 import sensor_health
 from db import pg_connect
 
@@ -750,11 +751,13 @@ def rebuild_dashboard_tables(cur) -> None:
         rows = cur.rowcount
         for i, cols in enumerate(indexes):
             cur.execute(f"CREATE INDEX {name}_new_i{i} ON {name}_new ({cols})")
+        kept = remediation_access.drop_view(cur, name)   # a view on the old table blocks DROP TABLE
         cur.execute(f"DROP TABLE IF EXISTS {name}")
         cur.execute(f"ALTER TABLE {name}_new RENAME TO {name}")
         for i in range(len(indexes)):
             cur.execute(f"ALTER INDEX {name}_new_i{i} RENAME TO {name}_i{i}")
         cur.execute(f"ANALYZE {name}")
+        remediation_access.recreate_view(cur, name, kept)
         print(f"[rollup] {name}: {rows:,} rows in {(dt.datetime.now() - t0).seconds}s")
 
 

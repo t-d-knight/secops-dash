@@ -24,6 +24,7 @@ place by the ALTER ... ADD COLUMN IF NOT EXISTS statements below.
 from typing import Any, Dict
 
 import cvss
+import remediation_access
 from db import pg_connect
 
 DDL_STATEMENTS = [
@@ -1239,9 +1240,14 @@ def ensure_schema(cfg: Dict[str, Any]) -> None:
     cur = conn.cursor()
     # serialise concurrent ensure_schema calls (cron overlap) -- DDL races otherwise
     cur.execute("SELECT pg_advisory_xact_lock(727274)")
+    remediation_roles = remediation_access.set_aside(cur)   # its views would block the DDL below
     for stmt in DDL_STATEMENTS:
         cur.execute(stmt)
     sync_sla_policy(cur, cfg)
     sync_sites(cur, cfg)
+    # last, in the same transaction as set_aside(), so the restricted login never sees them missing
+    status = remediation_access.ensure_views(cur, cfg, remediation_roles)
+    if "FAILED" in status or "doesn't exist" in status:
+        print(status)
     conn.commit()
     conn.close()

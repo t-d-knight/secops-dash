@@ -20,7 +20,7 @@ It answers three questions the vendor consoles can't answer on their own:
 | Infrastructure, applications and database teams | Weekly Servers report (PDF and Excel) | Weekly |
 | Executives and the board | Quarterly reports, with a cover note written by cyber management | Quarterly |
 
-Grafana is for the cyber team only. Everyone else gets reports, delivered to their site's file share or SharePoint folder.
+Grafana is for the cyber team. Remediation teams can be given a separate, restricted view (servers, patching and vulnerabilities only) once it's rolled out: see [grafana-access.md](grafana-access.md). Everyone else gets reports, delivered to their site's file share or SharePoint folder.
 
 ## What it does
 
@@ -187,7 +187,8 @@ The more named detail an output carries, the narrower its audience. Forward repo
 
 | Output | Contains | Who may see it |
 | --- | --- | --- |
-| Grafana dashboards | Everything, including names, hosts and accounts | Cyber team only. Any viewer can query all of the data, which is why sites don't get access. |
+| Grafana dashboards (SecOps org) | Everything, including names, hosts and accounts | Cyber team only. Any viewer can query all of the data, which is why sites don't get access. |
+| Grafana dashboards (Remediation org) | Servers, cloud and external assets, unsensored machines, their patching and vulnerabilities | Infrastructure, applications and database teams. Its database login can't read identity, USB, email, alerts or managed workstations. |
 | Region weekly and quarterly reports | Counts and trends; no person names | Cyber team, cyber management, IT leadership, executives |
 | Site weekly and quarterly reports | That site's counts; email addresses and people's names masked | That site's ICT contacts and management |
 | Action packs | Full account names, people, hosts, USB activity | That site's ICT contacts only |
