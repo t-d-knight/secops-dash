@@ -95,6 +95,28 @@
           "text": "All",
           "value": "$__all"
         }
+      },
+      {
+        "name": "pgroup",
+        "type": "textbox",
+        "label": "Patch group",
+        "hide": 2,
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        }
+      },
+      {
+        "name": "focus",
+        "type": "textbox",
+        "label": "Showing",
+        "hide": 2,
+        "query": "All",
+        "current": {
+          "text": "All",
+          "value": "All"
+        }
       }
     ]
   },
@@ -635,6 +657,74 @@
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Servers"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (all)",
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&${team:queryparam}&var-pgroup=${__data.fields[\"Patch group\"]:percentencode}&var-focus=All&viewPanel=24"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Patched"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (patched this window)",
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&${team:queryparam}&var-pgroup=${__data.fields[\"Patch group\"]:percentencode}&var-focus=Patched%20this%20window&viewPanel=24"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Reboot"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (reboot pending (any))",
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&${team:queryparam}&var-pgroup=${__data.fields[\"Patch group\"]:percentencode}&var-focus=Reboot%20pending%20%28any%29&viewPanel=24"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Overdue"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (overdue)",
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&${team:queryparam}&var-pgroup=${__data.fields[\"Patch group\"]:percentencode}&var-focus=Overdue&viewPanel=24"
+                  }
+                ]
+              }
+            ]
           }
         ]
       },
@@ -845,6 +935,142 @@
                 "value": {
                   "mode": "thresholds"
                 }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Servers"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (all)",
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&var-team=${__data.fields.Team:percentencode}&var-pgroup=&var-focus=All&viewPanel=24"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Overdue"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (overdue)",
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&var-team=${__data.fields.Team:percentencode}&var-pgroup=&var-focus=Overdue&viewPanel=24"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Behind 35+ d"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (behind 35+ days)",
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&var-team=${__data.fields.Team:percentencode}&var-pgroup=&var-focus=Behind%2035%2B%20days&viewPanel=24"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Reboot pending"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (reboot pending after deadline)",
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&var-team=${__data.fields.Team:percentencode}&var-pgroup=&var-focus=Reboot%20pending%20after%20deadline&viewPanel=24"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "In window now"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (in window now)",
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&var-team=${__data.fields.Team:percentencode}&var-pgroup=&var-focus=In%20window%20now&viewPanel=24"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "No patch group"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (no patch group)",
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&var-team=${__data.fields.Team:percentencode}&var-pgroup=&var-focus=No%20patch%20group&viewPanel=24"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Servers with KEV"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (with kev)",
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&var-team=${__data.fields.Team:percentencode}&var-pgroup=&var-focus=With%20KEV&viewPanel=24"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Critical on off-track servers"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "List these servers (off track)",
+                    "url": "/d/secops-patch-compliance/?${site:queryparam}&var-team=${__data.fields.Team:percentencode}&var-pgroup=&var-focus=Off%20track&viewPanel=24"
+                  }
+                ]
               }
             ]
           }
@@ -1198,7 +1424,7 @@
     {
       "id": 22,
       "type": "row",
-      "title": "All servers",
+      "title": "Servers behind a number",
       "collapsed": false,
       "gridPos": {
         "x": 0,
@@ -1210,11 +1436,207 @@
     },
     {
       "id": 23,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 53,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Click a count in **By patch group** or **By team** to list the servers it counts here, full screen. Esc goes back."
+      }
+    },
+    {
+      "id": 24,
+      "type": "table",
+      "title": "Servers behind a number: ${focus} ${pgroup}",
+      "gridPos": {
+        "x": 0,
+        "y": 55,
+        "w": 24,
+        "h": 12
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "${DS_POSTGRESQL}"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Overdue: past deadline": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "Behind: 35+ days": {
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "Patched, reboot pending": {
+                        "color": "orange",
+                        "index": 2
+                      },
+                      "Patched, reboot pending (in window)": {
+                        "color": "blue",
+                        "index": 3
+                      },
+                      "Not patched yet (in window)": {
+                        "color": "blue",
+                        "index": 4
+                      },
+                      "No patch data": {
+                        "color": "text",
+                        "index": 5
+                      },
+                      "Patched this cycle": {
+                        "color": "green",
+                        "index": 6
+                      },
+                      "Patched within 35 days": {
+                        "color": "green",
+                        "index": 7
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Days since patched"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 36
+                    },
+                    {
+                      "color": "red",
+                      "value": 91
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "KEV"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT c.hostname AS \"Server\", c.status AS \"Status\", c.team AS \"Team\", c.site_label AS \"Site\", c.schedule AS \"Patch group\", to_char(c.window_start, 'YYYY-MM-DD') AS \"Window opens\", to_char(c.deadline, 'YYYY-MM-DD') AS \"Deadline\", to_char(c.last_patch_confirmed, 'YYYY-MM-DD') AS \"Last patch confirmed\", c.days_since_patched AS \"Days since patched\", c.reboot_required AS \"Reboot pending\", c.days_up AS \"Days up\", r.open_kev_count AS \"KEV\", r.open_critical AS \"Crit\", r.open_high AS \"High\", c.os_version AS \"OS\" FROM server_patch_compliance c JOIN server_patch_compliance_status st USING (status) LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid WHERE c.site_label IN ($site) AND EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team)) AND (${pgroup:sqlstring} = '' OR c.schedule = ${pgroup:sqlstring}) AND CASE ${focus:sqlstring} WHEN 'All' THEN true WHEN 'Overdue' THEN c.status = 'Overdue: past deadline' WHEN 'Patched this window' THEN c.last_patch_confirmed >= c.window_start WHEN 'Reboot pending (any)' THEN c.status LIKE 'Patched, reboot pending%' WHEN 'Reboot pending after deadline' THEN c.status = 'Patched, reboot pending' WHEN 'Behind 35+ days' THEN c.status = 'Behind: 35+ days' WHEN 'In window now' THEN c.schedule_state = 'In window' WHEN 'No patch group' THEN c.schedule_state = 'No patch group' WHEN 'With KEV' THEN r.open_kev_count > 0 WHEN 'Off track' THEN st.judged AND NOT st.on_track ELSE false END ORDER BY r.open_kev_count DESC NULLS LAST, r.open_critical DESC NULLS LAST, c.days_since_patched DESC NULLS FIRST LIMIT 3000"
+        }
+      ],
+      "description": "The servers counted in a cell you clicked in 'By patch group' or 'By team' (numbers there are links). Press Esc to go back. Opened directly, it lists every server in scope."
+    },
+    {
+      "id": 25,
+      "type": "row",
+      "title": "All servers",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 67,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 26,
       "type": "table",
       "title": "All servers",
       "gridPos": {
         "x": 0,
-        "y": 53,
+        "y": 68,
         "w": 24,
         "h": 14
       },

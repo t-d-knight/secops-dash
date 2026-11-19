@@ -690,7 +690,9 @@ def main() -> int:
                        .replace("$__timeFilter(", "TRUE OR (").replace("$__timeFrom()", "now()-interval '30 days'")
                        .replace("$__timeTo()", "now()")
                        .replace("${__from:date}", (dt.date.today() - dt.timedelta(days=30)).isoformat())
-                       .replace("${__to:date}", dt.date.today().isoformat()))
+                       .replace("${__to:date}", dt.date.today().isoformat())
+                       # patch compliance drill-down variables (textbox, quoted by Grafana's :sqlstring)
+                       .replace("${pgroup:sqlstring}", "'Tier 1'").replace("${focus:sqlstring}", "'Overdue'"))
                 sql = re.sub(r"\$__timeGroupAlias\(([^,]+),[^)]+\)", r"date_trunc('day', \1) AS time", sql)
                 sql = re.sub(r"\$__timeGroup\(([^,]+),[^)]+\)", r"date_trunc('day', \1)", sql)
                 try:

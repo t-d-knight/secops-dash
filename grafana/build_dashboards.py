@@ -17,6 +17,7 @@ $site is the multi-select site variable (sourced from dim_site).
 import json
 import os
 import sys
+from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -1827,7 +1828,43 @@ PC_HELP = {
     "Schedule problems": "Schedules that can't be judged properly: deployments that started 45+ days ago (not this "
                          "month's), groups with no dates, and servers in an SCCM group that have no Falcon sensor.",
     "All servers": "Every server in scope with its schedule and status. Use the column filters to cut further.",
+    "Servers behind a number": "The servers counted in a cell you clicked in 'By patch group' or 'By team' "
+                               "(numbers there are links). Press Esc to go back. Opened directly, it lists every "
+                               "server in scope.",
 }
+# Drill-down: a click on a count in "By patch group" / "By team" reopens this dashboard with the hidden
+# variables pgroup (patch group, '' = any) and focus (which count) set, showing the drill panel full screen.
+# Each focus is the same condition the clicked column counts.
+PC_FOCUS = {
+    "All": "true",
+    "Overdue": "c.status = 'Overdue: past deadline'",
+    "Patched this window": "c.last_patch_confirmed >= c.window_start",
+    "Reboot pending (any)": "c.status LIKE 'Patched, reboot pending%'",
+    "Reboot pending after deadline": "c.status = 'Patched, reboot pending'",
+    "Behind 35+ days": "c.status = 'Behind: 35+ days'",
+    "In window now": "c.schedule_state = 'In window'",
+    "No patch group": "c.schedule_state = 'No patch group'",
+    "With KEV": "r.open_kev_count > 0",
+    "Off track": "st.judged AND NOT st.on_track",
+}
+PC_GROUP_DRILL = {"Servers": "All", "Patched": "Patched this window", "Reboot": "Reboot pending (any)",
+                  "Overdue": "Overdue"}
+PC_TEAM_DRILL = {"Servers": "All", "Overdue": "Overdue", "Behind 35+ d": "Behind 35+ days",
+                 "Reboot pending": "Reboot pending after deadline", "In window now": "In window now",
+                 "No patch group": "No patch group", "Servers with KEV": "With KEV",
+                 "Critical on off-track servers": "Off track"}
+
+
+def pc_drill_links(panel, drill_id, cols, by_team):
+    """Turn the count columns of `panel` into links that open the drill panel for that cell."""
+    for col, focus in cols.items():
+        scope = ("var-team=${__data.fields.Team:percentencode}&var-pgroup=" if by_team else
+                 '${team:queryparam}&var-pgroup=${__data.fields["Patch group"]:percentencode}')
+        url = (f"/d/secops-patch-compliance/?${{site:queryparam}}&{scope}&var-focus={quote(focus)}"
+               f"&viewPanel={drill_id}")
+        panel["fieldConfig"]["overrides"].append({
+            "matcher": {"id": "byName", "options": col},
+            "properties": [{"id": "links", "value": [{"title": f"List these servers ({focus.lower()})", "url": url}]}]})
 PC_BASE = ("server_patch_compliance c JOIN server_patch_compliance_status st USING (status) "
            "LEFT JOIN dash_asset_risk r ON r.source = 'falcon_spotlight' AND r.source_asset_id = c.aid")
 PC_TEAM = "EXISTS (SELECT 1 FROM unnest(string_to_array(c.team, ',')) t WHERE trim(t) IN ($team))"
@@ -1871,7 +1908,7 @@ def patch_compliance():
     b.bars("Status", f"""
         SELECT c.status AS "Status", count(*) AS "Servers" FROM {PC_BASE} WHERE {PC_WHERE}
         GROUP BY c.status, st.sort_order ORDER BY st.sort_order""", w=6, h=8, thresholds=[{"color": "orange", "value": None}])
-    b.table("By patch group", f"""
+    by_group = b.table("By patch group", f"""
         SELECT c.schedule AS "Patch group",
                to_char(mode() WITHIN GROUP (ORDER BY c.window_start), 'YYYY-MM-DD') AS "Opens",
                to_char(max(c.deadline) FILTER (WHERE c.schedule_state <> 'Stale deployment'), 'YYYY-MM-DD') AS "Deadline",
@@ -1888,7 +1925,7 @@ def patch_compliance():
 
     b.row("By team", note="Teams come from LogicMonitor; a server several teams manage counts under each, so team "
           "rows can add up to more than the total. **(no team)** = no team set in LogicMonitor, or not in it at all.")
-    b.table("By team", f"""
+    by_team = b.table("By team", f"""
         SELECT x.team AS "Team", count(*) AS "Servers",
                round(100.0 * count(*) FILTER (WHERE x.on_track) / nullif(count(*) FILTER (WHERE x.judged), 0))::int
                  AS "On track %%",
@@ -1959,6 +1996,28 @@ def patch_compliance():
                         WHERE trim(t) IN ($team))
         ) x ORDER BY "Problem", "Server" """, w=10, h=10)
 
+    b.row("Servers behind a number", note="Click a count in **By patch group** or **By team** to list the servers "
+          "it counts here, full screen. Esc goes back.")
+    focus_sql = " ".join(f"WHEN '{k}' THEN {v}" for k, v in PC_FOCUS.items())
+    drill = b.table("Servers behind a number", f"""
+        SELECT c.hostname AS "Server", c.status AS "Status", c.team AS "Team", c.site_label AS "Site",
+               c.schedule AS "Patch group", to_char(c.window_start, 'YYYY-MM-DD') AS "Window opens",
+               to_char(c.deadline, 'YYYY-MM-DD') AS "Deadline", to_char(c.last_patch_confirmed, 'YYYY-MM-DD') AS "Last patch confirmed",
+               c.days_since_patched AS "Days since patched", c.reboot_required AS "Reboot pending",
+               c.days_up AS "Days up", r.open_kev_count AS "KEV", r.open_critical AS "Crit", r.open_high AS "High",
+               c.os_version AS "OS"
+        FROM {PC_BASE} WHERE {PC_WHERE}
+          AND (${{pgroup:sqlstring}} = '' OR c.schedule = ${{pgroup:sqlstring}})
+          AND CASE ${{focus:sqlstring}} {focus_sql} ELSE false END
+        ORDER BY r.open_kev_count DESC NULLS LAST, r.open_critical DESC NULLS LAST, c.days_since_patched DESC NULLS FIRST
+        LIMIT 3000""", h=12,
+            overrides=[status_cell(), thresh_bg("Days since patched", PC_DAYS),
+                       thresh_bg("KEV", [{"color": "transparent", "value": None}, {"color": "red", "value": 1}])])
+    drill["title"] = "Servers behind a number: ${focus} ${pgroup}"
+    drill["description"] = PC_HELP["Servers behind a number"]
+    pc_drill_links(by_group, drill["id"], PC_GROUP_DRILL, by_team=False)
+    pc_drill_links(by_team, drill["id"], PC_TEAM_DRILL, by_team=True)
+
     b.row("All servers")
     b.table("All servers", f"""
         SELECT c.hostname AS "Server", c.status AS "Status", c.team AS "Team", c.site_label AS "Site",
@@ -1976,9 +2035,14 @@ def patch_compliance():
                 "query": "SELECT DISTINCT trim(t) FROM server_patch_compliance, unnest(string_to_array(team, ',')) t ORDER BY 1",
                 "definition": "teams from server_patch_compliance", "refresh": 1, "sort": 0,
                 "multi": True, "includeAll": True, "current": {"text": "All", "value": "$__all"}}
+    # hidden, set by the drill links (textbox so any value from the URL is accepted; quoted with :sqlstring)
+    drill_vars = [{"name": "pgroup", "type": "textbox", "label": "Patch group", "hide": 2, "query": "",
+                   "current": {"text": "", "value": ""}},
+                  {"name": "focus", "type": "textbox", "label": "Showing", "hide": 2, "query": "All",
+                   "current": {"text": "All", "value": "All"}}]
     return dashboard("secops-patch-compliance", "Server patch compliance",
                      "Servers patched in line with their SCCM schedule, per team: overdue servers, missed cycles, "
-                     "schedule gaps.", b, help=PC_HELP, extra_vars=[team_var])
+                     "schedule gaps.", b, help=PC_HELP, extra_vars=[team_var, *drill_vars])
 
 
 def main():

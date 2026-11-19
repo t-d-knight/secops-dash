@@ -65,6 +65,18 @@ Each entry heading is `### YYYY-MM-DD, <who> for <whom>: <what>`. In the entry:
 Keep entries short and link to the commit for detail. When the log passes about 300 lines, move entries
 older than a month to `docs/robots_fighting-archive.md`.
 
+### 2026-11-19, Claude for TK: Patch compliance drill-down
+- **Status:** pushed, not deployed (needs the rebuilt dashboard imported into Grafana).
+- **Changed:** Grafana dashboards (`build_dashboards.py`, `secops-patch-compliance.json`), e2e. Counts in
+  "By patch group" and "By team" are links that reopen the dashboard with hidden textbox variables
+  `pgroup` / `focus` set and the new "Servers behind a number" panel full screen (`viewPanel=<id>`). Each
+  focus (`PC_FOCUS`) is the same condition its column counts.
+- **Verified:** on the demo DB, every group and team cell's count equals the drill panel's row count
+  (32 cells, 0 mismatches; thin data, one group, nothing overdue). e2e passes, 226 dashboard queries.
+- **Not verified / open:** clicking in a real Grafana. Prod is 10.2.6 (pre-Scenes), so a numeric
+  `viewPanel` should work; `${__data.fields[...]:percentencode}` and `${site:queryparam}` with "All" are
+  untested there.
+
 ### 2026-11-19, Claude for TK: Sample reports refreshed
 - **Status:** pushed, not deployed (samples only, nothing to deploy).
 - **Changed:** Report comparison samples. All seven `reports/sample-*` files were regenerated with
