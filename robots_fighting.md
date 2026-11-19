@@ -65,6 +65,16 @@ Each entry heading is `### YYYY-MM-DD, <who> for <whom>: <what>`. In the entry:
 Keep entries short and link to the commit for detail. When the log passes about 300 lines, move entries
 older than a month to `docs/robots_fighting-archive.md`.
 
+### 2026-11-19, Claude for TK: Sample reports refreshed
+- **Status:** pushed, not deployed (samples only, nothing to deploy).
+- **Changed:** Report comparison samples. All seven `reports/sample-*` files were regenerated with
+  `tests/demo_samples.py` (week 46, as at 19 Nov).
+- **Verified:** with the fixed seed, current-state counts are unchanged from the previous samples. Only dates
+  and period activity moved: week 46, alerts 32/34, opened findings +199%, critical MTTR 0.9 d (95%),
+  impact Day 0 = 5 Oct, with action-log outcomes split into remediated, accepted and done-without-evidence.
+  `check_identifiers.py` clean.
+- **Not verified / open:** nothing beyond the usual: samples aren't checked against prod.
+
 ### 2026-11-18, Claude for TK: Servers report per owner team
 - **Status:** pushed, not deployed.
 - **Changed:** Servers report (`server_report.py`), publishing (`publish.py`), tests, docs. After the region set,
