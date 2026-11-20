@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SecOps report redesign spike — comparison samples</title>
+<style>
+  :root { color-scheme: light; font: 15px/1.45 system-ui, sans-serif; color: #172033; background: #eef2f7; }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  header, main { max-width: 1440px; margin: auto; padding: 24px; }
+  header { padding-bottom: 8px; }
+  h1 { margin: 0 0 6px; font-size: 26px; }
+  h2 { margin: 28px 0 8px; font-size: 21px; }
+  h3 { margin: 0 0 12px; font-size: 16px; }
+  .intro, .note, footer { color: #526078; }
+  .comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+  .panel { background: white; border: 1px solid #d5ddea; border-radius: 10px; padding: 18px; box-shadow: 0 2px 8px #1720330b; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 99px; background: #e8eef7; color: #35435d; font-size: 12px; }
+  .date { color: #526078; font-size: 13px; }
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin: 12px 0; }
+  .tile { border: 1px solid #d5ddea; border-radius: 8px; padding: 10px; }
+  .value { display: block; font-size: 25px; font-weight: 750; line-height: 1.15; font-variant-numeric: tabular-nums; }
+  .label { color: #526078; font-size: 12px; }
+  .risk { border-top: 4px solid #be3434; }
+  .coverage { border-top: 4px solid #426b9a; }
+  .volume { border-top: 4px solid #738095; }
+  .decision { border: 1px dashed #8491a5; padding: 10px; margin-top: 12px; border-radius: 7px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; border-bottom: 1px solid #e5eaf1; padding: 7px 5px; vertical-align: top; }
+  th { color: #526078; font-size: 11px; text-transform: uppercase; }
+  .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .up { color: #315e42; } .down { color: #8b3434; }
+  .status { font-weight: 650; }
+  .small { font-size: 12px; color: #526078; }
+  .summary { background: #f5f7fa; border-radius: 7px; padding: 10px; margin: 10px 0; }
+  .measure { min-width: 185px; }
+  .sub { display: block; color: #526078; font-size: 11px; }
+  footer { max-width: 1440px; padding: 0 24px 28px; font-size: 12px; }
+  @media (max-width: 900px) { .comparison { grid-template-columns: 1fr; } }
+  @media print { :root { background: white; } header, main { padding: 12px; } .panel { box-shadow: none; break-inside: avoid; } }
+</style>
+<header>
+  <h1>Report redesign spike</h1>
+  <div class="intro">Side-by-side review samples · fictional values copied from committed demo reports · no production queries</div>
+</header>
+<main>
+  <section>
+    <h2>1. Weekly executive report page 1</h2>
+    <div class="date">Same package: Week 43, 19–25 Oct 2026. Current state shown in the source report was generated 29 Oct 2026. The proposed page brings forward risk values from the existing endpoint-vulnerability page.</div>
+    <div class="comparison">
+      <article class="panel">
+        <span class="tag">Current sample · page 1 of 6</span>
+        <h3>What we're protecting</h3>
+        <div class="tiles">
+          <div class="tile"><span class="value">1,299</span><span class="label">Managed devices<br>1,258 active this week</span></div>
+          <div class="tile"><span class="value">157</span><span class="label">Devices on unsupported OS</span></div>
+          <div class="tile"><span class="value">57</span><span class="label">Machines missing a sensor</span></div>
+          <div class="tile"><span class="value">51</span><span class="label">Internet-facing domains</span></div>
+          <div class="tile"><span class="value">20</span><span class="label">OS support ending within 12 months</span></div>
+          <div class="tile"><span class="value">0</span><span class="label">Public IP addresses</span></div>
+        </div>
+        <p class="small">Then a detailed operating-system table and site breakdown. Current counts; trend arrows compare with 19 Oct.</p>
+      </article>
+      <article class="panel">
+        <span class="tag">Alternative · one-minute summary</span>
+        <h3>Risk signals, coverage, and workload are separate</h3>
+        <p class="small"><b>Week 43</b> · activity 19–25 Oct · snapshot as of 29 Oct<br>Snapshot change baseline: 19 Oct</p>
+        <div class="tiles">
+          <div class="tile risk"><span class="value">899 <span class="small up">↓ 9</span></span><span class="label">Open known-exploited findings<br>210 past CISA due date</span></div>
+          <div class="tile risk"><span class="value">285 <span class="small up">↓ 8</span></span><span class="label">Critical/high, remotely exploitable without authentication</span></div>
+          <div class="tile risk"><span class="value">953 / 5,389</span><span class="label">Open critical / high findings<br>Current snapshot</span></div>
+          <div class="tile coverage"><span class="value">1,277 / 1,299</span><span class="label">Managed hosts reporting sensors<br>22 not reporting (1 in-use)</span></div>
+          <div class="tile volume"><span class="value">7,727 / 3,212</span><span class="label">Findings opened / fixed during 19–25 Oct</span></div>
+          <div class="tile volume"><span class="value">+4,515</span><span class="label">Net finding movement for the period<br>Volume context, not risk by itself</span></div>
+        </div>
+        <p class="small">The ↓ values compare current snapshots with 19 Oct. Opened/fixed are weekly flows. Sensor count is 1,299 managed hosts minus 22 not reporting.</p>
+        <div class="decision"><b>Human-owned decision / ask</b><br>No decision or ask was supplied in the source sample.</div>
+      </article>
+    </div>
+  </section>
+
+  <section>
+    <h2>2. Programme impact outcome classification</h2>
+    <div class="date">Same source sample: as at 29 Oct 2026 · Day 0 14 Sep 2026 · 45 elapsed days · 10 logged actions.</div>
+    <div class="comparison">
+      <article class="panel">
+        <span class="tag">Current sample · page 1 of 2</span>
+        <h3>What it has found</h3>
+        <div class="tiles">
+          <div class="tile"><span class="value">10</span><span class="label">Issues found and logged</span></div>
+          <div class="tile"><span class="value">7</span><span class="label">Resolved: “Done” or “Accepted risk”</span></div>
+          <div class="tile"><span class="value">3</span><span class="label">Still open; 1 critical/high</span></div>
+        </div>
+        <div class="summary"><b>Day 0 (14 Sep) vs now (29 Oct) — 45 days</b><br>Scorecard changes are shown, but the headline “Resolved” combines completed work with accepted risk.</div>
+        <p class="small">The action log has statuses “Done”, “Accepted risk”, “In progress”, and “Open”. It does not have a dedicated verification field.</p>
+      </article>
+      <article class="panel">
+        <span class="tag">Alternative · outcomes reconcile</span>
+        <h3>10 actions, classified by what the source supports</h3>
+        <div class="tiles">
+          <div class="tile"><span class="value">0</span><span class="label">Verified remediation<br>explicit verification field absent</span></div>
+          <div class="tile"><span class="value">6</span><span class="label">Status “Done”<br>verification not encoded as a field</span></div>
+          <div class="tile"><span class="value">1</span><span class="label">Accepted risk<br>kept separate from remediation</span></div>
+        </div>
+        <div class="summary"><b>Outstanding: 3</b> · 2 in progress + 1 open<br><b>Reconciliation:</b> 0 verified + 6 Done pending evidence interpretation + 1 accepted risk + 3 outstanding = 10 actions.</div>
+        <div class="summary"><b>Day 0:</b> first recorded snapshot, 14 Sep 2026<br><b>Current:</b> 29 Oct 2026 · <b>elapsed:</b> 45 days</div>
+        <p class="small">Do not call the six “verified remediation” until the human reviewer confirms what “Done” means or an evidence field is available. The zero means “not explicitly identifiable in this sample’s schema,” not that no work was remediated.</p>
+      </article>
+    </div>
+  </section>
+
+  <section>
+    <h2>3. Monthly scorecard context and denominators</h2>
+    <div class="date">Same source sample: October 2026 · snapshots 01 Oct and 29 Oct · nine measures retained · direction-only.</div>
+    <div class="comparison">
+      <article class="panel">
+        <span class="tag">Current sample · region page</span>
+        <h3>Summary and “The measures”</h3>
+        <div class="summary">4 improving · 4 steady · 1 worsening · 0 too early to call<br>Change threshold is stated as 0.5 percentage points.</div>
+        <p class="small">Each row shows measure, 01 Oct value, 29 Oct value, change, and direction. The current rendered sample does not show numerator/denominator counts beside the rates.</p>
+      </article>
+      <article class="panel">
+        <span class="tag">Alternative · context alongside direction</span>
+        <h3>Nine measures · 01 Oct → 29 Oct</h3>
+        <table>
+          <thead><tr><th>Measure</th><th class="num">Start / prior</th><th class="num">End / current</th><th>Context / sample size</th><th>Direction</th></tr></thead>
+          <tbody>
+            <tr><td class="measure">Critical flaws fixed on time</td><td class="num">Sep fixes<br>57%</td><td class="num">Oct fixes<br>77%</td><td>1,626 Oct fixes; pooled-rate denominator</td><td class="up">↑</td></tr>
+            <tr><td class="measure">High flaws fixed on time</td><td class="num">Sep fixes<br>80%</td><td class="num">Oct fixes<br>77%</td><td>5,827 Oct fixes; pooled-rate denominator</td><td class="down">↓</td></tr>
+            <tr><td class="measure">Servers patched in last 35 days</td><td class="num">01 Oct<br>62.9%</td><td class="num">29 Oct<br>62.9%</td><td>Numerator / active-server denominator not shown in sample</td><td>→</td></tr>
+            <tr><td class="measure">Devices on supported OS</td><td class="num">01 Oct<br>86.7%</td><td class="num">29 Oct<br>87.9%</td><td>15 fewer unsupported devices; denominator not shown</td><td class="up">↑</td></tr>
+            <tr><td class="measure">Machines with a working sensor</td><td class="num">01 Oct<br>93.7%</td><td class="num">29 Oct<br>94.2%</td><td>6 fewer without a working sensor; denominator not shown</td><td>→</td></tr>
+            <tr><td class="measure">People with multi-factor sign-in</td><td class="num">01 Oct<br>92.7%</td><td class="num">29 Oct<br>93.3%</td><td>18 fewer people without it; denominator not shown</td><td class="up">↑</td></tr>
+            <tr><td class="measure">Enabled accounts actually in use</td><td class="num">01 Oct<br>82.9%</td><td class="num">29 Oct<br>84.4%</td><td>48 fewer stale accounts; denominator not shown</td><td class="up">↑</td></tr>
+            <tr><td class="measure">Leaked passwords on live accounts</td><td class="num">01 Oct<br>0</td><td class="num">29 Oct<br>0</td><td>Count; source denominator not applicable</td><td>→</td></tr>
+            <tr><td class="measure">Serious internet-facing risks overdue</td><td class="num">01 Oct<br>1</td><td class="num">29 Oct<br>1</td><td>Count; source denominator not applicable</td><td>→</td></tr>
+          </tbody>
+        </table>
+        <p class="small">The first two rates compare September fixes with October fixes; the other seven compare 01 Oct and 29 Oct snapshots. Arrows preserve direction-only stance; no target, ranking, traffic-light judgement, or service comparison is added. “Sample size not shown” flags context to source rather than supplying a fabricated denominator.</p>
+      </article>
+    </div>
+  </section>
+</main>
+<footer>Review artifact only. The alternative uses the same values and dates displayed in committed fictional samples. Denominators absent from those rendered samples remain marked as unavailable. No report logic or metric definitions were changed.</footer>
+</html>
