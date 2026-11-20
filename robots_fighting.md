@@ -65,8 +65,22 @@ Each entry heading is `### YYYY-MM-DD, <who> for <whom>: <what>`. In the entry:
 Keep entries short and link to the commit for detail. When the log passes about 300 lines, move entries
 older than a month to `docs/robots_fighting-archive.md`.
 
+### 2026-11-20, Claude for TK: doc catch-up before leave
+- **Status:** pushed, docs only. Nothing to deploy.
+- **Changed:** readme: feed table adds `checkpoint_hec_flow` and `logicmonitor`; eight dashboards, not seven,
+  with the preview dashboard listed; clone URL; a "Notifications" section (what alerts, config keys, test
+  command); how to check what's deployed. Ops guide: LogicMonitor and mail-flow sources, monthly scorecard
+  in reports and schedule, patch compliance and preview dashboards, drill-downs, and a new "Covering while
+  the owner is away" section (daily check, symptom/cause/action table, what to leave alone). Statuses below
+  for f3f85e4 and 2053c10 corrected to pushed.
+- **Verified:** alert triggers, thresholds and `deploy.sh` steps read from `notify.py`, `config.yaml.example`
+  and `deploy.sh`; cron times from `crontab.example`. Identifier check (pre-commit hook).
+- **Not verified / open:** the cover table's advice hasn't been walked through on the live install. Deployed
+  commit unknown: no deploy has been logged here since 2026-11-16, so every entry from then on says "not
+  deployed".
+
 ### 2026-11-19, Claude for TK: Remediation org access (restricted DB views, two-org dashboard push)
-- **Status:** local commit, not pushed or deployed. Inactive until `grafana.remediation_role` is set and the
+- **Status:** pushed (f3f85e4), not deployed. Inactive until `grafana.remediation_role` is set and the
   role exists.
 - **Changed:** Schema (`db_schema.py`: sets the `remediation` schema aside before the DDL and rebuilds it last,
   in the same transaction), rollups (`rollup_daily_metrics.py`: the `dash_*` swap drops and recreates its
@@ -84,8 +98,7 @@ older than a month to `docs/robots_fighting-archive.md`.
   cheap (22 views), but it does mean DDL on every collector run while the role is configured.
 
 ### 2026-11-19, Claude for TK: Preview dashboard; Grafana access design for remediation teams
-- **Status:** local commit, not pushed or deployed. Once pushed, `deploy.sh` pushes the new dashboard with the
-  rest.
+- **Status:** pushed (2053c10), not deployed. `deploy.sh` pushes the new dashboard with the rest.
 - **Changed:** Grafana dashboards. New `secops-preview` ("SecOps preview: new visuals"): feed health as a
   status-history grid (last run per collector per day; an `EdgeBlocked` error shows as "Blocked by vendor"),
   patch status by team as stacked bars, critical+high opened vs fixed per week as bars, and annotations (Patch

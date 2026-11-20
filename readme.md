@@ -14,6 +14,8 @@ What it's for, who uses which output and how to read the numbers: [knowledge-bas
 | Falcon removable media (NG-SIEM search + on-demand scans) | `falcon_usb` | Files written to USB per person/PC/drive by category, USB-insertion scans and the malware they find |
 | Hadrian Atlas | `hadrian` | External attack surface: internet assets + external risks (same SLA/KEV treatment as endpoint vulns) |
 | Check Point Harmony Email & Collaboration | `checkpoint_hec` | Phishing / malware / DLP events per recipient site |
+| Check Point HEC mail-flow counts | `checkpoint_hec_flow` | Inbound and internal mail per site per day, and what the Microsoft and Check Point layers did with it (inbox, junk, quarantine, restores) |
+| LogicMonitor | `logicmonitor` | Server inventory, owner team and SCCM patch group/schedule, for patch compliance and the Falcon server tags |
 | Microsoft Entra ID (Graph) | `entra` | Risky users, risk detections, MFA registration |
 | Azure Log Analytics / Sentinel | `azure_log_analytics` | Sign-in failures, legacy auth, MFA denials, CA blocks (KQL you control) |
 | DMARC via parsedmarc → OpenSearch | `dmarc` | Pass/SPF/DKIM alignment per domain, failing senders |
@@ -29,7 +31,7 @@ It grew out of the Tenable-only [tenable-vuln-dashboard](https://github.com/t-d-
  vendor APIs ──► collectors/<feed>.py ──► site_resolver ──► Postgres tables ──► rollup_daily_metrics.py ──► daily_* snapshots
                  (one per feed,            (one site per                          (trend history)                │
                   isolated failures)        record, + why)                                                       ▼
-                                                                                           Grafana: 7 dashboards, $site filter
+                                                                                           Grafana: 8 dashboards, $site filter
 ```
 
 * **`collect.py`** runs every enabled collector in order. Each is wrapped on its own: if HEC's API is down, Falcon and DMARC still land. Every run is recorded in `collector_runs`, and the **Data freshness** panel shows any feed that's gone stale — so a dead feed shows up as *stale*, not as a suspiciously quiet week.
@@ -43,7 +45,7 @@ Tested on Fedora Server; any modern distro works.
 
 ```bash
 sudo dnf install -y python3 python3-pip git postgresql-server postgresql-contrib chromium   # chromium: PDF reports
-git clone https://github.com/t-d-knight/secops-dashboard /opt/secops-dashboard
+git clone https://github.com/t-d-knight/secops-dash /opt/secops-dashboard
 cd /opt/secops-dashboard
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
@@ -203,6 +205,21 @@ Backups land on the same disk as the database; copy `backups/` off the box (VM b
 
 `run_collector.sh` takes a lock (no overlapping runs), runs everything even if a feed fails, and exits non-zero if anything did. For more frequent alert/email updates, add a second cron line that runs `collect.py --only falcon_alerts,checkpoint_hec` hourly. Those collectors are incremental.
 
+To check what's deployed, run `git log -1 --oneline` in the app dir and compare it with `origin/main`. `./deploy.sh` pulls `origin/main`, backs up any locally edited tracked files, applies schema changes, pushes changed dashboards to Grafana and runs the checks. `./deploy.sh --check` only runs the checks. It refuses to run while the collector lock is held.
+
+### Notifications
+
+`notify.py` sends Pushover messages when something needs a look, and nothing when all is well. Turn it on with `notify.enabled: true` in `config.yaml`; the Pushover `app_token` and `user_key` go in `secrets.yaml`. It alerts on:
+
+* a collector that failed, or a feed with no successful run in `notify.stale_hours` (36);
+* an event feed (DMARC, email, alerts, USB, Log Analytics) that runs but has stored nothing new in `notify.quiet_days` (3), which usually means the source has stopped sending (per feed: `collectors.<name>.quiet_days`, 0 = off);
+* a nightly run that exited non-zero or ran longer than `notify.max_run_hours`, or a disk over `notify.disk_warn_pct`;
+* a failed report, backup or maintenance job (each crontab line ends in `|| notify.py send ...`);
+* publishing: a low-priority note when reports go out, high priority when publishing fails;
+* a nightly identity digest of new Falcon Identity Protection detections and OverWatch alerts, because those can live in a console nobody watches.
+
+`notify.healthcheck_url` (optional) pings a dead-man's-switch service at the start and end of each run, so a box that's off or hung, and can't report itself, still gets noticed. Test it with `python3 notify.py --config config.yaml send --title Test --message Hello`. Every alert goes to the one Pushover user key, so arrange cover for that person's leave.
+
 ## 6. Grafana
 
 Install Grafana OSS (PostgreSQL datasource is built in):
@@ -236,8 +253,9 @@ sudo dnf install -y grafana && sudo systemctl enable --now grafana-server
 | `grafana/secops-patch-compliance.json` | **Server patch compliance**: servers against their SCCM patch schedule (from LogicMonitor), per team: on track, overdue past deadline, missed cycles, patch groups, schedule gaps, top missing fixes on servers not on track |
 | `grafana/secops-impact.json` | **Programme impact**: Day 0 vs now scorecard, trends, Patch Tuesday remediation cohorts, action log |
 | `grafana/secops-worklist.json` | **Cyber Team Worklist**: feed health, vulnerability-assessment coverage, stale/unmanaged endpoints, Hadrian triage queues, identity site-mapping gaps, DMARC |
+| `grafana/secops-preview.json` | **SecOps preview: new visuals**: trial panels (feed health as a status grid, patch status by team, opened vs fixed per week, annotated trend) before they move into the main dashboards. Not for decisions |
 
-All seven share the `$site` variable and link to each other, carrying the site selection and time range. Severity is red → orange → amber → yellow everywhere and never green; green only ever means a good number.
+All eight share the `$site` variable and link to each other, carrying the site selection and time range. Severity is red → orange → amber → yellow everywhere and never green; green only ever means a good number.
 
 The `secops-*` dashboards are generated by `grafana/build_dashboards.py`. Edit panels there and re-run it, rather than hand-editing the JSON. To update the live copies after that, `python3 grafana/push_dashboards.py --config config.yaml [name ...]` overwrites them through the API (needs `grafana.api_token` in secrets.yaml: a service account token with the Editor role).
 

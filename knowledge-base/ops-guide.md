@@ -45,7 +45,8 @@ Everything downstream reads from the one database, so the dashboards and reports
 | Falcon Identity Protection | Risky, stale, weak-password and no-MFA accounts |
 | Falcon removable media | Files written to USB per person, PC and drive; USB scans and what they find |
 | Hadrian | Internet-facing assets and external risks |
-| Check Point Harmony Email | Phishing, malware and DLP events, per recipient site |
+| Check Point Harmony Email | Phishing, malware and DLP events, per recipient site; how much mail each site receives and what the Microsoft and Check Point filters did with it |
+| LogicMonitor | Server inventory, owner team and SCCM patch schedule, used for server patch compliance and per-team Servers reports |
 | DMARC reports | Whether mail from our domains passes SPF and DKIM, and who's failing |
 | Microsoft Entra ID (optional) | Risky users, risk detections, MFA registration |
 | CISA KEV, FIRST EPSS, NVD | Which vulnerabilities are known to be exploited, how likely exploitation is, and plain-English descriptions |
@@ -78,6 +79,7 @@ The tool produces three kinds of output: live dashboards for the cyber team, sch
 | Quarterly security report | Cyber management, executives | 1 Jan, Apr, Jul, Oct | PDF, region plus one per site | The same six pages over the last quarter |
 | Servers report | Infrastructure, applications and database teams; each server owner team | Mondays | PDF plus Excel workbook: region, plus one per owner team and one for servers with no owner (`Servers/Owners/<Team>/`) | Patching and reboots, longest-unpatched servers, domain controllers, top missing fixes, disk, and (region only) servers with no sensor |
 | Action pack | Each site's ICT contacts | 1st of the month | Excel, one per site | Named lists to work through: stale and weak-password accounts, no MFA, sensors not reporting, missing sensors, external risks, USB activity |
+| Security scorecard | Cyber management, each site | 1st of the month | PDF, one page per site; the region copy adds a by-site table | Nine measures, start against end of last month. Direction only; no targets have been set yet |
 | Programme impact report | Cyber management, leadership | 1st of the month, or on demand | PDF | What has changed since the programme started: Day 0 against now, Patch Tuesday fix rates, the action log |
 
 Reports are published to each site's folder the morning they're made.
@@ -92,9 +94,11 @@ Reports are published to each site's folder the morning they're made.
 | Endpoint & Identity | Sensor coverage, alerts, USB activity, risky accounts |
 | Email & External Exposure | Email threats, DMARC, internet-facing assets and risks |
 | Servers | The live version of the Servers report |
+| Server patch compliance | Servers against their SCCM patch schedule, per owner team: on track, overdue, missed cycles. Click a count to list the servers behind it |
 | Programme impact | The live version of the impact report |
+| SecOps preview | Trial panels before they move into the dashboards above. Don't quote numbers from it |
 
-Every dashboard filters by site, and the dashboards link to each other, keeping the site you picked.
+On most dashboards, many count panels can be clicked to list the hosts, accounts or findings behind it. Every dashboard filters by site, and the dashboards link to each other, keeping the site you picked.
 
 **Alerts (Pushover)**
 
@@ -165,7 +169,7 @@ Data is collected overnight and is normally complete by mid-morning. Reports go 
 | 03:30 Mondays | Weekly security reports, region and every site |
 | 03:45 Mondays | Servers report |
 | 03:30, 1 Jan, Apr, Jul, Oct | Quarterly security reports |
-| 04:00 and 04:30, 1st of the month | Action packs, programme impact report |
+| 04:00, 04:15 and 04:30, 1st of the month | Action packs, security scorecards, programme impact report |
 | 07:30 daily | New reports published to the file share |
 | 09:00 daily | Database backup, with an optional off-site copy |
 | 10:00 daily | Catch-up: finishes anything the night run didn't |
@@ -179,7 +183,36 @@ Reports and publishing wait for the night's collection to finish, so a slow nigh
 - **A report didn't arrive:** reports wait for collection, so a late night run means late reports. A failed report raises an alert.
 - **A feed is stale for more than a day:** usually an expired API key, a changed permission or a vendor outage. The alert says which feed.
 
-All failures alert the tool's owner by Pushover (`notify:` in config).
+All failures alert the tool's owner by Pushover (`notify:` in config). What triggers an alert is listed in the [readme](../readme.md#notifications).
+
+## Covering while the owner is away
+
+The tool runs itself: collection, reports, publishing, backups and maintenance are all on cron. Someone covering needs to keep an eye on it, not operate it. Who is covering, who gets the alerts and how to reach the server are kept in the owner's local handover note, not in this repository.
+
+**Daily (five minutes)**
+
+1. Open the **Cyber Team Worklist** and check feed health. Everything should have run last night.
+2. Work the detections awaiting triage queue, as usual.
+
+**When an alert or a stale feed turns up**
+
+| Symptom | Likely cause | What to do |
+| --- | --- | --- |
+| One feed failed or stale; the others are fine | Expired or rotated API key, a removed permission, or a vendor outage | Check the vendor's status page and console. If the key has expired, a new one goes into `secrets.yaml` on the server, then run `collect.py --config config.yaml --only <feed>` there. Otherwise wait: the 10:00 catch-up and the next night retry on their own. |
+| A feed runs but has brought in nothing new | The source stopped sending (DMARC reports, mail export) | Check the source system. The dashboard isn't the problem. |
+| Every feed failed, or there's no run at all | Server down, database down, disk full, or the dead-man's switch alert | Check that the server and PostgreSQL are up and the disk has room. `logs/collector.log` shows the last run. |
+| A report failed | Usually a failed or late collection the night before | `logs/report.log`. Rerun with the line from `crontab.example` once collection has finished. |
+| Reports didn't reach the share | The share or its credentials | `logs/publish.log`; `publish.py --config config.yaml --check`. Missed files catch up on the next run. |
+| Backup failed | Disk space or database auth | `logs/backup.log`. One missed backup isn't urgent; several in a row are. |
+
+If a feed is still down after a day, say so when sharing that week's reports: its numbers are from the last good pull.
+
+**Leave alone while the owner is away**, unless agreed beforehand:
+
+- Deploying (`deploy.sh`) or changing the crontab. The server may be behind `main` on purpose.
+- `tools/falcon_tag_sync.py --apply`: it changes tags in Falcon.
+- Editing dashboards in Grafana's UI. The next deploy overwrites them from `grafana/build_dashboards.py`.
+- Changing site mapping, thresholds or report wording in `config.yaml`. These move numbers that sites compare week to week.
 
 ## Access and data handling
 
