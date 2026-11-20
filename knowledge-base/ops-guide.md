@@ -185,34 +185,15 @@ Reports and publishing wait for the night's collection to finish, so a slow nigh
 
 All failures alert the tool's owner by Pushover (`notify:` in config). What triggers an alert is listed in the [readme](../readme.md#notifications).
 
-## Covering while the owner is away
+## While the owner is away
 
-The tool runs itself: collection, reports, publishing, backups and maintenance are all on cron. Someone covering needs to keep an eye on it, not operate it. Who is covering, who gets the alerts and how to reach the server are kept in the owner's local handover note, not in this repository.
+The tool runs itself: collection, reports, publishing, backups and maintenance are all on cron. Nobody else operates or fixes it. If something breaks, it waits for the owner, and alerts still go only to the owner.
 
-**Daily (five minutes)**
+Keep using the outputs as normal: the Worklist and dashboards each day, the reports when they arrive.
 
-1. Open the **Cyber Team Worklist** and check feed health. Everything should have run last night.
-2. Work the detections awaiting triage queue, as usual.
-
-**When an alert or a stale feed turns up**
-
-| Symptom | Likely cause | What to do |
-| --- | --- | --- |
-| One feed failed or stale; the others are fine | Expired or rotated API key, a removed permission, or a vendor outage | Check the vendor's status page and console. If the key has expired, a new one goes into `secrets.yaml` on the server, then run `collect.py --config config.yaml --only <feed>` there. Otherwise wait: the 10:00 catch-up and the next night retry on their own. |
-| A feed runs but has brought in nothing new | The source stopped sending (DMARC reports, mail export) | Check the source system. The dashboard isn't the problem. |
-| Every feed failed, or there's no run at all | Server down, database down, disk full, or the dead-man's switch alert | Check that the server and PostgreSQL are up and the disk has room. `logs/collector.log` shows the last run. |
-| A report failed | Usually a failed or late collection the night before | `logs/report.log`. Rerun with the line from `crontab.example` once collection has finished. |
-| Reports didn't reach the share | The share or its credentials | `logs/publish.log`; `publish.py --config config.yaml --check`. Missed files catch up on the next run. |
-| Backup failed | Disk space or database auth | `logs/backup.log`. One missed backup isn't urgent; several in a row are. |
-
-If a feed is still down after a day, say so when sharing that week's reports: its numbers are from the last good pull.
-
-**Leave alone while the owner is away**, unless agreed beforehand:
-
-- Deploying (`deploy.sh`) or changing the crontab. The server may be behind `main` on purpose.
-- `tools/falcon_tag_sync.py --apply`: it changes tags in Falcon.
-- Editing dashboards in Grafana's UI. The next deploy overwrites them from `grafana/build_dashboards.py`.
-- Changing site mapping, thresholds or report wording in `config.yaml`. These move numbers that sites compare week to week.
+- **Check data freshness before quoting a number.** If a feed has gone stale, its figures are from the last good pull. Say so if you share that week's report, and use the vendor console for anything current.
+- **A report that doesn't arrive just doesn't arrive.** It gets regenerated when the owner is back.
+- **Don't touch the server, its config, the crontab or the Grafana dashboards**, and don't deploy. A half-fix is harder to unpick than a gap of a couple of weeks.
 
 ## Access and data handling
 

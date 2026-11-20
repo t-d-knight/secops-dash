@@ -70,13 +70,12 @@ older than a month to `docs/robots_fighting-archive.md`.
 - **Changed:** readme: feed table adds `checkpoint_hec_flow` and `logicmonitor`; eight dashboards, not seven,
   with the preview dashboard listed; clone URL; a "Notifications" section (what alerts, config keys, test
   command); how to check what's deployed. Ops guide: LogicMonitor and mail-flow sources, monthly scorecard
-  in reports and schedule, patch compliance and preview dashboards, drill-downs, and a new "Covering while
-  the owner is away" section (daily check, symptom/cause/action table, what to leave alone). Statuses below
-  for f3f85e4 and 2053c10 corrected to pushed.
+  in reports and schedule, patch compliance and preview dashboards, drill-downs, and a short "While the owner
+  is away" section (nobody else operates or fixes it; check freshness before quoting; don't touch the server).
+  Statuses below for f3f85e4 and 2053c10 corrected to pushed.
 - **Verified:** alert triggers, thresholds and `deploy.sh` steps read from `notify.py`, `config.yaml.example`
   and `deploy.sh`; cron times from `crontab.example`. Identifier check (pre-commit hook).
-- **Not verified / open:** the cover table's advice hasn't been walked through on the live install. Deployed
-  commit unknown: no deploy has been logged here since 2026-11-16, so every entry from then on says "not
+- **Not verified / open:** deployed commit unknown: no deploy has been logged here since 2026-11-16, so every entry from then on says "not
   deployed".
 
 ### 2026-11-19, Claude for TK: Remediation org access (restricted DB views, two-org dashboard push)

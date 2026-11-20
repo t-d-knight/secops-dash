@@ -218,7 +218,7 @@ To check what's deployed, run `git log -1 --oneline` in the app dir and compare 
 * publishing: a low-priority note when reports go out, high priority when publishing fails;
 * a nightly identity digest of new Falcon Identity Protection detections and OverWatch alerts, because those can live in a console nobody watches.
 
-`notify.healthcheck_url` (optional) pings a dead-man's-switch service at the start and end of each run, so a box that's off or hung, and can't report itself, still gets noticed. Test it with `python3 notify.py --config config.yaml send --title Test --message Hello`. Every alert goes to the one Pushover user key, so arrange cover for that person's leave.
+`notify.healthcheck_url` (optional) pings a dead-man's-switch service at the start and end of each run, so a box that's off or hung, and can't report itself, still gets noticed. Test it with `python3 notify.py --config config.yaml send --title Test --message Hello`. Every alert goes to the one Pushover user key.
 
 ## 6. Grafana
 
