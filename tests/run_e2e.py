@@ -272,6 +272,10 @@ def main() -> int:
     check((st.get("r1"), st.get("r2"), st.get("r3")) == ("OPEN", "FIXED", "REOPENED"),
           f"Hadrian activity/status -> OPEN/FIXED(NotFound)/REOPENED: {st.get('r1'), st.get('r2'), st.get('r3')}")
     check("r4" not in st, "risk only on a zzArchive asset skipped")
+    check(st.get("r5") == "SUPPRESSED", f"Hadrian activityStatus Ignored -> SUPPRESSED, not OPEN/FIXED: {st.get('r5')}")
+    from collectors.hadrian import _risk_state
+    check(_risk_state("Snoozed", "New", "Visible") == "OPEN",
+          "unknown Hadrian activityStatus stays OPEN (never hidden on a guess)")
     rt = dict(q(cur, "SELECT source_rule_id, risk_type FROM vuln_findings WHERE source = 'hadrian'"))
     check(rt.get("r1") == "UnpatchedTechnology" and rt.get("r3") == "InfectedDevice", f"risk_type stored: {rt}")
     xa = dict(q(cur, "SELECT asset_id, site_label || '/' || site_matched_by FROM external_assets"))

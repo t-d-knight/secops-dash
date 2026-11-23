@@ -65,6 +65,22 @@ Each entry heading is `### YYYY-MM-DD, <who> for <whom>: <what>`. In the entry:
 Keep entries short and link to the commit for detail. When the log passes about 300 lines, move entries
 older than a month to `docs/robots_fighting-archive.md`.
 
+### 2026-11-23, Claude for TK: Hadrian risks ignored in the console count as suppressed, not open
+- **Status:** pushed, not deployed. Takes effect on the first Hadrian run after deploy (every risk is
+  re-read each night, so the existing rows flip then).
+- **Why:** risks ignored in the Hadrian console (a person's decision, e.g. the scanner can't verify the
+  version) still showed as unresolved in the weekly report. Live API check: Hadrian records an ignore as
+  `activityStatus: Ignored`, with `riskVisibility` still `Visible` and `status` possibly `NotFound`. The
+  collector only knew Open/Closed, so Ignored fell through to OPEN and was re-confirmed every night.
+- **Changed:** collector `hadrian`: `activityStatus` Ignored -> SUPPRESSED (listed, out of open counts, SLA
+  and MTTR; not FIXED, since nothing was fixed). An unrecognised `activityStatus` stays OPEN and is counted
+  in stats (`unknown_activity_status`) and logged. New stat `risks_by_state`. e2e mock gets an Ignored risk.
+- **Verified:** e2e, all passed, 163 checks (2 new). The weekly report's external section counts only
+  OPEN/REOPENED (read from `exec_report.py`), so suppressed risks drop out of it.
+- **Not verified / open:** the first live run after deploy: `risks_by_state` should show the ignored
+  ones as SUPPRESSED. Whether Hadrian has other lifecycle values besides Open/Closed/Ignored: the new
+  stat will show any. A finding that's ignored and later reappears as a new risk ID is a new OPEN risk.
+
 ### 2026-11-23, Claude for TK: Spotlight full pull survives dropped cursors; catch-up stays short
 - **Status:** pushed (358965e). Deployed 2026-11-23 by TK with `deploy.sh` (output not reviewed here).
   Crontab reinstalled from `crontab.example` the same day after a diff (only functional change: the

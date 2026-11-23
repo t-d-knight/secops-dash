@@ -130,9 +130,15 @@ HADRIAN_RISKS = [
     {"id": "r4", "title": "Missing DMARC record", "riskSeverity": "Low", "activityStatus": "Open", "status": "New",
      "riskType": "Potential", "riskVisibility": "Visible", "primaryCategory": {"id": "email-security"},
      "created": iso(3), "lastSeen": iso(0), "resolvedOn": None},   # only on the archived asset: skipped
+    # Ignored in the console (a person decided not to fix it): Hadrian keeps it Visible, sets
+    # activityStatus Ignored, and a later rescan can still set status NotFound + resolvedOn
+    {"id": "r5", "title": "Unauthenticated RCE in PHP (version unverifiable)", "riskSeverity": "Critical",
+     "activityStatus": "Ignored", "status": "NotFound", "riskType": "Verified", "riskVisibility": "Visible",
+     "primaryCategory": {"id": "unpatched-technology"}, "created": iso(30), "lastSeen": iso(20),
+     "resolvedOn": iso(18)},
 ]
 # GET /risks/{id}: the list has no asset link, the detail's relatedAssets does
-HADRIAN_RISK_ASSET = {"r1": "a1", "r2": "a2", "r3": "a1", "r4": "a3"}
+HADRIAN_RISK_ASSET = {"r1": "a1", "r2": "a2", "r3": "a1", "r4": "a3", "r5": "a2"}
 
 AD = ["Active Directory"]
 PASSIVE = ["Falcon passive discovery"]

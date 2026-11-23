@@ -249,14 +249,25 @@ def _write_suggestions(ctx: RunContext, rows: List[Dict[str, Any]]) -> Optional[
 
 
 # ------------------------------------------------------------------ risks
+KNOWN_ACTIVITY = ("open", "closed", "ignored")
+
+
 def _risk_state(activity: str, status: str, visibility: str) -> str:
-    """activityStatus Open/Closed is the real lifecycle; status refines it
-    (New / Reopened / Resolved / NotFound -- NotFound means a rescan no
+    """activityStatus Open/Closed/Ignored is the real lifecycle; status refines
+    it (New / Reopened / Resolved / NotFound -- NotFound means a rescan no
     longer sees it, which is how Hadrian closes most risks: counted as
-    fixed). Hidden/ignored risks are suppressed."""
+    fixed). Hidden risks (riskVisibility) and Ignored ones (activityStatus:
+    a person decided not to fix it, e.g. a scanner that can't verify the
+    version) are SUPPRESSED: still listed, out of open counts, SLA and MTTR.
+    Ignored wins over the status, which can still say NotFound/Resolved.
+    An activityStatus we don't know stays OPEN (never hide a risk on a
+    guess); run() counts those in stats."""
     if visibility and visibility.lower() not in ("visible", ""):
         return "SUPPRESSED"
-    if activity.lower() == "closed":
+    a = activity.lower()
+    if a == "ignored":
+        return "SUPPRESSED"
+    if a == "closed":
         return "FIXED"
     return "REOPENED" if status.lower() == "reopened" else "OPEN"
 
@@ -353,6 +364,8 @@ def run(ctx: RunContext) -> Dict[str, Any]:
     now = ctx.run_started
     w = FindingsWriter(ctx.conn)
     n = skipped = 0
+    by_state: collections.Counter = collections.Counter()
+    unknown_activity: collections.Counter = collections.Counter()
     for rec in risks:
         rid = str(_f(rec, rf, "id"))
         d = details.get(rid) or {}
@@ -375,8 +388,12 @@ def run(ctx: RunContext) -> Dict[str, Any]:
         sev = norm_severity(sev_raw, "low")
         if sev not in ("critical", "high", "medium", "low"):
             sev = "low"
-        state = _risk_state(str(_f(rec, rf, "activity", "Open")), str(_f(rec, rf, "status", "")),
+        activity = str(_f(rec, rf, "activity", "Open"))
+        if activity.lower() not in KNOWN_ACTIVITY:
+            unknown_activity[activity] += 1
+        state = _risk_state(activity, str(_f(rec, rf, "status", "")),
                             str(_f(rec, rf, "visibility", "Visible")))
+        by_state[state] += 1
         first = parse_ts(_f(rec, rf, "first_seen")) or now
         last = parse_ts(_f(rec, rf, "last_seen")) or now
         w.add(NormalizedFinding(
@@ -410,6 +427,10 @@ def run(ctx: RunContext) -> Dict[str, Any]:
     stats["risks"] = n
     stats["risks_changed"] = w.changed
     stats["risks_archived_skipped"] = skipped
+    stats["risks_by_state"] = dict(by_state)
+    if unknown_activity:   # kept OPEN; a new Hadrian lifecycle value worth mapping
+        stats["unknown_activity_status"] = dict(unknown_activity)
+        ctx.log(f"activityStatus values not recognised (kept OPEN): {dict(unknown_activity)}")
     if n and rcfg.get("full_pull", True):
         stats["expired"] = expire_unseen(ctx.conn, SOURCE, ctx.run_started)
     return stats
