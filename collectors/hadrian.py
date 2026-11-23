@@ -256,17 +256,21 @@ def _risk_state(activity: str, status: str, visibility: str) -> str:
     """activityStatus Open/Closed/Ignored is the real lifecycle; status refines
     it (New / Reopened / Resolved / NotFound -- NotFound means a rescan no
     longer sees it, which is how Hadrian closes most risks: counted as
-    fixed). Hidden risks (riskVisibility) and Ignored ones (activityStatus:
-    a person decided not to fix it, e.g. a scanner that can't verify the
-    version) are SUPPRESSED: still listed, out of open counts, SLA and MTTR.
-    Ignored wins over the status, which can still say NotFound/Resolved.
+    fixed). Hidden risks (riskVisibility) are SUPPRESSED.
+
+    Ignored (activityStatus) is how a risk gets closed when Hadrian can't
+    validate the fix itself, e.g. it can't read the version, so the fix was
+    checked by hand. If Hadrian's own rescan no longer finds it (status
+    NotFound/Resolved, with resolvedOn) that's the same evidence as
+    Closed + NotFound: FIXED, dated resolvedOn. Ignored but still found is
+    accepted risk: SUPPRESSED (listed, out of open counts, SLA and MTTR).
     An activityStatus we don't know stays OPEN (never hide a risk on a
     guess); run() counts those in stats."""
     if visibility and visibility.lower() not in ("visible", ""):
         return "SUPPRESSED"
     a = activity.lower()
     if a == "ignored":
-        return "SUPPRESSED"
+        return "FIXED" if status.lower() in ("notfound", "resolved") else "SUPPRESSED"
     if a == "closed":
         return "FIXED"
     return "REOPENED" if status.lower() == "reopened" else "OPEN"

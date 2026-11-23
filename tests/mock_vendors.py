@@ -130,8 +130,8 @@ HADRIAN_RISKS = [
     {"id": "r4", "title": "Missing DMARC record", "riskSeverity": "Low", "activityStatus": "Open", "status": "New",
      "riskType": "Potential", "riskVisibility": "Visible", "primaryCategory": {"id": "email-security"},
      "created": iso(3), "lastSeen": iso(0), "resolvedOn": None},   # only on the archived asset: skipped
-    # Ignored in the console (a person decided not to fix it): Hadrian keeps it Visible, sets
-    # activityStatus Ignored, and a later rescan can still set status NotFound + resolvedOn
+    # Ignored in the console because Hadrian can't validate the fix (checked by hand): it stays
+    # Visible with activityStatus Ignored, and the rescan sets status NotFound + resolvedOn
     {"id": "r5", "title": "Unauthenticated RCE in PHP (version unverifiable)", "riskSeverity": "Critical",
      "activityStatus": "Ignored", "status": "NotFound", "riskType": "Verified", "riskVisibility": "Visible",
      "primaryCategory": {"id": "unpatched-technology"}, "created": iso(30), "lastSeen": iso(20),
