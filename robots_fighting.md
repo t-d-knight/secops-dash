@@ -93,7 +93,7 @@ older than a month to `docs/robots_fighting-archive.md`.
   under an hour). The first full pull after deploy (next Saturday, or the next night if the last good full
   is 8+ days old) is the real test: look for `full_pull_windows`, `full_pull_splits` and `falcon_total` in
   its stats. Full pulls are still long, so a full-pull Monday still delays the weekly reports. The first
-  new-code full pull is the night of 2026-1123/24 (forced: the last good full is 8+ days old).
+  new-code full pull is the night of 23-24 Nov 2026 (forced: the last good full is 8+ days old).
 
 ### 2026-11-20, Claude for TK: doc catch-up before leave
 - **Status:** pushed, docs only. Nothing to deploy.
