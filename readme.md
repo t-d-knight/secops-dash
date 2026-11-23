@@ -2,7 +2,7 @@
 
 Pulls security data from the tools we actually run, maps every record to a **site**, and stores it in PostgreSQL for Grafana (and Power BI) dashboards that filter per site.
 
-What it's for, who uses which output and how to read the numbers: [knowledge-base/ops-guide.md](knowledge-base/ops-guide.md). This readme covers setup and internals.
+What it is and what it enables: [knowledge-base/overview.md](knowledge-base/overview.md). What it's for, who uses which output and how to read the numbers: [knowledge-base/ops-guide.md](knowledge-base/ops-guide.md). This readme covers setup and internals.
 
 | Feed | Collector | What it gives the dashboards |
 |---|---|---|
@@ -31,7 +31,7 @@ It grew out of the Tenable-only [tenable-vuln-dashboard](https://github.com/t-d-
  vendor APIs ──► collectors/<feed>.py ──► site_resolver ──► Postgres tables ──► rollup_daily_metrics.py ──► daily_* snapshots
                  (one per feed,            (one site per                          (trend history)                │
                   isolated failures)        record, + why)                                                       ▼
-                                                                                           Grafana: 8 dashboards, $site filter
+                                                                                           Grafana: 9 dashboards, $site filter
 ```
 
 * **`collect.py`** runs every enabled collector in order. Each is wrapped on its own: if HEC's API is down, Falcon and DMARC still land. Every run is recorded in `collector_runs`, and the **Data freshness** panel shows any feed that's gone stale — so a dead feed shows up as *stale*, not as a suspiciously quiet week.

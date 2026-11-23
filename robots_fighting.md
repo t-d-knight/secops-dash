@@ -65,6 +65,18 @@ Each entry heading is `### YYYY-MM-DD, <who> for <whom>: <what>`. In the entry:
 Keep entries short and link to the commit for detail. When the log passes about 300 lines, move entries
 older than a month to `docs/robots_fighting-archive.md`.
 
+### 2026-11-24, Claude for TK: ops guide accuracy pass, new overview doc
+- **Status:** pushed. Docs only, nothing to deploy.
+- **Changed:** ops guide: the Remediation Grafana org is marked as not switched on yet. Per-team Servers
+  copies are noted as depending on the Falcon tag sync, which isn't on cron. Azure Log Analytics is added
+  to the sources table. New `knowledge-base/overview.md` covers what the tool is, what it does, how it
+  works and what it enables, linked from the readme and ops guide. Readme diagram now says 9 dashboards.
+- **Verified:** guide schedule against `crontab.example`, dashboard list against `grafana/`, sources
+  against `collectors/`, per-team split against `server_report.py`. `check_identifiers.py` clean.
+- **Not verified / open:** whether any `Team-` tags exist on the live tenant (if they do, some per-team
+  folders will already be populated). When the tag sync or the Remediation org goes live, update the
+  ops guide and the overview's "Built but not switched on yet" section.
+
 ### 2026-11-23, Claude for TK: Hadrian risks ignored in the console no longer count as open
 - **Status:** pushed, not deployed. Takes effect on the first Hadrian run after deploy (every risk is
   re-read each night, so the existing rows flip then).

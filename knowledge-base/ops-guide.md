@@ -1,6 +1,6 @@
 # SecOps Dashboard -- Operations Guide
 
-For cyber staff and cyber management: what the tool does, what it doesn't, what it produces, who each output is for, and how to read it. Setup and internals are in the [readme](../readme.md).
+For cyber staff and cyber management: what the tool does, what it doesn't, what it produces, who each output is for, and how to read it. Setup and internals are in the [readme](../readme.md). For a one-page summary of what it is and what it enables, see the [overview](overview.md).
 
 ## What it is and who it's for
 
@@ -49,6 +49,7 @@ Everything downstream reads from the one database, so the dashboards and reports
 | LogicMonitor | Server inventory, owner team and SCCM patch schedule, used for server patch compliance and per-team Servers reports |
 | DMARC reports | Whether mail from our domains passes SPF and DKIM, and who's failing |
 | Microsoft Entra ID (optional) | Risky users, risk detections, MFA registration |
+| Azure Log Analytics / Sentinel (optional) | Daily sign-in counts per site: failures, legacy authentication, MFA denials, Conditional Access blocks |
 | CISA KEV, FIRST EPSS, NVD | Which vulnerabilities are known to be exploited, how likely exploitation is, and plain-English descriptions |
 
 The vulnerability feeds (Falcon endpoint and Hadrian external) share one model. SLA, known-exploited (KEV), exploit likelihood (EPSS) and time-to-fix work the same way for both.
@@ -77,7 +78,7 @@ The tool produces three kinds of output: live dashboards for the cyber team, sch
 | --- | --- | --- | --- | --- |
 | Weekly security report | Cyber team, cyber management, each site | Mondays | PDF, region plus one per site | Six pages: endpoint vulnerabilities, external attack surface, email, alerts and identity, estate, removable media, with trends against last week |
 | Quarterly security report | Cyber management, executives | 1 Jan, Apr, Jul, Oct | PDF, region plus one per site | The same six pages over the last quarter |
-| Servers report | Infrastructure, applications and database teams; each server owner team | Mondays | PDF plus Excel workbook: region, plus one per owner team and one for servers with no owner (`Servers/Owners/<Team>/`) | Patching and reboots, longest-unpatched servers, domain controllers, top missing fixes, disk, and (region only) servers with no sensor |
+| Servers report | Infrastructure, applications and database teams; each server owner team | Mondays | PDF plus Excel workbook: region, plus one per owner team and one for servers with no owner (`Servers/Owners/<Team>/`; per-team copies depend on the Falcon tag sync, see below) | Patching and reboots, longest-unpatched servers, domain controllers, top missing fixes, disk, and (region only) servers with no sensor |
 | Action pack | Each site's ICT contacts | 1st of the month | Excel, one per site | Named lists to work through: stale and weak-password accounts, no MFA, sensors not reporting, missing sensors, external risks, USB activity |
 | Security scorecard | Cyber management, each site | 1st of the month | PDF, one page per site; the region copy adds a by-site table | Nine measures, start against end of last month. Direction only; no targets have been set yet |
 | Programme impact report | Cyber management, leadership | 1st of the month, or on demand | PDF | What has changed since the programme started: Day 0 against now, Patch Tuesday fix rates, the action log |
@@ -138,7 +139,7 @@ Start each day on the Worklist, each week with the reports, and each quarter wit
 
 **Infrastructure, applications and database teams**
 
-- **Servers report**, Mondays. Each owner team also gets its own copy under `Servers/Owners/<Team>/`, cut to the servers carrying its Falcon `Team-` tag (from LogicMonitor); servers with no owner are in `Servers/Owners/Unassigned/`. A server with two owner teams is in both. In the region copy, use the workbook's filters (Site, OU, product) to cut it to your own servers. The "No sensor" page lists servers to bring under Falcon, or to record why they can't be.
+- **Servers report**, Mondays. Each owner team also gets its own copy under `Servers/Owners/<Team>/`, cut to the servers carrying its Falcon `Team-` tag; servers with no owner are in `Servers/Owners/Unassigned/`. A server with two owner teams is in both. The `Team-` tags are copied from LogicMonitor into Falcon by a separate tag sync, which isn't running on a schedule yet. Until it is, servers without a tag all land in `Unassigned/`, and a team's folder may be missing or out of date. If yours is, use the region copy. In the region copy, use the workbook's filters (Site, OU, product) to cut it to your own servers. The "No sensor" page lists servers to bring under Falcon, or to record why they can't be.
 
 ## Reading the numbers
 
@@ -204,7 +205,7 @@ The more named detail an output carries, the narrower its audience. Forward repo
 | Output | Contains | Who may see it |
 | --- | --- | --- |
 | Grafana dashboards (SecOps org) | Everything, including names, hosts and accounts | Cyber team only. Any viewer can query all of the data, which is why sites don't get access. |
-| Grafana dashboards (Remediation org) | Servers, cloud and external assets, unsensored machines, their patching and vulnerabilities | Infrastructure, applications and database teams. Its database login can't read identity, USB, email, alerts or managed workstations. |
+| Grafana dashboards (Remediation org), once rolled out | Servers, cloud and external assets, unsensored machines, their patching and vulnerabilities | Infrastructure, applications and database teams. Its database login can't read identity, USB, email, alerts or managed workstations. Built and tested, but not switched on yet: see [grafana-access.md](grafana-access.md). |
 | Region weekly and quarterly reports | Counts and trends; no person names | Cyber team, cyber management, IT leadership, executives |
 | Site weekly and quarterly reports | That site's counts; email addresses and people's names masked | That site's ICT contacts and management |
 | Action packs | Full account names, people, hosts, USB activity | That site's ICT contacts only |
