@@ -130,15 +130,37 @@ HADRIAN_RISKS = [
     {"id": "r4", "title": "Missing DMARC record", "riskSeverity": "Low", "activityStatus": "Open", "status": "New",
      "riskType": "Potential", "riskVisibility": "Visible", "primaryCategory": {"id": "email-security"},
      "created": iso(3), "lastSeen": iso(0), "resolvedOn": None},   # only on the archived asset: skipped
-    # Ignored in the console because Hadrian can't validate the fix (checked by hand): it stays
-    # Visible with activityStatus Ignored, and the rescan sets status NotFound + resolvedOn
+    # Ignored in the console because Hadrian can't validate the fix: it stays Visible with
+    # activityStatus Ignored, and the rescan can set status NotFound + resolvedOn. r5's fix was
+    # validated by hand (a "Validated:" comment); r6 only has a vendor's "patched" note.
     {"id": "r5", "title": "Unauthenticated RCE in PHP (version unverifiable)", "riskSeverity": "Critical",
+     "activityStatus": "Ignored", "status": "NotFound", "riskType": "Verified", "riskVisibility": "Visible",
+     "primaryCategory": {"id": "unpatched-technology"}, "created": iso(30), "lastSeen": iso(20),
+     "resolvedOn": iso(18)},
+    {"id": "r6", "title": "Unauthenticated RCE in PHP (version unverifiable)", "riskSeverity": "Critical",
      "activityStatus": "Ignored", "status": "NotFound", "riskType": "Verified", "riskVisibility": "Visible",
      "primaryCategory": {"id": "unpatched-technology"}, "created": iso(30), "lastSeen": iso(20),
      "resolvedOn": iso(18)},
 ]
 # GET /risks/{id}: the list has no asset link, the detail's relatedAssets does
-HADRIAN_RISK_ASSET = {"r1": "a1", "r2": "a2", "r3": "a1", "r4": "a3", "r5": "a2"}
+HADRIAN_RISK_ASSET = {"r1": "a1", "r2": "a2", "r3": "a1", "r4": "a3", "r5": "a2", "r6": "a2"}
+
+
+def _comment(cid, rid, text, days_ago, mention=False):
+    parts = ([{"type": "Mention", "userId": "u9"}] if mention else []) + [{"type": "Text", "text": text}]
+    return {"id": cid, "resourceId": rid, "resourceType": "Risk", "commentParts": parts,
+            "createdAt": iso(days_ago), "author": {"userId": "u1", "userIdType": "User", "name": "Analyst"},
+            "mentionedUsers": []}
+
+
+# GET /risks/{id}/comments (same {totalCount, offset(page index), pageSize, items} wrapper)
+HADRIAN_COMMENTS = {
+    "r5": [_comment("c1", "r5", "Reported as patched by vendor - validation required.", 25),
+           _comment("c2", "r5", "validated: version checked on the host, ticket REQ-1", 15),
+           _comment("c3", "r5", "Validated: rechecked after reboot", 10)],
+    "r6": [_comment("c4", "r6", "Reported as patched by vendor - Validation required.", 25),
+           _comment("c5", "r6", "Not validated: waiting on the vendor", 20)],
+}
 
 AD = ["Active Directory"]
 PASSIVE = ["Falcon passive discovery"]
@@ -461,6 +483,13 @@ class H(BaseHTTPRequestHandler):
             return self._send({"resources": [x for x in USB_SCANS if x["id"] in want]})
         # ---- Hadrian (real contract: /organizations/{id}/assets|risks, offset is a
         # PAGE INDEX not a row offset, wrapper is {totalCount, offset, pageSize, items})
+        if "/hadrian/organizations/" in p and p.endswith("/comments"):
+            rid = p.rsplit("/", 2)[1]
+            data = HADRIAN_COMMENTS.get(rid, [])
+            offset = int(q.get("offset", ["0"])[0])
+            size = int(q.get("pageSize", ["50"])[0])
+            return self._send({"totalCount": len(data), "offset": offset, "pageSize": size,
+                               "items": data[offset * size: (offset + 1) * size]})
         if "/hadrian/organizations/" in p and "/risks/" in p:
             rid = p.rsplit("/", 1)[1]
             r = next((x for x in HADRIAN_RISKS if x["id"] == rid), None)

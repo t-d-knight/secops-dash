@@ -20,10 +20,16 @@ the `hadrian:` block in [`config.yaml.example`](../config.yaml.example).
   `collectors.hadrian.risks` live / enable that feed until the real field
   names are pulled from that endpoint's own reference page** (not just the
   index entry below).
-- **Not implemented**: everything outside Assets/Risks (CVEs, Insights,
-  Leaked Credentials, Risk Comments, Shared Resources, write-back
-  endpoints, …) — inventoried in §4 for future reference. Nothing in
-  `collectors/hadrian.py` calls any of it today.
+- **Confirmed and wired up (2026-11)**: `GET .../risks/{id}/comments`, read for Ignored risks
+  only. Same wrapper as the other lists (`totalCount`, `offset` = page index, `pageSize`, `items`);
+  each item has `id`, `resourceId`, `resourceType: "Risk"`, `commentParts: [{type: "Text", text}]`
+  (other part types for mentions), `createdAt`, `author {userId, userIdType, name, email}`,
+  `mentionedUsers`. Works with `risks:read`. Also confirmed live: an Ignored risk has
+  `activityStatus: "Ignored"` with `riskVisibility` still `Visible`.
+- **Not implemented**: everything else outside Assets/Risks (CVEs, Insights,
+  Leaked Credentials, Shared Resources, write-back endpoints, …) —
+  inventoried in §4 for future reference. Nothing in `collectors/hadrian.py`
+  calls any of it today.
 
 ---
 

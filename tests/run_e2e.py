@@ -272,12 +272,18 @@ def main() -> int:
     check((st.get("r1"), st.get("r2"), st.get("r3")) == ("OPEN", "FIXED", "REOPENED"),
           f"Hadrian activity/status -> OPEN/FIXED(NotFound)/REOPENED: {st.get('r1'), st.get('r2'), st.get('r3')}")
     check("r4" not in st, "risk only on a zzArchive asset skipped")
-    r5 = q(cur, "SELECT state, last_fixed::date = (now() - interval '18 days')::date FROM vuln_findings "
+    r5 = q(cur, "SELECT state, last_fixed::date = (now() - interval '15 days')::date FROM vuln_findings "
                 "WHERE source = 'hadrian' AND source_rule_id = 'r5'")[0]
-    check(r5 == ("FIXED", True), f"Hadrian Ignored + rescan NotFound -> FIXED, dated resolvedOn: {r5}")
+    check(r5 == ("FIXED", True),
+          f"Hadrian Ignored + a 'Validated:' comment -> FIXED, dated the earliest such comment: {r5}")
+    check(st.get("r6") == "SUPPRESSED",
+          f"Hadrian Ignored with only 'validation required' / 'Not validated:' notes -> SUPPRESSED: {st.get('r6')}")
+    hst = q(cur, "SELECT stats FROM collector_runs WHERE collector = 'hadrian' ORDER BY started_at DESC LIMIT 1")[0][0]
+    check(hst.get("risks_validated_by_comment") == 1 and "comments.error" not in hst,
+          f"Hadrian stats count comment-validated risks: {hst.get('risks_validated_by_comment')}")
     from collectors.hadrian import _risk_state
-    check(_risk_state("Ignored", "New", "Visible") == "SUPPRESSED",
-          "Hadrian Ignored but still detected -> SUPPRESSED (accepted risk, not fixed)")
+    check(_risk_state("Ignored", "NotFound", "Visible") == "SUPPRESSED",
+          "Hadrian Ignored without a validated comment stays SUPPRESSED, whatever the rescan says")
     check(_risk_state("Snoozed", "New", "Visible") == "OPEN",
           "unknown Hadrian activityStatus stays OPEN (never hidden on a guess)")
     rt = dict(q(cur, "SELECT source_rule_id, risk_type FROM vuln_findings WHERE source = 'hadrian'"))

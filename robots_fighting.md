@@ -69,23 +69,25 @@ older than a month to `docs/robots_fighting-archive.md`.
 - **Status:** pushed, not deployed. Takes effect on the first Hadrian run after deploy (every risk is
   re-read each night, so the existing rows flip then).
 - **Why:** when Hadrian can't validate a fix itself (e.g. it can't read the version), the only way to close
-  the risk in its console is Ignore, after checking the fix by hand. Live API check: that's
-  `activityStatus: Ignored`, `riskVisibility` still `Visible`, and the rescan sets `status: NotFound` with
-  `resolvedOn`. The collector only knew Open/Closed, so these fell through to OPEN, were re-confirmed every
-  night and showed as unresolved in the weekly report.
-- **Changed:** collector `hadrian`: Ignored + status NotFound/Resolved -> FIXED, dated `resolvedOn` (TK: the
-  fix was validated by hand; with the rescan not finding it, that's the same evidence as the existing
-  Closed + NotFound rule). Ignored but still detected -> SUPPRESSED (accepted risk, not counted as fixed,
-  per CONTRIBUTING "Keep outcomes separate"). An unrecognised `activityStatus` stays OPEN, counted in stats
-  (`unknown_activity_status`) and logged. New stat `risks_by_state`. e2e mock gets an Ignored risk.
-- **Verified:** e2e, all passed, 164 checks (3 new). The weekly report's external section counts only
-  OPEN/REOPENED as open (read from `exec_report.py`). Demo samples not rerun: they don't go through the
-  Hadrian collector.
-- **Not verified / open:** the first live run after deploy (`risks_by_state` in the stats). Only one of the
-  affected risks was inspected; any still detected will land as SUPPRESSED, not FIXED. Fix dates fall in
-  earlier weeks, before the rollups' recompute window, so earlier weeks' "fixed" counts won't include them.
-  Considered and rejected: renaming FIXED to "resolved" to cover accepted risk (CONTRIBUTING forbids it).
-  A later idea: show accepted risk as its own outflow ("Risk accepted") next to Fixed.
+  the risk in its console is Ignore. Live API check: that's `activityStatus: Ignored` with `riskVisibility`
+  still `Visible`. The collector only knew Open/Closed, so these fell through to OPEN, were re-confirmed
+  every night and showed as unresolved in the weekly report.
+- **Changed:** collector `hadrian`: Ignored -> SUPPRESSED (accepted risk). An Ignored risk with a comment
+  starting `Validated:` (configurable, case-insensitive) -> FIXED, dated by the earliest such comment (TK:
+  fixes checked by hand get that comment; the evidence stays in Hadrian). Comments are read
+  (`GET .../risks/{id}/comments`, `risks:read`) for Ignored risks only; if that fails, they stay SUPPRESSED
+  and the run is `partial`. An unrecognised `activityStatus` stays OPEN and is counted in stats. New stats
+  `risks_by_state`, `risks_validated_by_comment`. Workflow in the ops guide ("Reading the numbers"). This
+  replaces an interim rule pushed the same day (e289ed8: Ignored + NotFound -> FIXED): the rescan isn't
+  evidence when Hadrian can't validate the fix.
+- **Verified:** e2e, all passed, 166 checks (5 new: Validated comment -> FIXED dated by the earliest one;
+  "validation required" / "Not validated:" notes -> SUPPRESSED; stats). The mock's comments follow the
+  response shape seen live. The weekly report's external section counts only OPEN/REOPENED as open.
+- **Not verified / open:** the comment-read failure path (no test). The live run after deploy: until
+  `Validated:` comments are added in Hadrian, the existing ignored risks show as accepted risk, not fixed.
+  Fix dates before the rollups' recompute window don't change earlier weeks' "fixed" counts. Considered
+  and rejected: counting accepted risk as "resolved" (CONTRIBUTING "Keep outcomes separate"). Later idea:
+  show accepted risk as its own outflow ("Risk accepted") next to Fixed.
 
 ### 2026-11-23, Claude for TK: Spotlight full pull survives dropped cursors; catch-up stays short
 - **Status:** pushed (358965e). Deployed 2026-11-23 by TK with `deploy.sh` (output not reviewed here).

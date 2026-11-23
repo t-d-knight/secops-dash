@@ -258,22 +258,44 @@ def _risk_state(activity: str, status: str, visibility: str) -> str:
     longer sees it, which is how Hadrian closes most risks: counted as
     fixed). Hidden risks (riskVisibility) are SUPPRESSED.
 
-    Ignored (activityStatus) is how a risk gets closed when Hadrian can't
-    validate the fix itself, e.g. it can't read the version, so the fix was
-    checked by hand. If Hadrian's own rescan no longer finds it (status
-    NotFound/Resolved, with resolvedOn) that's the same evidence as
-    Closed + NotFound: FIXED, dated resolvedOn. Ignored but still found is
-    accepted risk: SUPPRESSED (listed, out of open counts, SLA and MTTR).
-    An activityStatus we don't know stays OPEN (never hide a risk on a
-    guess); run() counts those in stats."""
+    Ignored (activityStatus) is SUPPRESSED here: accepted risk, listed but
+    out of open counts, SLA and MTTR -- whatever the status says, because
+    Ignore is also how a risk gets closed when Hadrian can't validate a fix
+    itself, so its rescan isn't evidence either way. run() turns an Ignored
+    risk into FIXED only when a comment on it starts with the validated
+    marker (_validated_on). An activityStatus we don't know stays OPEN
+    (never hide a risk on a guess); run() counts those in stats."""
     if visibility and visibility.lower() not in ("visible", ""):
         return "SUPPRESSED"
     a = activity.lower()
     if a == "ignored":
-        return "FIXED" if status.lower() in ("notfound", "resolved") else "SUPPRESSED"
+        return "SUPPRESSED"
     if a == "closed":
         return "FIXED"
     return "REOPENED" if status.lower() == "reopened" else "OPEN"
+
+
+def _comment_text(c: Dict[str, Any]) -> str:
+    """A comment's text: Hadrian splits it into commentParts (Text, mentions)."""
+    return "".join(str(p.get("text") or "") for p in as_list(c.get("commentParts")) if isinstance(p, dict))
+
+
+def _validated_on(ctx: RunContext, s, rid: str) -> Optional[dt.datetime]:
+    """When a person recorded that they validated the fix on an Ignored risk:
+    the earliest comment whose text STARTS with the marker (default
+    "Validated:", case-insensitive -- so "Reported as patched, validation
+    required" doesn't count). None if there's no such comment. The evidence
+    itself (who, how, ticket) stays in Hadrian."""
+    rcfg = ctx.ccfg.get("risks") or {}
+    marker = str(rcfg.get("validated_comment_prefix", "Validated:")).strip().lower()
+    pg = dict(rcfg.get("pagination") or {"type": "page", "param": "offset", "size_param": "pageSize",
+                                          "start": 0}, size=50)
+    feed = {"path": "/organizations/{organization_id}" + f"/risks/{rid}/comments",
+            "items_key": "items", "pagination": pg}
+    dates = [parse_ts(c.get("createdAt")) for c in _iter_api(ctx, s, feed)
+             if isinstance(c, dict) and _comment_text(c).strip().lower().startswith(marker)]
+    dates = [d for d in dates if d]
+    return min(dates) if dates else None
 
 
 def _details(ctx: RunContext, s, ids: List[str]) -> Dict[str, Dict[str, Any]]:
@@ -370,6 +392,8 @@ def run(ctx: RunContext) -> Dict[str, Any]:
     n = skipped = 0
     by_state: collections.Counter = collections.Counter()
     unknown_activity: collections.Counter = collections.Counter()
+    comment_errors: List[str] = []
+    validated = 0
     for rec in risks:
         rid = str(_f(rec, rf, "id"))
         d = details.get(rid) or {}
@@ -397,6 +421,15 @@ def run(ctx: RunContext) -> Dict[str, Any]:
             unknown_activity[activity] += 1
         state = _risk_state(activity, str(_f(rec, rf, "status", "")),
                             str(_f(rec, rf, "visibility", "Visible")))
+        fixed_on = None
+        if api and activity.lower() == "ignored" and state == "SUPPRESSED" and not comment_errors:
+            try:
+                fixed_on = _validated_on(ctx, s, rid)
+            except Exception as e:   # keep the rest of the feed; say so (partial -> alert)
+                comment_errors.append(f"{type(e).__name__}: {str(e)[:200]}")
+            if fixed_on:
+                state = "FIXED"
+                validated += 1
         by_state[state] += 1
         first = parse_ts(_f(rec, rf, "first_seen")) or now
         last = parse_ts(_f(rec, rf, "last_seen")) or now
@@ -410,7 +443,7 @@ def run(ctx: RunContext) -> Dict[str, Any]:
             # External assets have no "sensor check-in"; Hadrian re-observes
             # continuously, so an open risk returned today was seen today.
             last_found=now if state in ("OPEN", "REOPENED") else last,
-            last_fixed=(parse_ts(_f(rec, rf, "resolved_at")) or last) if state == "FIXED" else None,
+            last_fixed=(fixed_on or parse_ts(_f(rec, rf, "resolved_at")) or last) if state == "FIXED" else None,
             site_label=label, site_tag=key, site_matched_by=by,
             title=_f(rec, rf, "title"),
             plugin_family=_f(rec, rf, "category"),
@@ -432,6 +465,11 @@ def run(ctx: RunContext) -> Dict[str, Any]:
     stats["risks_changed"] = w.changed
     stats["risks_archived_skipped"] = skipped
     stats["risks_by_state"] = dict(by_state)
+    stats["risks_validated_by_comment"] = validated
+    if comment_errors:   # Ignored risks stay SUPPRESSED until the comments can be read
+        stats["comments.error"] = comment_errors[0]
+        stats["partial"] = True
+        ctx.log(f"couldn't read risk comments, Ignored risks left as suppressed: {comment_errors[0]}")
     if unknown_activity:   # kept OPEN; a new Hadrian lifecycle value worth mapping
         stats["unknown_activity_status"] = dict(unknown_activity)
         ctx.log(f"activityStatus values not recognised (kept OPEN): {dict(unknown_activity)}")

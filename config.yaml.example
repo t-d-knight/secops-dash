@@ -212,9 +212,13 @@ collectors:
       items_key: "items"
       pagination: {type: page, param: offset, size_param: pageSize, size: 100, start: 0}
       full_pull: true             # every run returns all risks -> unseen ones are expired
-      # activity (Open/Closed) is the lifecycle; status (New/Reopened/
+      # activity (Open/Closed/Ignored) is the lifecycle; status (New/Reopened/
       # Resolved/NotFound) refines it. Closed/NotFound = rescan no longer
-      # sees it -> counted as fixed.
+      # sees it -> counted as fixed. Ignored -> accepted risk (suppressed),
+      # unless a comment on it starts with validated_comment_prefix -> fixed,
+      # dated by that comment (a fix Hadrian couldn't validate, checked by hand;
+      # comments are read only for Ignored risks).
+      # validated_comment_prefix: "Validated:"   # case-insensitive, start of the comment
       fields: {id: id, title: title, severity: riskSeverity, activity: activityStatus,
                status: status, visibility: riskVisibility, risk_type: riskType,
                category: primaryCategory.id, first_seen: created, last_seen: lastSeen,
