@@ -40,6 +40,8 @@ class FalconClient:
         self.s = make_session(timeout=int(cs.get("timeout", 120)))
         self._tok = TokenCache(self._fetch_token)
         self._group_names: Optional[Dict[str, str]] = None
+        # seconds between retries of a 404'd cursor page (x1, x2, x3); tests set 0
+        self.cursor_retry_wait = float((ccfg or {}).get("cursor_retry_wait", 30))
 
     def _fetch_token(self):
         r = self.s.post(f"{self.base}/oauth2/token",
@@ -134,7 +136,7 @@ class FalconClient:
                         raise
                     if attempt == 3:
                         raise CursorExpired(str(e)[:300]) from e
-                    time.sleep(30 * (attempt + 1))
+                    time.sleep(self.cursor_retry_wait * (attempt + 1))
             res = j.get("resources") or []
             yield from res
             after = (j.get("meta", {}).get("pagination") or {}).get("after")

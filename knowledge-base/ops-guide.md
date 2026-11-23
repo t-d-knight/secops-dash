@@ -171,11 +171,12 @@ Data is collected overnight and is normally complete by mid-morning. Reports go 
 | 03:30, 1 Jan, Apr, Jul, Oct | Quarterly security reports |
 | 04:00, 04:15 and 04:30, 1st of the month | Action packs, security scorecards, programme impact report |
 | 07:30 daily | New reports published to the file share |
+| 13:00 Mondays | Publish again, in case a slow night meant the 07:30 run went before the weekly reports |
 | 09:00 daily | Database backup, with an optional off-site copy |
-| 10:00 daily | Catch-up: finishes anything the night run didn't |
+| 10:00 daily | Catch-up: finishes anything the night run didn't (never a full vulnerability pull) |
 | 10:00 Sundays | Database maintenance |
 
-Reports and publishing wait for the night's collection to finish, so a slow night delays them rather than sending half-collected data. With `open_pull: incremental`, the full vulnerability pull runs once a week (Saturday by default) and other nights only pull what changed.
+Reports and publishing wait for the night's collection to finish, so a slow night delays them rather than sending half-collected data. With `open_pull: incremental`, the full vulnerability pull runs once a week (Saturday by default) and other nights only pull what changed. The full pull goes in small date windows, so when Falcon drops it part-way only one window is re-pulled. If it still can't finish, that night falls back to pulling only what changed, nothing is marked as gone, and you get a 'partial' alert; the next night tries the full pull again.
 
 **If something looks wrong**
 

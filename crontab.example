@@ -43,6 +43,9 @@
 
 # Publish anything new to the file share (no-op unless publish.enabled in config.yaml)
 30 7 * * *        cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock venv/bin/python3 publish.py --config config.yaml >> logs/publish.log 2>&1
+# Monday again at 13:00: on a slow Monday night the 07:30 publish can win the lock before the weekly
+# reports do, and they'd otherwise sit unpublished until Tuesday. A no-op when there's nothing new.
+0 13 * * 1        cd /opt/secops-dashboard && flock -w 21600 logs/.collector.lock venv/bin/python3 publish.py --config config.yaml >> logs/publish.log 2>&1
 
 # Database backup (pg_dump, keeps 7 days in backups/) -- needs ~/.pgpass, see backup.sh
 0  9 * * *        cd /opt/secops-dashboard && flock -w 43200 logs/.collector.lock ./backup.sh >> logs/backup.log 2>&1 || venv/bin/python3 notify.py --config config.yaml send --priority 1 --title "database backup failed" --message "See logs/backup.log"

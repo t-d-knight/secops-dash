@@ -103,6 +103,18 @@ collectors:
                                             # updated since the last good run, plus a full pull on
                                             # full_pull_weekdays or when the last full one is 8+ days old
     full_pull_weekdays: [5]                 # 0 = Mon .. 6 = Sun (local time); incremental mode only
+    # Full pulls go window by window over created_timestamp, each window its own short-lived cursor:
+    # Falcon expires a search context part-way through a multi-hour pull ("Search context expired"),
+    # and a window that loses its cursor is halved and re-pulled. If one still fails at the minimum
+    # width, the run falls back to an incremental pull and reports 'partial' (nothing expired).
+    # A --catch-up run (10:00) never does a full pull. All of these are assumed defaults, not policy.
+    # full_pull_chunk_days: 1               # window width
+    # full_pull_span_days: 400              # windows cover this far back; one catch-all window before it
+    # full_pull_min_window_minutes: 60      # don't split below this
+    # full_pull_max_splits: 200             # give up (-> incremental fallback) after this many splits
+    # full_pull_total_tolerance: 0.05       # expire vanished vulns only if the windows returned at least
+    #                                       # 95% of Falcon's own open count (vulns close during the pull)
+    # cursor_retry_wait: 30                 # seconds between retries of a 404'd cursor page (x1, x2, x3)
     # filter: "host_info.platform_name:'Windows'"   # optional FQL ANDed onto every pull
 
   # Falcon alerts (endpoint + identity detections + anything else Falcon raises)

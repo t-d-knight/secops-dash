@@ -25,6 +25,21 @@ Oct 2026 Patch Tuesday = 7-8 h, and a cursor expiring part-way doubles it).
 that full pull is what catches vulns that vanish without being closed or
 expired. --full always does a full pull.
 
+A full pull is split into created_timestamp windows (full_pull_chunk_days,
+default 1 day), each its own short-lived cursor. Falcon expires a search
+context part-way through a long pull ("Search context expired, 'after' key
+no longer valid"), and from Nov 2026 it did so on most full pulls of the
+whole estate; a window that loses its cursor is halved and pulled again, so
+a drop costs minutes, not the whole pull. Vanished vulns are only EXPIRED
+when every window came back and the total matches Falcon's own count.
+
+If a full pull still can't finish, the run falls back to an incremental pull
+(so the night's changes and fixes still land), skips expiring, and reports
+'partial' (a Pushover message; the catch-up doesn't retry it). The next
+night tries the full pull again, because the last good one is still old.
+A --catch-up run never does a full pull: it would hold the collector lock
+for hours while the reports and publish wait on it.
+
 Suppressed vulns (accepted risk / compensating control / false positive)
 land as state SUPPRESSED: visible, but excluded from open counts and SLA.
 """
@@ -155,8 +170,34 @@ def to_finding(rec: Dict[str, Any], hosts, fc: FalconClient, resolver, require_e
     )
 
 
+EPOCH = dt.datetime(2000, 1, 1, tzinfo=dt.timezone.utc)
+
+
+def _fql_ts(t: dt.datetime) -> str:
+    return t.astimezone(dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
+def _windows(now: dt.datetime, chunk_days: float, span_days: float):
+    """created_timestamp windows [lo, hi) covering everything: one catch-all for
+    anything older than span_days, then chunk_days steps up to tomorrow (nothing
+    can be created after that during this run). Whole seconds, so FQL's
+    >= / < bounds neither overlap nor leave gaps."""
+    end = (now + dt.timedelta(days=1)).replace(microsecond=0)
+    start = end - dt.timedelta(days=span_days)
+    step = dt.timedelta(days=chunk_days)
+    out, t = [(EPOCH, start)], start
+    while t < end:
+        out.append((t, min(t + step, end)))
+        t += step
+    return out
+
+
 def _full_open_pull(ctx: RunContext) -> bool:
-    if ctx.full or str(ctx.ccfg.get("open_pull", "full")).lower() != "incremental":
+    if ctx.full:
+        return True
+    if ctx.catch_up:
+        return False
+    if str(ctx.ccfg.get("open_pull", "full")).lower() != "incremental":
         return True
     if ctx.run_started.astimezone().weekday() in [int(d) for d in ctx.ccfg.get("full_pull_weekdays", [5])]:
         return True
@@ -175,39 +216,119 @@ def run(ctx: RunContext) -> Dict[str, Any]:
     extra = ctx.ccfg.get("filter")  # optional extra FQL ANDed onto both pulls
     w = FindingsWriter(ctx.conn)
 
-    def pull(fql: str, label: str) -> int:
-        """One full pass; if Falcon drops the cursor part-way, start again once
-        (writes are upserts, and the second pass is mostly unchanged rows)."""
+    seen = {"n": 0}   # records written this run, for the progress log
+
+    def drain(fql: str, label: str) -> int:
+        """One pass over a cursor. Raises CursorExpired if Falcon drops it."""
         if extra:
             fql = f"{fql}+{extra}"
+        n = 0
+        try:
+            for rec in fc.iter_after(PATH, {"filter": fql, "facet": FACETS, "limit": page}):
+                w.add(to_finding(rec, hosts, fc, ctx.resolver, require_exploit))
+                n += 1
+                seen["n"] += 1
+                if seen["n"] % 50000 == 0:
+                    ctx.log(f"{label}: {seen['n']} records...")
+        except CursorExpired:
+            w.flush()   # what did arrive is kept (upserts); a re-pull rewrites nothing unchanged
+            raise
+        w.flush()
+        return n
+
+    def pull(fql: str, label: str) -> int:
+        """Incremental / closed pulls (short): if the cursor drops, start again once."""
+        seen["n"] = 0
         for attempt in (1, 2):
-            n = 0
             try:
-                for rec in fc.iter_after(PATH, {"filter": fql, "facet": FACETS, "limit": page}):
-                    w.add(to_finding(rec, hosts, fc, ctx.resolver, require_exploit))
-                    n += 1
-                    if n % 50000 == 0:
-                        ctx.log(f"{label}: {n} records...")
-                w.flush()
+                n = drain(fql, label)
                 ctx.log(f"{label}: {n} records")
                 return n
             except CursorExpired as e:
-                w.flush()
                 if attempt == 2:
                     raise
-                ctx.log(f"{label}: cursor dropped after {n} records ({e}) -- restarting the pull")
+                ctx.log(f"{label}: cursor dropped ({e}) -- restarting the pull")
         return 0
+
+    def total(fql: str) -> Optional[int]:
+        """Falcon's own count for a filter (one record fetched), or None."""
+        if extra:
+            fql = f"{fql}+{extra}"
+        try:
+            j = fc.get(PATH, {"filter": fql, "facet": FACETS, "limit": 1})
+            t = (j.get("meta", {}).get("pagination") or {}).get("total")
+            return int(t) if t is not None else None
+        except Exception as e:   # the count is a cross-check, not worth failing the run over
+            ctx.log(f"open: couldn't get Falcon's total ({type(e).__name__}: {str(e)[:200]})")
+            return None
+
+    def full_pull(fql: str) -> Dict[str, Any]:
+        """Every open vuln, window by window. A window whose cursor drops is
+        halved and both halves pulled; one already at the minimum width, or
+        running out of splits, raises CursorExpired."""
+        chunk_days = float(ctx.ccfg.get("full_pull_chunk_days", 1))
+        span_days = float(ctx.ccfg.get("full_pull_span_days", 400))
+        min_win = dt.timedelta(minutes=float(ctx.ccfg.get("full_pull_min_window_minutes", 60)))
+        max_splits = int(ctx.ccfg.get("full_pull_max_splits", 200))
+        wins = _windows(ctx.run_started, chunk_days, span_days)
+        todo = list(reversed(wins))
+        got, splits = 0, 0
+        seen["n"] = 0
+        ctx.log(f"open: full pull in {len(wins)} created_timestamp windows")
+        while todo:
+            lo, hi = todo.pop()
+            wfql = f"{fql}+created_timestamp:>='{_fql_ts(lo)}'+created_timestamp:<'{_fql_ts(hi)}'"
+            before = seen["n"]
+            try:
+                got += drain(wfql, "open")
+            except CursorExpired as e:
+                span = f"{_fql_ts(lo)}..{_fql_ts(hi)}"
+                if hi - lo <= min_win or splits >= max_splits:
+                    raise CursorExpired(f"window {span} still failing after {splits} splits: {e}") from e
+                splits += 1
+                mid = lo + dt.timedelta(seconds=int((hi - lo).total_seconds() // 2))
+                ctx.log(f"open: cursor dropped in window {span} after {seen['n'] - before} records "
+                        f"-- splitting it ({splits}/{max_splits})")
+                todo.extend([(mid, hi), (lo, mid)])   # lo half next
+        ctx.log(f"open: {got} records ({len(wins)} windows, {splits} splits)")
+        return {"open": got, "full_pull_windows": len(wins), "full_pull_splits": splits}
 
     since = ctx.since(NAME, default_days=int(ctx.ccfg.get("closed_lookback_days", 30)))
     since_fql = since.strftime('%Y-%m-%dT%H:%M:%SZ')
+    incr_fql = f"status:['open','reopen']+updated_timestamp:>'{since_fql}'"
+    stats: Dict[str, Any] = {}
     full = _full_open_pull(ctx)
+    expired = 0
     if full:
-        open_n = pull("status:['open','reopen']", "open")
-        expired = expire_unseen(ctx.conn, SOURCE, ctx.run_started)
+        open_fql = "status:['open','reopen']"
+        t0 = total(open_fql)
+        try:
+            stats.update(full_pull(open_fql))
+        except CursorExpired as e:
+            # Keep the night useful: what the windows did pull is stored; pick up
+            # the rest of the changes incrementally, don't expire anything.
+            full = False
+            stats["full_pull.error"] = str(e)[:300]
+            ctx.log(f"open: full pull failed ({str(e)[:300]}) -- falling back to an incremental pull, "
+                    f"nothing expired this run")
+            ctx.log(f"open: incremental, updated since {since_fql}")
+            stats["open"] = pull(incr_fql, "open")
+        else:
+            t1 = total(open_fql)
+            # vulns closed during a long pull lower the count, so compare with the smaller one
+            counts = [t for t in (t0, t1) if t is not None]
+            want = min(counts) if counts else None
+            tol = float(ctx.ccfg.get("full_pull_total_tolerance", 0.05))
+            stats["falcon_total"] = want
+            if want is not None and stats["open"] < want * (1 - tol):
+                stats["expire.error"] = (f"pulled {stats['open']} open vulns but Falcon counts {want}: "
+                                         f"windows may be missing some, so nothing expired")
+                ctx.log(f"open: {stats['expire.error']}")
+            else:
+                expired = expire_unseen(ctx.conn, SOURCE, ctx.run_started)
     else:
-        ctx.log(f"open: incremental, updated since {since_fql}")
-        open_n = pull(f"status:['open','reopen']+updated_timestamp:>'{since_fql}'", "open")
-        expired = 0
+        ctx.log(f"open: incremental{' (catch-up)' if ctx.catch_up else ''}, updated since {since_fql}")
+        stats["open"] = pull(incr_fql, "open")
     closed_n = pull(
         f"status:['closed','expired']+updated_timestamp:>'{since_fql}'",
         "closed",
@@ -226,4 +347,8 @@ def run(ctx: RunContext) -> Dict[str, Any]:
         (SOURCE,),
     )
     ctx.conn.commit()
-    return {"open_pull": "full" if full else "incremental", "open": open_n, "closed": closed_n, "expired": expired, "rows": w.written, "changed": w.changed}
+    stats.update({"open_pull": "full" if full else "incremental", "closed": closed_n, "expired": expired,
+                  "rows": w.written, "changed": w.changed})
+    if any(k.endswith(".error") for k in stats):
+        stats["partial"] = True   # -> 'partial': alerted, not retried by the catch-up
+    return stats

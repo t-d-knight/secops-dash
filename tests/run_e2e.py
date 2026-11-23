@@ -51,7 +51,7 @@ database: {{host: "{PG['host']}", port: {PG['port']}, name: {DB}, user: "{PG['us
 secrets_file: secrets.yaml
 collectors:
   falcon_hosts: {{enabled: true, out_of_scope_ous: {{"Departed Service": "left the alliance"}}}}
-  falcon_spotlight: {{enabled: true, page_size: 2}}
+  falcon_spotlight: {{enabled: true, page_size: 2, cursor_retry_wait: 0}}
   falcon_alerts: {{enabled: true}}
   falcon_identity: {{enabled: true, access_domain: {{domain: "shared.local", native_sites: ["Lakeside Health"]}}}}
   falcon_usb: {{enabled: true, lookback_days: 5}}
@@ -184,9 +184,9 @@ def main() -> int:
     check(run("collect.py") == 0, "second collect.py run exited 0")
     # incremental open pull: only changed vulns asked for, and nothing expired (the pull isn't complete)
     cfg_inc = os.path.join(tmp, "config-incremental.yaml")
-    open(cfg_inc, "w").write(CONFIG.replace("falcon_spotlight: {enabled: true, page_size: 2}",
+    open(cfg_inc, "w").write(CONFIG.replace("falcon_spotlight: {enabled: true, page_size: 2,",
                                             "falcon_spotlight: {enabled: true, page_size: 2, open_pull: incremental, "
-                                            "full_pull_weekdays: []}"))
+                                            "full_pull_weekdays: [],"))
     cur.execute("""INSERT INTO vuln_findings (source, source_asset_id, source_rule_id, state, severity, first_found,
                    last_found, site_label, last_seen_in_export)
                    VALUES ('falcon_spotlight','aid9','gone2','OPEN','high', now()-interval '50 days',
@@ -239,6 +239,7 @@ def main() -> int:
           and p[1].get("priority") == "0" and pings()[-1] == "/hc/abc/0",
           f"quiet feed: normal-priority push naming it, success ping ({p[1:]}, {pings()[-1:]})")
     srv.shutdown()
+    srv.server_close()
 
     cur = conn.cursor()
     print("== collector_runs")
@@ -295,6 +296,83 @@ def main() -> int:
     check(patch and patch[0][1] == 2, f"R1 patch groups both Chrome CVEs: {patch}")
     ext = q(cur, "SELECT site_label, asset_type FROM vuln_findings WHERE source='hadrian' AND source_rule_id='r1'")[0]
     check(ext == ("Riverside Health", "internet"), f"Hadrian risk site/type {ext}")
+
+    print("== falcon_spotlight: chunked full pull, dropped cursors, fallback, catch-up")
+    srv = mock_vendors.start(PORT)   # stopped after the collector runs above
+    SP = "/falcon/spotlight/combined/vulnerabilities/v1"
+
+    def spotlight(extra_cfg, *args, seed=None):
+        """One Spotlight-only run with extra config; seeds a stale open row `seed` first."""
+        conn.commit()   # don't hold a read lock that collect.py's schema check would wait on
+        if seed:
+            cur.execute("""INSERT INTO vuln_findings (source, source_asset_id, source_rule_id, state, severity,
+                           first_found, last_found, site_label, last_seen_in_export)
+                           VALUES ('falcon_spotlight','aid9',%s,'OPEN','high', now()-interval '50 days',
+                                   now()-interval '1 day','Ungrouped', now()-interval '1 day')""", (seed,))
+            conn.commit()
+        path = os.path.join(tmp, "config-spotlight.yaml")
+        open(path, "w").write(CONFIG.replace("falcon_spotlight: {enabled: true, page_size: 2,",
+                                             f"falcon_spotlight: {{enabled: true, page_size: 2, {extra_cfg},"))
+        n0 = len(mock_vendors.CALLS)
+        r = subprocess.run([sys.executable, "collect.py", "--config", path, "--only", "falcon_spotlight", *args],
+                           cwd=ROOT, capture_output=True, text=True)
+        if r.returncode != 0:
+            print(r.stdout[-3000:], r.stderr[-3000:])
+        row = q(cur, "SELECT status, stats FROM collector_runs WHERE collector = 'falcon_spotlight' "
+                     "ORDER BY started_at DESC LIMIT 1")[0]
+        st = q(cur, "SELECT state FROM vuln_findings WHERE source_rule_id = %s", seed)[0][0] if seed else None
+        if seed:
+            cur.execute("DELETE FROM vuln_findings WHERE source_rule_id = %s", (seed,))
+            conn.commit()
+        calls = [c[2] for c in mock_vendors.CALLS[n0:] if c[1] == SP]
+        return r.returncode, row[0], row[1] or {}, st, calls, r.stdout
+
+    # 1. normal full pull: every open request is a created_timestamp window; vanished rows expire
+    rc, status, stats, st, calls, _ = spotlight("full_pull_chunk_days: 30, full_pull_span_days: 60", seed="gone3")
+    opens = [c.get("filter", [""])[0] for c in calls if "closed" not in c.get("filter", [""])[0]
+             and "after" not in c and c.get("limit") != ["1"]]
+    check(rc == 0 and status == "ok" and stats.get("open_pull") == "full" and stats.get("open") == 4
+          and stats.get("full_pull_windows") == 3 and st == "EXPIRED",
+          f"chunked full pull: 3 windows (catch-all + 2 x 30 days), all 4 open vulns, vanished row expired ({status}, {stats}, {st})")
+    check(opens and all("created_timestamp:>='" in f and "created_timestamp:<'" in f for f in opens),
+          f"every full-pull page asks for one created_timestamp window ({len(opens)} requests)")
+
+    # 2. Falcon drops the cursor on wide windows: only that window is split, the pull still completes
+    mock_vendors.SPOTLIGHT_DROP_WIDER_THAN_H = 12
+    rc, status, stats, st, _, out = spotlight("full_pull_chunk_days: 30, full_pull_span_days: 60", seed="gone4")
+    check(rc == 0 and status == "ok" and stats.get("open") == 4 and stats.get("full_pull_splits", 0) > 0
+          and st == "EXPIRED" and "splitting it" in out,
+          f"dropped cursor: window halved until it fits, pull completes and expires ({status}, {stats}, {st})")
+
+    # 3. a window still failing at the minimum width: incremental fallback, nothing expired, 'partial'
+    mock_vendors.SPOTLIGHT_DROP_WIDER_THAN_H = 0
+    rc, status, stats, st, calls, _ = spotlight("full_pull_chunk_days: 30, full_pull_span_days: 60", seed="gone5")
+    closed_pulled = any("closed" in c.get("filter", [""])[0] for c in calls)
+    check(rc == 0 and status == "partial" and "full_pull.error" in stats and stats.get("open_pull") == "incremental"
+          and st == "OPEN" and closed_pulled,
+          f"full pull can't finish: partial, incremental + closed pulls still run, nothing expired "
+          f"({rc}, {status}, {sorted(stats)}, {st}, closed pulled {closed_pulled})")
+    mock_vendors.SPOTLIGHT_DROP_WIDER_THAN_H = None
+
+    # 4. windows return fewer than Falcon's own total: don't expire
+    mock_vendors.SPOTLIGHT_TOTAL_EXTRA = 100
+    rc, status, stats, st, _, _ = spotlight("full_pull_chunk_days: 30, full_pull_span_days: 60", seed="gone6")
+    check(rc == 0 and status == "partial" and "expire.error" in stats and st == "OPEN",
+          f"short of Falcon's total: nothing expired, partial ({status}, {stats.get('expire.error')}, {st})")
+    mock_vendors.SPOTLIGHT_TOTAL_EXTRA = 0
+
+    # 5. catch-up never does a full pull, even on a full-pull weekday; the same config without it does
+    every_day = "open_pull: incremental, full_pull_weekdays: [0, 1, 2, 3, 4, 5, 6]"
+    rc, status, stats, st, calls, _ = spotlight(every_day, "--catch-up", seed="gone7")
+    flts = [c.get("filter", [""])[0] for c in calls if "after" not in c]
+    check(rc == 0 and stats.get("open_pull") == "incremental" and st == "OPEN"
+          and all("updated_timestamp:>" in f for f in flts),
+          f"--catch-up: incremental only, nothing expired ({stats.get('open_pull')}, {st}, {flts})")
+    rc, status, stats, st, _, _ = spotlight(every_day, seed="gone8")
+    check(stats.get("open_pull") == "full" and st == "EXPIRED",
+          f"same config, nightly run: full pull on a full-pull weekday ({stats.get('open_pull')}, {st})")
+    srv.shutdown()
+    srv.server_close()
 
     print("== logicmonitor")
     conn.commit()

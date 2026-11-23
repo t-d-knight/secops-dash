@@ -65,6 +65,31 @@ Each entry heading is `### YYYY-MM-DD, <who> for <whom>: <what>`. In the entry:
 Keep entries short and link to the commit for detail. When the log passes about 300 lines, move entries
 older than a month to `docs/robots_fighting-archive.md`.
 
+### 2026-11-23, Claude for TK: Spotlight full pull survives dropped cursors; catch-up stays short
+- **Status:** pushed, not deployed. Takes effect on the next nightly run after deploy; the crontab line
+  only after the crontab is reinstalled from `crontab.example`.
+- **Why:** from 2026-11-21 Falcon expired the `after` cursor ("Search context expired") part-way through
+  most weekly full open-vuln pulls. The retry restarted the whole multi-hour pull and failed again, the run
+  overran into the morning, every job waiting on the collector lock (weekly reports, publish, backup)
+  slipped, and the 10:00 catch-up re-ran the same full pull and held the lock again.
+- **Changed:** collector `falcon_spotlight`: the full pull goes by `created_timestamp` windows (1 day
+  default); a window that loses its cursor is halved and re-pulled; vanished vulns are expired only if all
+  windows finished and the total is within 5% of Falcon's own count. If a window still fails at the
+  minimum width, the run falls back to an incremental + closed pull, expires nothing and reports
+  `partial` (alerted, not retried by the catch-up). `collect.py --catch-up` / `run_collector.sh
+  --catch-up` never do a full pull. `falcon_client`: `cursor_retry_wait` configurable. `crontab.example`:
+  second Monday publish at 13:00. Example config, readme, ops guide.
+- **Verified:** e2e, all passed, 161 checks (7 new: windowed full pull and expiry, window split on a
+  dropped cursor, fallback to incremental with nothing expired, total cross-check, catch-up incremental
+  only). Mock only: it implements the window filter and the 404 the way the live logs show them.
+- **Not verified / open:** against the real API: that Spotlight's combined endpoint honours
+  `created_timestamp:>=` / `<` bounds as the mock does (if not, the total cross-check stops any expiry and
+  the run goes `partial`), that `meta.pagination.total` is an exact count for millions of records, and
+  whether Falcon's cursor drops are about time, load or record count (a catch-up dropped one after well
+  under an hour). The first full pull after deploy (next Saturday, or the next night if the last good full
+  is 8+ days old) is the real test: look for `full_pull_windows`, `full_pull_splits` and `falcon_total` in
+  its stats. Full pulls are still long, so a full-pull Monday still delays the weekly reports.
+
 ### 2026-11-20, Claude for TK: doc catch-up before leave
 - **Status:** pushed, docs only. Nothing to deploy.
 - **Changed:** readme: feed table adds `checkpoint_hec_flow` and `logicmonitor`; eight dashboards, not seven,

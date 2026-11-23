@@ -79,8 +79,12 @@ stage() {
 
 # Catch-up: re-pull collectors that failed overnight; if that works, the rollup and
 # impact stages run again on the fresh data.
+# --catch-up tells collectors to keep it short: a catch-up that starts an 8-hour
+# full Spotlight pull holds the lock past the reports' and publish's 12 h wait.
+collect_args=(); [[ "$mode" == "--catch-up" ]] && collect_args=(--catch-up)
+
 if [[ -n "${retry:-}" ]]; then
-    if python3 collect.py --config config.yaml --only "$retry"; then
+    if python3 collect.py --config config.yaml --only "$retry" ${collect_args[@]+"${collect_args[@]}"}; then
         rm -f logs/.stage-rollup logs/.stage-reclassify logs/.stage-impact
     else
         rc=1
@@ -92,7 +96,7 @@ stage kev  done python3 kev_sync.py --config config.yaml
 stage epss done python3 epss_sync.py --config config.yaml
 
 # All enabled collectors (config.yaml `collectors:`), in dependency order.
-stage collect done python3 collect.py --config config.yaml
+stage collect done python3 collect.py --config config.yaml ${collect_args[@]+"${collect_args[@]}"}
 
 # NVD CVSS backfill for CVEs the vendor didn't score (rate-limited, capped per run).
 stage nvd done python3 nvd_enrich.py --config config.yaml

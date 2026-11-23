@@ -7,6 +7,7 @@ non-zero if anything failed, so cron/systemd still notices.
   python3 collect.py --config config.yaml                 # all enabled
   python3 collect.py --config config.yaml --only falcon_hosts,falcon_spotlight
   python3 collect.py --config config.yaml --full          # ignore incremental watermarks
+  python3 collect.py --config config.yaml --catch-up      # run_collector.sh --catch-up: no long full pulls
   python3 collect.py --config config.yaml --list
 """
 import argparse
@@ -29,6 +30,9 @@ def main() -> int:
     ap.add_argument("--config", default="config.yaml")
     ap.add_argument("--only", help="comma-separated collector names (runs them even if disabled)")
     ap.add_argument("--full", action="store_true", help="ignore incremental watermarks")
+    ap.add_argument("--catch-up", action="store_true",
+                    help="mid-morning catch-up: collectors skip optional long pulls (e.g. Spotlight's full pull) "
+                         "so the lock is free for the reports, publish and backup waiting on it")
     ap.add_argument("--list", action="store_true", help="list collectors and whether they're enabled")
     args = ap.parse_args()
 
@@ -71,7 +75,8 @@ def main() -> int:
         run_id = cur.fetchone()[0]
         conn.commit()
         print(f"=== {name} ===", flush=True)
-        ctx = RunContext(cfg=cfg, ccfg=ccfg, conn=conn, resolver=resolver, run_started=started, full=args.full)
+        ctx = RunContext(cfg=cfg, ccfg=ccfg, conn=conn, resolver=resolver, run_started=started, full=args.full,
+                         catch_up=args.catch_up)
         try:
             stats = mod.run(ctx) or {}
             status = "partial" if stats.get("partial") else "ok"

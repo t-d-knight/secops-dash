@@ -29,6 +29,7 @@ class RunContext:
     resolver: SiteResolver
     run_started: dt.datetime
     full: bool = False                   # --full: ignore incremental watermarks
+    catch_up: bool = False               # --catch-up: mid-morning re-run; keep it short (no full pulls)
     stats: Dict[str, Any] = field(default_factory=dict)
 
     def log(self, msg: str) -> None:
