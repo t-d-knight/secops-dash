@@ -66,8 +66,12 @@ Keep entries short and link to the commit for detail. When the log passes about 
 older than a month to `docs/robots_fighting-archive.md`.
 
 ### 2026-11-23, Claude for TK: Spotlight full pull survives dropped cursors; catch-up stays short
-- **Status:** pushed, not deployed. Takes effect on the next nightly run after deploy; the crontab line
-  only after the crontab is reinstalled from `crontab.example`.
+- **Status:** pushed (358965e). Deployed 2026-11-23 by TK with `deploy.sh` (output not reviewed here).
+  Crontab reinstalled from `crontab.example` the same day after a diff (only functional change: the
+  Monday 13:00 publish; previous crontab saved to `logs/crontab.bak-20261123`). Before the deploy, a
+  catch-up that had started an old-code full Spotlight pull was killed, so that day's `collector_runs`
+  row for it stays `running`. The weekly and servers reports for that week had already been generated and
+  the 07:30 publish had run.
 - **Why:** from 2026-11-21 Falcon expired the `after` cursor ("Search context expired") part-way through
   most weekly full open-vuln pulls. The retry restarted the whole multi-hour pull and failed again, the run
   overran into the morning, every job waiting on the collector lock (weekly reports, publish, backup)
@@ -88,7 +92,8 @@ older than a month to `docs/robots_fighting-archive.md`.
   whether Falcon's cursor drops are about time, load or record count (a catch-up dropped one after well
   under an hour). The first full pull after deploy (next Saturday, or the next night if the last good full
   is 8+ days old) is the real test: look for `full_pull_windows`, `full_pull_splits` and `falcon_total` in
-  its stats. Full pulls are still long, so a full-pull Monday still delays the weekly reports.
+  its stats. Full pulls are still long, so a full-pull Monday still delays the weekly reports. The first
+  new-code full pull is the night of 2026-1123/24 (forced: the last good full is 8+ days old).
 
 ### 2026-11-20, Claude for TK: doc catch-up before leave
 - **Status:** pushed, docs only. Nothing to deploy.
